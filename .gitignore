@@ -1,0 +1,17 @@
+# Backend - Python
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+backend/.env
+backend/sanchez_ecommerce.db
+backend/venv/
+backend/.venv/
+backend/static/uploads/*
+!backend/static/uploads/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local config
+.claude/
