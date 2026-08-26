@@ -46,10 +46,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    }
-  }, [loading, user, router]);
+    if (loading) return;
+    // Antes solo se comprobaba que hubiera sesión: cualquier cliente logueado
+    // veía el panel completo (aunque la API le rechazara las peticiones).
+    if (!user) router.push("/login");
+    else if (!isAdmin) router.push("/");
+  }, [loading, user, isAdmin, router]);
 
   if (loading) {
     return (

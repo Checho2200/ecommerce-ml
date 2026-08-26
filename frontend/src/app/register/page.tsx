@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+
 import {
   Box,
   Typography,
@@ -14,22 +15,15 @@ import {
   IconButton,
   Alert,
   CircularProgress,
-  Grid,
+  Stack,
 } from "@mui/material";
-import { keyframes } from "@mui/system";
-import EmailIcon from "@mui/icons-material/Email";
-import LockIcon from "@mui/icons-material/Lock";
-import PersonIcon from "@mui/icons-material/Person";
-import PhoneIcon from "@mui/icons-material/Phone";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
-import SecurityIcon from "@mui/icons-material/Security";
+import ShieldIcon from "@mui/icons-material/Shield";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
+// El backend exige al menos 6 caracteres (backend/app/schemas/user.py)
+const MIN_PASSWORD = 6;
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -40,7 +34,6 @@ export default function RegisterPage() {
     phone: "",
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
@@ -49,13 +42,23 @@ export default function RegisterPage() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [e.target.name]: e.target.value });
 
+  // Validación en vivo: se muestra bajo el campo, no como alerta al enviar.
+  const passwordTooShort = form.password.length > 0 && form.password.length < MIN_PASSWORD;
+  const mismatch = form.confirmPassword.length > 0 && form.password !== form.confirmPassword;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (form.password.length < MIN_PASSWORD) {
+      setError(`La contraseña debe tener al menos ${MIN_PASSWORD} caracteres`);
+      return;
+    }
     if (form.password !== form.confirmPassword) {
       setError("Las contraseñas no coinciden");
       return;
     }
+
     setLoading(true);
     try {
       await register({
@@ -64,7 +67,9 @@ export default function RegisterPage() {
         full_name: form.full_name,
         phone: form.phone || undefined,
       });
-      router.push("/admin");
+      // Antes esto mandaba a /admin: una cuenta recién creada es siempre de
+      // cliente, así que el panel de administración no le sirve de nada.
+      router.push("/");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al registrarse");
     } finally {
@@ -80,142 +85,113 @@ export default function RegisterPage() {
         alignItems: "center",
         justifyContent: "center",
         bgcolor: "background.default",
-        position: "relative",
-        overflow: "hidden",
         px: 2,
-        py: 4,
+        py: 6,
       }}
     >
-      {/* Background decoration */}
-      <Box sx={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-        <Box sx={{ position: "absolute", top: "-20%", right: "-10%", width: "50%", height: "60%", background: "radial-gradient(ellipse, rgba(37,99,235,0.08) 0%, transparent 70%)" }} />
-        <Box sx={{ position: "absolute", bottom: "-20%", left: "-10%", width: "50%", height: "60%", background: "radial-gradient(ellipse, rgba(16,185,129,0.05) 0%, transparent 70%)" }} />
-      </Box>
+      <Box sx={{ width: "100%", maxWidth: 460 }}>
+        <Button
+          component={Link}
+          href="/"
+          startIcon={<ArrowBackIcon sx={{ fontSize: 16 }} />}
+          size="small"
+          sx={{ mb: 2, color: "text.secondary" }}
+        >
+          Volver a la tienda
+        </Button>
 
-      <Paper
-        elevation={0}
-        sx={{
-          position: "relative",
-          width: "100%",
-          maxWidth: 480,
-          p: { xs: 3, sm: 4 },
-          borderRadius: 4,
-          border: "1px solid",
-          borderColor: "divider",
-          bgcolor: "background.paper",
-          animation: `${fadeIn} 0.5s ease-out forwards`,
-        }}
-      >
-        {/* Logo */}
-        <Box sx={{ textAlign: "center", mb: 4 }}>
-          <Box sx={{
-            width: 56, height: 56, borderRadius: 2,
-            background: "linear-gradient(135deg, #064e3b 0%, #10b981 100%)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 16px", boxShadow: "0 8px 24px -8px rgba(16,185,129,0.5)",
-          }}>
-            <RocketLaunchIcon sx={{ color: "white", fontSize: 28 }} />
-          </Box>
-          <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: "-0.02em" }}>
-            Crear Cuenta
-          </Typography>
-          <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>
-            Únete a GRUPO STS SAC
-          </Typography>
-        </Box>
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 3, sm: 4.5 },
+            borderRadius: 4,
+            border: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Stack sx={{ alignItems: "center", mb: 4 }}>
+            <Box
+              sx={{
+                width: 52, height: 52, borderRadius: 2.5, mb: 2,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                bgcolor: "primary.main", color: "white",
+              }}
+            >
+              <ShieldIcon />
+            </Box>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>
+              Crear cuenta
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Guarda tus pedidos y compra más rápido
+            </Typography>
+          </Stack>
 
-        {/* Error */}
-        {error && (
-          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
-            {error}
-          </Alert>
-        )}
+          {error && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {error}
+            </Alert>
+          )}
 
-        {/* Form */}
-        <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
-          <TextField
-            id="reg-name"
-            name="full_name"
-            label="Nombre completo"
-            type="text"
-            fullWidth
-            required
-            autoFocus
-            value={form.full_name}
-            onChange={handleChange}
-            placeholder="Tu nombre completo"
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <PersonIcon sx={{ fontSize: 18, color: "text.secondary" }} />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-          <TextField
-            id="reg-email"
-            name="email"
-            label="Email"
-            type="email"
-            fullWidth
-            required
-            value={form.email}
-            onChange={handleChange}
-            placeholder="tu@email.com"
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailIcon sx={{ fontSize: 18, color: "text.secondary" }} />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-          <TextField
-            id="reg-phone"
-            name="phone"
-            label="Teléfono (opcional)"
-            type="tel"
-            fullWidth
-            value={form.phone}
-            onChange={handleChange}
-            placeholder="987654321"
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <PhoneIcon sx={{ fontSize: 18, color: "text.secondary" }} />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}>
+          <Box component="form" onSubmit={handleSubmit}>
+            <Stack spacing={2.5}>
               <TextField
-                id="reg-pass"
+                name="full_name"
+                label="Nombre completo"
+                fullWidth
+                required
+                autoFocus
+                autoComplete="name"
+                value={form.full_name}
+                onChange={handleChange}
+              />
+
+              <TextField
+                name="email"
+                label="Correo electrónico"
+                type="email"
+                fullWidth
+                required
+                autoComplete="email"
+                value={form.email}
+                onChange={handleChange}
+              />
+
+              <TextField
+                name="phone"
+                label="Teléfono (opcional)"
+                fullWidth
+                autoComplete="tel"
+                value={form.phone}
+                onChange={handleChange}
+              />
+
+              <TextField
                 name="password"
                 label="Contraseña"
                 type={showPassword ? "text" : "password"}
                 fullWidth
                 required
+                autoComplete="new-password"
                 value={form.password}
                 onChange={handleChange}
-                placeholder="Mín. 6 caracteres"
+                error={passwordTooShort}
+                helperText={
+                  passwordTooShort
+                    ? `Debe tener al menos ${MIN_PASSWORD} caracteres`
+                    : `Mínimo ${MIN_PASSWORD} caracteres`
+                }
                 slotProps={{
-                  htmlInput: { minLength: 6 },
                   input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LockIcon sx={{ fontSize: 18, color: "text.secondary" }} />
-                      </InputAdornment>
-                    ),
                     endAdornment: (
                       <InputAdornment position="end">
-                        <IconButton onClick={() => setShowPassword(!showPassword)} edge="end" size="small" tabIndex={-1}>
+                        <IconButton
+                          onClick={() => setShowPassword(!showPassword)}
+                          edge="end"
+                          size="small"
+                          tabIndex={-1}
+                          aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                        >
                           {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
                         </IconButton>
                       </InputAdornment>
@@ -223,80 +199,45 @@ export default function RegisterPage() {
                   },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+
               <TextField
-                id="reg-confirm"
                 name="confirmPassword"
-                label="Confirmar"
-                type={showConfirm ? "text" : "password"}
+                label="Repetir contraseña"
+                type={showPassword ? "text" : "password"}
                 fullWidth
                 required
+                autoComplete="new-password"
                 value={form.confirmPassword}
                 onChange={handleChange}
-                placeholder="Repetir contraseña"
-                slotProps={{
-                  htmlInput: { minLength: 6 },
-                  input: {
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setShowConfirm(!showConfirm)} edge="end" size="small" tabIndex={-1}>
-                          {showConfirm ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
+                error={mismatch}
+                helperText={mismatch ? "Las contraseñas no coinciden" : " "}
               />
-            </Grid>
-          </Grid>
 
-          <Button
-            id="register-submit"
-            type="submit"
-            variant="contained"
-            fullWidth
-            disabled={loading}
-            sx={{
-              py: 1.5,
-              fontWeight: 800,
-              fontSize: "0.95rem",
-              borderRadius: 2,
-              mt: 0.5,
-              background: "linear-gradient(135deg, #064e3b 0%, #10b981 100%)",
-              boxShadow: "0 8px 24px -8px rgba(16,185,129,0.4)",
-              "&:hover": {
-                background: "linear-gradient(135deg, #065f46 0%, #059669 100%)",
-                transform: "translateY(-1px)",
-                boxShadow: "0 12px 28px -8px rgba(16,185,129,0.5)",
-              },
-              transition: "all 0.2s",
-            }}
-          >
-            {loading ? <CircularProgress size={20} sx={{ color: "white" }} /> : "Crear Cuenta"}
-          </Button>
-        </Box>
-
-        {/* Footer link */}
-        <Typography variant="body2" sx={{ textAlign: "center", mt: 3, color: "text.secondary" }}>
-          ¿Ya tienes cuenta?{" "}
-          <Box
-            component={Link}
-            href="/login"
-            sx={{ color: "primary.main", fontWeight: 700, textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
-          >
-            Inicia sesión
+              <Button
+                type="submit"
+                variant="contained"
+                fullWidth
+                size="large"
+                disabled={loading}
+                sx={{ py: 1.4, fontWeight: 700 }}
+              >
+                {loading ? <CircularProgress size={22} color="inherit" /> : "Crear cuenta"}
+              </Button>
+            </Stack>
           </Box>
-        </Typography>
 
-        {/* Security note */}
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5, mt: 2 }}>
-          <SecurityIcon sx={{ fontSize: 12, color: "text.disabled" }} />
-          <Typography variant="caption" sx={{ color: "text.disabled" }}>
-            Conexión segura — GRUPO STS SAC Trujillo, Perú
+          <Typography variant="body2" sx={{ textAlign: "center", mt: 3, color: "text.secondary" }}>
+            ¿Ya tienes cuenta?{" "}
+            <Box
+              component={Link}
+              href="/login"
+              sx={{ color: "primary.main", fontWeight: 700, textDecoration: "none" }}
+            >
+              Inicia sesión
+            </Box>
           </Typography>
-        </Box>
-      </Paper>
+        </Paper>
+      </Box>
     </Box>
   );
 }
