@@ -45,7 +45,7 @@ import type { SvgIconComponent } from '@mui/icons-material'
 /* ── Datos de la empresa ──────────────────────────────────── */
 // Datos tomados del sitio oficial: https://gruposts.com.pe
 const COMPANY = {
-  heroImage: '/brand/hero.webp',
+  heroImage: '/brand/tienda.webp',
   aboutImage: '/brand/local.jpg',
   location: 'Jr. Alfonso Ugarte 493 — Centro Histórico de Trujillo',
   description:
@@ -153,7 +153,7 @@ export default function HomePage() {
           sx={{
             position: 'absolute', inset: 0,
             background:
-              'linear-gradient(100deg, rgba(8,15,32,0.94) 0%, rgba(8,15,32,0.82) 45%, rgba(8,15,32,0.45) 100%)',
+              'linear-gradient(100deg, rgba(4,16,38,0.94) 0%, rgba(4,16,38,0.86) 38%, rgba(4,16,38,0.58) 68%, rgba(4,16,38,0.38) 100%)',
           }}
         />
 

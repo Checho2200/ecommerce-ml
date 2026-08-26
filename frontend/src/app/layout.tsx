@@ -15,7 +15,11 @@ export const metadata: Metadata = {
     'memorias RAM', 'periféricos', 'teclados mecánicos', 'monitores', 'Trujillo',
   ],
   icons: {
-    icon: '/icon.svg',
+    icon: [
+      { url: '/icon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: '/icon-180.png',
   },
 }
 

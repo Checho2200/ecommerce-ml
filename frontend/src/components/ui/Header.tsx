@@ -37,7 +37,6 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import MenuIcon from "@mui/icons-material/Menu";
-import ShieldIcon from "@mui/icons-material/Shield";
 import SecurityIcon from "@mui/icons-material/Security";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -217,21 +216,13 @@ export default function Header() {
             href="/"
             sx={{ display: "flex", alignItems: "center", textDecoration: "none", color: "inherit", mr: 2 }}
           >
+            {/* Isotipo real de Grupo STS, recortado del logo de la empresa */}
             <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 38,
-                height: 38,
-                borderRadius: 2,
-                backgroundColor: "white",
-                color: "primary.main",
-                mr: 1.5,
-              }}
-            >
-              <ShieldIcon />
-            </Box>
+              component="img"
+              src="/brand/isotipo-sts.png"
+              alt="Grupo STS"
+              sx={{ height: 34, width: "auto", mr: 1.5, display: "block" }}
+            />
             {!isMobile && (
               <Box>
                 <Typography variant="h6" noWrap sx={{ fontWeight: 900, lineHeight: 1, letterSpacing: "-0.5px" }}>

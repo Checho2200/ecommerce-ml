@@ -21,7 +21,6 @@ import {
 } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import ShieldIcon from "@mui/icons-material/Shield";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 const DEMO = [
@@ -95,12 +94,17 @@ export default function LoginPage() {
           <Stack sx={{ alignItems: "center", mb: 4 }}>
             <Box
               sx={{
-                width: 52, height: 52, borderRadius: 2.5, mb: 2,
+                width: 60, height: 60, borderRadius: 3, mb: 2,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                bgcolor: "primary.main", color: "white",
+                bgcolor: "#0c3a6e",
               }}
             >
-              <ShieldIcon />
+              <Box
+                component="img"
+                src="/brand/isotipo-sts.png"
+                alt="Grupo STS"
+                sx={{ width: 36, height: "auto", display: "block" }}
+              />
             </Box>
             <Typography variant="h5" sx={{ fontWeight: 800 }}>
               Iniciar sesión
