@@ -107,9 +107,28 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health():
-    """Health check detallado."""
+    """
+    Estado del servicio.
+
+    Consulta la base de datos de verdad en lugar de responder "connected" sin
+    comprobar nada, que era lo que hacía antes. Como efecto secundario útil,
+    el ping periódico que mantiene despierto a Render también mantiene activa
+    la base en Neon, que igualmente se suspende por inactividad.
+    """
+    import sqlalchemy
+
+    from app.core.database import engine
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(sqlalchemy.text("SELECT 1"))
+        database = "connected"
+    except Exception as exc:  # noqa: BLE001 - se reporta, no se propaga
+        print(f"Health check: fallo al consultar la base de datos: {exc}")
+        database = "unavailable"
+
     return {
-        "status": "healthy",
-        "database": "connected",
+        "status": "healthy" if database == "connected" else "degraded",
+        "database": database,
         "ml_model": "loaded" if fraud_service.is_loaded() else "not_loaded",
     }

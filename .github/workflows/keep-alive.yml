@@ -1,0 +1,55 @@
+# Mantiene despierto el backend en Render.
+#
+# El plan gratuito de Render suspende el servicio tras ~15 minutos sin
+# tráfico, y la siguiente petición tarda entre 30 y 50 segundos en responder.
+# Este flujo le hace una petición cada 10 minutos para que no llegue a
+# dormirse.
+#
+# La ventana horaria es deliberada: el plan gratuito de Render reparte un
+# número limitado de horas de ejecución al mes, así que solo se mantiene
+# despierto entre las 06:00 y la medianoche de Perú (UTC-5) y se deja dormir
+# de madrugada, cuando nadie lo va a usar.
+#
+# También se puede lanzar a mano desde la pestaña Actions: útil para
+# despertarlo unos minutos antes de una demostración.
+
+name: Mantener el backend despierto
+
+on:
+  schedule:
+    # Cada 10 minutos, de 11:00 a 04:59 UTC = 06:00 a 23:59 en Perú
+    - cron: "*/10 11-23,0-4 * * *"
+  workflow_dispatch:
+
+# Si un ping se demora, que no se acumulen ejecuciones
+concurrency:
+  group: keep-alive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Despertar el backend
+        run: |
+          URL="https://sanchez-tech-store-api.onrender.com/health"
+
+          # Hasta 3 intentos: si el servicio estaba dormido, el primero puede
+          # agotar el tiempo mientras Render levanta el contenedor.
+          for intento in 1 2 3; do
+            echo "Intento $intento -> $URL"
+            codigo=$(curl -s -o /tmp/respuesta.txt -w "%{http_code}" --max-time 90 "$URL" || echo "000")
+
+            if [ "$codigo" = "200" ]; then
+              echo "Respondió 200:"
+              cat /tmp/respuesta.txt
+              exit 0
+            fi
+
+            echo "Respondió $codigo, reintentando en 20 s..."
+            sleep 20
+          done
+
+          echo "El backend no respondió tras 3 intentos."
+          exit 1
