@@ -9,6 +9,7 @@
  */
 
 import { Box, Container, Grid, Typography, Stack } from "@mui/material";
+import { DISPLAY_FONT } from "@/components/ThemeProvider";
 import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import AutorenewOutlinedIcon from "@mui/icons-material/AutorenewOutlined";
@@ -37,7 +38,7 @@ export default function FraudSection() {
       id="seguridad"
       sx={{
         position: "relative",
-        bgcolor: "#0b1220",
+        bgcolor: "primary.dark",
         color: "#e2e8f0",
         py: { xs: 6, md: 8 },
         overflow: "hidden",
@@ -48,7 +49,7 @@ export default function FraudSection() {
         sx={{
           position: "absolute", top: -160, right: -120, width: 440, height: 440,
           borderRadius: "50%", pointerEvents: "none",
-          background: "radial-gradient(circle, rgba(37,99,235,0.25) 0%, rgba(37,99,235,0) 70%)",
+          background: "radial-gradient(circle, rgba(255,206,0,0.16) 0%, rgba(255,206,0,0) 70%)",
         }}
       />
 
@@ -56,7 +57,7 @@ export default function FraudSection() {
         <Box sx={{ textAlign: "center", maxWidth: 620, mx: "auto", mb: { xs: 4.5, md: 6 } }}>
           <Typography
             variant="h3"
-            sx={{ fontWeight: 900, fontSize: { xs: "1.8rem", md: "2.4rem" }, lineHeight: 1.2 }}
+            sx={{ fontFamily: DISPLAY_FONT, fontSize: { xs: "1.7rem", md: "2.3rem" }, lineHeight: 1.2, color: "#FFFFFF" }}
           >
             Compra con confianza
           </Typography>
@@ -82,12 +83,12 @@ export default function FraudSection() {
                   sx={{
                     width: 52, height: 52, borderRadius: 2.5,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    bgcolor: "rgba(37,99,235,0.2)", color: "#93c5fd",
+                    bgcolor: "rgba(255,206,0,0.16)", color: "secondary.main",
                   }}
                 >
                   <p.icon />
                 </Box>
-                <Typography variant="h6" sx={{ fontWeight: 800, color: "#f1f5f9" }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: "#FFFFFF" }}>
                   {p.title}
                 </Typography>
                 <Typography variant="body2" sx={{ color: "#94a3b8", lineHeight: 1.75, maxWidth: 320 }}>

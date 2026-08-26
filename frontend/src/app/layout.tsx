@@ -1,10 +1,27 @@
 import { Analytics } from '@vercel/analytics/next'
+import { Archivo_Black, Barlow } from 'next/font/google'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import AppThemeProvider from '@/components/ThemeProvider'
 import AuthProvider from '@/lib/auth'
 import Footer from '@/components/ui/Footer'
 import BackendWarmup from '@/components/system/BackendWarmup'
+
+// Se cargan con next/font en vez de un @import en el CSS: aquel bloqueaba el
+// primer render mientras Google respondía.
+const display = Archivo_Black({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-display',
+  display: 'swap',
+})
+
+const body = Barlow({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-body',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'GRUPO STS SAC | Componentes y Periféricos de Cómputo',
@@ -30,8 +47,8 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
   colorScheme: 'light dark',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
-    { media: '(prefers-color-scheme: dark)', color: '#0f172a' },
+    { media: '(prefers-color-scheme: light)', color: '#F2F4F7' },
+    { media: '(prefers-color-scheme: dark)', color: '#0B1520' },
   ],
 }
 
@@ -43,7 +60,7 @@ const themeInitScript = `
   var raw = localStorage.getItem('sts-theme');
   var mode = raw ? (JSON.parse(raw).state || {}).mode : null;
   if (mode !== 'dark' && mode !== 'light') mode = 'light';
-  var bg = mode === 'dark' ? '#0f172a' : '#f8fafc';
+  var bg = mode === 'dark' ? '#0B1520' : '#F2F4F7';
   document.documentElement.style.colorScheme = mode;
   document.documentElement.style.backgroundColor = bg;
 }catch(e){}})();
@@ -53,7 +70,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning className={`${display.variable} ${body.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * Tarjeta de producto compartida.
+ * Tarjeta de producto compartida — la usan la portada, el catálogo y los
+ * productos relacionados de la ficha.
  *
- * Única implementación del sitio: la usan la portada, el catálogo y los
- * productos relacionados de la ficha de producto. Antes existían dos copias
- * distintas (portada y catálogo) que se habían ido desincronizando.
+ * Sigue el patrón del comercio electrónico que el cliente ya conoce: precio
+ * grande y legible, estado del stock explícito y un botón de agregar a todo el
+ * ancho, en lugar de un ícono pequeño en una esquina.
  */
 
 import { useState } from "react";
@@ -13,25 +14,23 @@ import Link from "next/link";
 import { ProductResponse } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import SafeImage from "@/components/ui/SafeImage";
+import { DISPLAY_FONT } from "@/components/ThemeProvider";
 
-import {
-  Box,
-  Card,
-  CardContent,
-  CardActions,
-  Typography,
-  IconButton,
-  Chip,
-  Skeleton,
-} from "@mui/material";
+import { Box, Card, Typography, Button, Skeleton, Stack } from "@mui/material";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CheckIcon from "@mui/icons-material/Check";
 import { keyframes } from "@mui/system";
 
 const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: translateY(0); }
 `;
+
+/** Separador de miles a la peruana: S/ 1 899.00 */
+function precio(n: number) {
+  const [ent, dec] = n.toFixed(2).split(".");
+  return { entero: ent.replace(/\B(?=(\d{3})+(?!\d))/g, " "), decimal: dec };
+}
 
 export default function ProductCard({
   product,
@@ -57,10 +56,14 @@ export default function ProductCard({
   };
 
   const hasDiscount = !!product.discount_price;
-  const displayPrice = hasDiscount ? product.discount_price! : product.price;
+  const shown = hasDiscount ? product.discount_price! : product.price;
   const discountPct = hasDiscount
     ? Math.round(((product.price - product.discount_price!) / product.price) * 100)
     : 0;
+  const { entero, decimal } = precio(shown);
+
+  const agotado = product.stock === 0;
+  const pocas = product.stock > 0 && product.stock <= 5;
 
   return (
     <Card
@@ -68,152 +71,154 @@ export default function ProductCard({
       href={`/producto/${product.id}`}
       elevation={0}
       sx={{
+        position: "relative",
         textDecoration: "none",
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        borderRadius: 3,
         border: "1px solid",
         borderColor: "divider",
-        transition: "all 0.35s cubic-bezier(0.4,0,0.2,1)",
-        animation: `${fadeIn} 0.5s ease-out ${index * 0.04}s both`,
-        "&:hover": {
-          transform: "translateY(-8px)",
-          boxShadow: "0 20px 40px -12px rgba(0,0,0,0.14)",
-          borderColor: "primary.main",
-          "& .product-img": { transform: "scale(1.08)" },
+        bgcolor: "background.paper",
+        transition: "border-color 0.25s, box-shadow 0.25s",
+        animation: `${fadeIn} 0.45s ease-out ${index * 0.04}s both`,
+        "@media (hover: hover)": {
+          "&:hover": {
+            borderColor: "primary.main",
+            boxShadow: "0 14px 28px -18px rgba(12,58,110,0.55)",
+            "& .product-img": { transform: "scale(1.05)" },
+          },
         },
+        "&:active": { borderColor: "primary.main" },
       }}
     >
-      <Box
-        sx={{
-          position: "relative",
-          overflow: "hidden",
-          aspectRatio: "1/1",
-          bgcolor: "action.hover",
-        }}
-      >
+      {/* Etiqueta de oferta o de stock bajo */}
+      {hasDiscount ? (
+        <Box
+          sx={{
+            position: "absolute", top: 10, left: 10, zIndex: 2,
+            bgcolor: "error.main", color: "#FFFFFF",
+            px: 1.1, py: 0.4, fontSize: "0.7rem", fontWeight: 800,
+          }}
+        >
+          −{discountPct}%
+        </Box>
+      ) : pocas ? (
+        <Box
+          sx={{
+            position: "absolute", top: 10, left: 10, zIndex: 2,
+            bgcolor: "#F97316", color: "#FFFFFF",
+            px: 1.1, py: 0.4, fontSize: "0.7rem", fontWeight: 800,
+          }}
+        >
+          ÚLTIMAS {product.stock}
+        </Box>
+      ) : null}
+
+      <Box sx={{ position: "relative", overflow: "hidden", aspectRatio: "1/1", bgcolor: "background.default" }}>
         <SafeImage
           src={product.image_url}
           alt={product.name}
           className="product-img"
           objectFit="cover"
-          sx={{ transition: "transform 0.5s cubic-bezier(0.4,0,0.2,1)" }}
+          sx={{ transition: "transform 0.45s cubic-bezier(0.4,0,0.2,1)", opacity: agotado ? 0.55 : 1 }}
         />
-
-        {hasDiscount && (
-          <Box
-            sx={{
-              position: "absolute", top: 10, left: 10, zIndex: 2,
-              bgcolor: "#dc2626", color: "white",
-              borderRadius: 1.5, px: 1, py: 0.3,
-              fontSize: "0.68rem", fontWeight: 800, letterSpacing: 0.5,
-            }}
-          >
-            -{discountPct}%
-          </Box>
-        )}
-        {product.stock === 0 ? (
-          <Chip
-            label="Agotado"
-            size="small"
-            color="error"
-            sx={{ position: "absolute", top: hasDiscount ? 38 : 10, left: 10, fontWeight: 700, fontSize: "0.68rem" }}
-          />
-        ) : product.stock <= 5 ? (
-          <Chip
-            label={`¡Solo ${product.stock}!`}
-            size="small"
-            sx={{
-              position: "absolute", top: hasDiscount ? 38 : 10, left: 10,
-              bgcolor: "#fff7ed", color: "#c2410c", fontWeight: 700,
-              fontSize: "0.68rem", border: "1px solid #fed7aa",
-            }}
-          />
-        ) : null}
       </Box>
 
-      <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-        <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
+      <Box sx={{ p: { xs: 1.5, sm: 2 }, display: "flex", flexDirection: "column", flexGrow: 1 }}>
+        <Typography
+          sx={{
+            fontSize: "0.66rem", fontWeight: 700, letterSpacing: "0.05em",
+            color: "text.secondary", textTransform: "uppercase",
+          }}
+        >
           {product.category?.name || "Hardware"}
         </Typography>
+
         <Typography
-          variant="subtitle2"
           sx={{
-            fontWeight: 800, color: "text.primary", lineHeight: 1.35, mt: 0.5,
-            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-            overflow: "hidden",
+            fontSize: { xs: "0.85rem", sm: "0.92rem" }, fontWeight: 600, mt: 0.6, lineHeight: 1.35,
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
           }}
         >
           {product.name}
         </Typography>
-        {product.description && (
-          <Typography
-            variant="caption"
-            sx={{
-              color: "text.secondary", mt: 0.75,
-              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {product.description}
-          </Typography>
-        )}
-      </CardContent>
 
-      <CardActions sx={{ px: 2, pb: 2, pt: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Box>
-          {hasDiscount ? (
-            <>
-              <Typography variant="caption" sx={{ color: "text.disabled", textDecoration: "line-through", display: "block", lineHeight: 1 }}>
-                S/{product.price.toFixed(2)}
-              </Typography>
-              <Typography variant="h6" sx={{ fontWeight: 900, color: "#dc2626", lineHeight: 1 }}>
-                S/{displayPrice.toFixed(2)}
-              </Typography>
-            </>
-          ) : (
-            <Typography variant="h6" sx={{ fontWeight: 900, color: "primary.dark", lineHeight: 1 }}>
-              S/{displayPrice.toFixed(2)}
-            </Typography>
-          )}
-        </Box>
-        <IconButton
-          onClick={handleAdd}
-          disabled={product.stock === 0}
-          size="small"
-          aria-label={`Agregar ${product.name} al carrito`}
+        <Box sx={{ flexGrow: 1 }} />
+
+        <Typography
           sx={{
-            bgcolor: added ? "success.main" : "text.primary",
-            color: "white", width: 42, height: 42,
-            "&:hover": { bgcolor: added ? "success.main" : "primary.main" },
-            "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" },
-            transition: "all 0.2s",
+            fontSize: "0.78rem", fontWeight: 700, mt: 1.4,
+            color: agotado ? "text.disabled" : pocas ? "#F97316" : "#16A34A",
           }}
         >
-          {added ? <CheckCircleIcon sx={{ fontSize: 20 }} /> : <ShoppingCartIcon sx={{ fontSize: 18 }} />}
-        </IconButton>
-      </CardActions>
+          {agotado ? "Sin stock" : pocas ? `Quedan ${product.stock}` : "Disponible"}
+        </Typography>
+
+        {hasDiscount && (
+          <Typography
+            sx={{ fontSize: "0.78rem", color: "text.disabled", textDecoration: "line-through", mt: 0.3 }}
+          >
+            S/ {precio(product.price).entero}.{precio(product.price).decimal}
+          </Typography>
+        )}
+
+        <Stack direction="row" sx={{ alignItems: "baseline", mt: hasDiscount ? 0 : 0.4 }}>
+          <Typography
+            sx={{
+              fontFamily: DISPLAY_FONT,
+              fontSize: { xs: "1.25rem", sm: "1.5rem" },
+              color: hasDiscount ? "error.main" : "primary.main",
+              lineHeight: 1.05,
+            }}
+          >
+            S/ {entero}
+          </Typography>
+          <Typography
+            sx={{
+              fontFamily: DISPLAY_FONT,
+              fontSize: { xs: "0.8rem", sm: "0.92rem" },
+              color: hasDiscount ? "error.main" : "primary.main",
+            }}
+          >
+            .{decimal}
+          </Typography>
+        </Stack>
+
+        <Button
+          onClick={handleAdd}
+          disabled={agotado}
+          fullWidth
+          variant="contained"
+          color={added ? "success" : "secondary"}
+          startIcon={added ? <CheckIcon /> : <ShoppingCartIcon sx={{ fontSize: 18 }} />}
+          sx={{
+            mt: 1.6,
+            py: { xs: 1, sm: 1.2 },
+            fontWeight: 800,
+            fontSize: { xs: "0.8rem", sm: "0.88rem" },
+            "&:active": { transform: "scale(0.98)" },
+          }}
+        >
+          {added ? "Agregado" : "Agregar"}
+        </Button>
+      </Box>
     </Card>
   );
 }
 
-/** Esqueleto de carga con la misma silueta que la tarjeta real (evita saltos). */
+/** Esqueleto con la misma silueta que la tarjeta real (evita saltos). */
 export function ProductCardSkeleton() {
   return (
-    <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
+    <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
       <Skeleton variant="rectangular" sx={{ aspectRatio: "1/1" }} />
-      <CardContent>
-        <Skeleton width="40%" height={14} sx={{ mb: 1 }} />
-        <Skeleton width="85%" height={18} sx={{ mb: 0.5 }} />
-        <Skeleton width="60%" height={18} sx={{ mb: 1 }} />
-        <Skeleton width="70%" height={14} />
-      </CardContent>
-      <CardActions sx={{ px: 2, pb: 2 }}>
-        <Skeleton width="35%" height={28} />
-        <Box sx={{ flexGrow: 1 }} />
-        <Skeleton variant="circular" width={42} height={42} />
-      </CardActions>
+      <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Skeleton width="45%" height={12} />
+        <Skeleton width="90%" height={18} sx={{ mt: 0.8 }} />
+        <Skeleton width="65%" height={18} />
+        <Skeleton width="40%" height={14} sx={{ mt: 1.4 }} />
+        <Skeleton width="55%" height={30} sx={{ mt: 0.5 }} />
+        <Skeleton variant="rectangular" height={40} sx={{ mt: 1.6 }} />
+      </Box>
     </Card>
   );
 }

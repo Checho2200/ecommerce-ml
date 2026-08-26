@@ -138,14 +138,14 @@ function CatalogContent() {
           sx={{
             borderRadius: 2,
             mb: 0.5,
-            "&.Mui-selected": { bgcolor: alpha("#2563eb", 0.08), color: "#1e40af", fontWeight: 800 },
-            "&.Mui-selected:hover": { bgcolor: alpha("#2563eb", 0.12) },
+            "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52", fontWeight: 800 },
+            "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
           }}
         >
           <ListItemText
             primary={<Typography sx={{ fontWeight: categoryFilter === null ? 800 : 500, fontSize: "0.875rem" }}>Todas las categorías</Typography>}
           />
-          {categoryFilter === null && <CheckCircleIcon sx={{ fontSize: 16, color: "#2563eb" }} />}
+          {categoryFilter === null && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
         </ListItemButton>
 
         {categories.map((cat) => (
@@ -156,8 +156,8 @@ function CatalogContent() {
             sx={{
               borderRadius: 2,
               mb: 0.5,
-              "&.Mui-selected": { bgcolor: alpha("#2563eb", 0.08), color: "#1e40af" },
-              "&.Mui-selected:hover": { bgcolor: alpha("#2563eb", 0.12) },
+              "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52" },
+              "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
             }}
           >
             <ListItemText
@@ -167,7 +167,7 @@ function CatalogContent() {
               {cat.is_high_risk && (
                 <Chip label="⚠" size="small" color="error" variant="outlined" sx={{ fontSize: "0.6rem", height: 18, "& .MuiChip-label": { px: 0.5 } }} />
               )}
-              {categoryFilter === cat.id && <CheckCircleIcon sx={{ fontSize: 16, color: "#2563eb" }} />}
+              {categoryFilter === cat.id && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
             </Box>
           </ListItemButton>
         ))}
@@ -193,7 +193,7 @@ function CatalogContent() {
               }}
             >
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 3 }}>
-                <FilterListIcon sx={{ color: "#2563eb", fontSize: 20 }} />
+                <FilterListIcon sx={{ color: "#0C3A6E", fontSize: 20 }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Filtros</Typography>
               </Box>
               <FilterPanel />
@@ -292,7 +292,7 @@ function CatalogContent() {
               <Button
                 variant="contained"
                 onClick={() => { setSearch(""); handleCategoryChange(null); }}
-                sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#2563eb", borderRadius: 2 }}
+                sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#0C3A6E", borderRadius: 2 }}
               >
                 Ver todos los productos
               </Button>

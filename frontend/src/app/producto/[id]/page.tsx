@@ -51,7 +51,7 @@ import StarBorderIcon from "@mui/icons-material/StarBorder";
 
 const TRUST = [
   { icon: VerifiedUserOutlinedIcon, title: "Garantía", desc: "12 meses", color: "#16a34a" },
-  { icon: LocalShippingOutlinedIcon, title: "Envío a todo el Perú", desc: "24-48 h útiles", color: "#2563eb" },
+  { icon: LocalShippingOutlinedIcon, title: "Envío a todo el Perú", desc: "24-48 h útiles", color: "#0C3A6E" },
   { icon: AutorenewOutlinedIcon, title: "Devoluciones", desc: "7 días para cambios", color: "#ea580c" },
 ];
 

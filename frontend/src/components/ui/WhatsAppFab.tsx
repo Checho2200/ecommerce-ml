@@ -10,7 +10,7 @@
 
 import { Box, Tooltip } from "@mui/material";
 
-const NUMERO = "51924215320";
+const NUMERO = "51975021947";
 const MENSAJE = "Hola, vengo de la tienda en línea y quisiera más información.";
 
 export default function WhatsAppFab() {

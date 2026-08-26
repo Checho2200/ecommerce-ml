@@ -7,6 +7,7 @@ import ProductCard, { ProductCardSkeleton } from '@/components/ui/ProductCard'
 import FraudSection from '@/components/home/FraudSection'
 import SafeImage from '@/components/ui/SafeImage'
 import WhatsAppFab from '@/components/ui/WhatsAppFab'
+import { DISPLAY_FONT } from '@/components/ThemeProvider'
 import { api, ProductResponse, CategoryResponse } from '@/lib/api'
 
 import {
@@ -15,19 +16,12 @@ import {
   Button,
   Box,
   Grid,
-  Chip,
   Snackbar,
   Alert,
   Stack,
 } from '@mui/material'
-import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
-import SupportAgentOutlinedIcon from '@mui/icons-material/SupportAgentOutlined'
-import VerifiedOutlinedIcon from '@mui/icons-material/VerifiedOutlined'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
-import GroupsIcon from '@mui/icons-material/Groups'
-import EmojiEventsIcon from '@mui/icons-material/EmojiEvents'
-import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import RefreshIcon from '@mui/icons-material/Refresh'
 
 // Íconos por categoría
@@ -45,7 +39,6 @@ import type { SvgIconComponent } from '@mui/icons-material'
 
 // Datos tomados del sitio oficial: https://gruposts.com.pe
 const COMPANY = {
-  heroImage: '/brand/tienda.webp',
   aboutImage: '/brand/equipo.webp',
   location: 'Jr. Alfonso Ugarte 493 — Centro Histórico de Trujillo',
   description:
@@ -66,46 +59,6 @@ const CATEGORY_ICONS: Record<string, SvgIconComponent> = {
   'placas-madre': DeveloperBoardIcon,
   'audio': HeadphonesIcon,
   'redes': RouterIcon,
-}
-
-const STATS = [
-  { icon: EmojiEventsIcon, value: '+30 años', label: 'de trayectoria' },
-  { icon: GroupsIcon, value: 'Trujillo y Piura', label: 'presencia regional' },
-  { icon: LocalShippingOutlinedIcon, value: 'Todo el Perú', label: 'cobertura de envíos' },
-]
-
-const BENEFITS = [
-  { icon: LocalShippingOutlinedIcon, title: 'Envío a todo el Perú', desc: 'Despacho rápido y seguro a nivel nacional.' },
-  { icon: SupportAgentOutlinedIcon, title: 'Soporte técnico', desc: 'Te asesoramos para elegir el producto ideal.' },
-  { icon: VerifiedOutlinedIcon, title: 'Garantía real', desc: 'Productos originales con respaldo directo.' },
-]
-
-/** Encabezado de sección, para que el ritmo sea el mismo en toda la portada. */
-function SectionHeading({
-  eyebrow,
-  title,
-  center = false,
-}: {
-  eyebrow: string
-  title: string
-  center?: boolean
-}) {
-  return (
-    <Box sx={{ textAlign: center ? 'center' : 'left' }}>
-      <Typography
-        variant="overline"
-        sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.2, lineHeight: 1.6 }}
-      >
-        {eyebrow}
-      </Typography>
-      <Typography
-        variant="h4"
-        sx={{ fontWeight: 900, mt: 0.5, fontSize: { xs: '1.55rem', sm: '1.9rem', md: '2.125rem' } }}
-      >
-        {title}
-      </Typography>
-    </Box>
-  )
 }
 
 export default function HomePage() {
@@ -156,195 +109,154 @@ export default function HomePage() {
     <Box>
       <Header />
 
-      {/* ── HERO ──────────────────────────────────────────── */}
-      <Box
-        sx={{
-          position: 'relative',
-          minHeight: { xs: 520, sm: 500, md: 580 },
-          display: 'flex',
-          // En móvil el texto se apoya abajo, sobre la parte más oscura.
-          alignItems: { xs: 'flex-end', md: 'center' },
-          overflow: 'hidden',
-        }}
-      >
-        <Box
-          component="img"
-          src={COMPANY.heroImage}
-          alt=""
-          aria-hidden
-          sx={{
-            position: 'absolute', inset: 0, width: '100%', height: '100%',
-            objectFit: 'cover',
-            // En pantallas angostas encuadra el mostrador, no el borde derecho.
-            objectPosition: { xs: '32% center', md: 'center' },
-          }}
-        />
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute', inset: 0,
-            // El degradado horizontal solo funciona donde el texto ocupa la
-            // mitad izquierda. En un teléfono el texto va de borde a borde, así
-            // que ahí el oscurecido tiene que venir desde abajo.
-            background: {
-              xs: 'linear-gradient(to top, rgba(4,16,38,0.97) 30%, rgba(4,16,38,0.88) 58%, rgba(4,16,38,0.60) 100%)',
-              md: 'linear-gradient(100deg, rgba(4,16,38,0.94) 0%, rgba(4,16,38,0.86) 38%, rgba(4,16,38,0.58) 68%, rgba(4,16,38,0.38) 100%)',
-            },
-          }}
-        />
-
-        <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 5, md: 9 } }}>
-          <Box sx={{ maxWidth: { xs: '100%', md: 660 } }}>
-            <Chip
-              icon={<ShieldOutlinedIcon sx={{ fontSize: 16, color: '#93c5fd !important' }} />}
-              label="Compra protegida"
-              component="a"
-              href="#seguridad"
-              clickable
-              size="small"
+      {/* ── HERO COMERCIAL ────────────────────────────────── */}
+      <Container maxWidth="lg" sx={{ pt: { xs: 2, md: 3 }, pb: { xs: 2, md: 2 } }}>
+        <Grid container spacing={2}>
+          {/* Bloque principal */}
+          <Grid size={{ xs: 12, md: 8 }}>
+            <Box
               sx={{
-                bgcolor: 'rgba(37,99,235,0.25)', color: '#bfdbfe',
-                border: '1px solid rgba(147,197,253,0.4)',
-                fontWeight: 700, mb: { xs: 2, md: 2.5 },
-                '&:hover': { bgcolor: 'rgba(37,99,235,0.4)' },
-              }}
-            />
-            <Typography
-              variant="h1"
-              sx={{
-                color: 'white', fontWeight: 900, lineHeight: 1.12,
-                fontSize: { xs: '2rem', sm: '2.6rem', md: '3.5rem' },
-                textWrap: 'balance',
+                position: 'relative',
+                overflow: 'hidden',
+                bgcolor: 'primary.main',
+                color: '#FFFFFF',
+                px: { xs: 3, sm: 5, md: 6 },
+                py: { xs: 4.5, md: 6 },
+                minHeight: { xs: 'auto', md: 360 },
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
               }}
             >
-              Tecnología y soporte en el corazón de Trujillo
-            </Typography>
-            <Typography
-              sx={{
-                color: 'rgba(255,255,255,0.85)', mt: { xs: 1.8, md: 2.5 }, maxWidth: 540,
-                fontSize: { xs: '0.98rem', md: '1.15rem' }, lineHeight: 1.7,
-              }}
-            >
-              Componentes, periféricos y servicio técnico especializado, con más de
-              30 años de experiencia respaldándonos.
-            </Typography>
-
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={1.5}
-              sx={{ mt: { xs: 3, md: 4 } }}
-            >
-              <Button
-                component={Link}
-                href="/catalog"
-                variant="contained"
-                size="large"
-                endIcon={<ArrowForwardIcon />}
+              <Box
+                aria-hidden
                 sx={{
-                  px: 3.5, py: 1.5, fontWeight: 700, fontSize: '1rem',
-                  '&:active': { transform: 'scale(0.98)' },
+                  position: 'absolute', right: -90, top: -90,
+                  width: 340, height: 340, borderRadius: '50%',
+                  bgcolor: 'rgba(255,206,0,0.14)', pointerEvents: 'none',
                 }}
-              >
-                Ver catálogo
-              </Button>
-              <Button
-                component={Link}
-                href="/services"
-                variant="outlined"
-                size="large"
-                sx={{
-                  px: 3.5, py: 1.5, fontWeight: 700, fontSize: '1rem',
-                  color: 'white', borderColor: 'rgba(255,255,255,0.55)',
-                  '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' },
-                  '&:active': { transform: 'scale(0.98)' },
-                }}
-              >
-                Servicio técnico
-              </Button>
-            </Stack>
-          </Box>
-        </Container>
-      </Box>
-
-      {/* ── BARRA DE CONFIANZA ────────────────────────────── */}
-      <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Container maxWidth="lg">
-          <Grid container sx={{ py: { xs: 2.5, md: 3.5 } }}>
-            {STATS.map((s) => (
-              // En móvil los tres van en fila: antes se apilaban y ocupaban
-              // media pantalla para decir muy poco.
-              <Grid size={4} key={s.label}>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={{ xs: 0.6, sm: 1.8 }}
+              />
+              <Box sx={{ position: 'relative' }}>
+                <Box
                   sx={{
-                    alignItems: 'center',
-                    justifyContent: { xs: 'flex-start', sm: 'center' },
-                    textAlign: { xs: 'center', sm: 'left' },
-                    px: { xs: 0.5, sm: 0 },
+                    display: 'inline-block', bgcolor: 'secondary.main', color: 'primary.main',
+                    fontSize: 12, fontWeight: 800, letterSpacing: '0.08em', px: 1.5, py: 0.7,
                   }}
                 >
-                  <s.icon sx={{ color: 'primary.main', fontSize: { xs: 24, md: 30 } }} />
-                  <Box>
-                    <Typography
-                      sx={{
-                        fontWeight: 900, lineHeight: 1.2,
-                        fontSize: { xs: '0.82rem', sm: '1.05rem', md: '1.25rem' },
-                      }}
-                    >
-                      {s.value}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ fontSize: { xs: '0.68rem', sm: '0.75rem' }, lineHeight: 1.35 }}
-                    >
-                      {s.label}
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Grid>
-            ))}
+                  ARMA TU PC
+                </Box>
+                <Typography
+                  variant="h1"
+                  sx={{
+                    fontSize: { xs: '2.05rem', sm: '2.7rem', md: '3.25rem' },
+                    lineHeight: 1.03, mt: 2.2, color: '#FFFFFF',
+                  }}
+                >
+                  Todo para tu equipo,<br />
+                  con <Box component="span" sx={{ color: 'secondary.main' }}>garantía real.</Box>
+                </Typography>
+                <Typography
+                  sx={{
+                    color: 'rgba(255,255,255,0.85)', mt: 2, maxWidth: 420,
+                    fontSize: { xs: '0.95rem', md: '1.02rem' }, lineHeight: 1.55,
+                  }}
+                >
+                  Componentes originales con respaldo directo del taller que lleva
+                  30 años en Trujillo.
+                </Typography>
+                <Button
+                  component={Link}
+                  href="/catalog"
+                  variant="contained"
+                  color="secondary"
+                  endIcon={<ArrowForwardIcon />}
+                  sx={{
+                    mt: 3.2, px: 3.5, py: 1.4, fontWeight: 800, fontSize: '0.95rem',
+                    width: { xs: '100%', sm: 'auto' },
+                    '&:active': { transform: 'scale(0.98)' },
+                  }}
+                >
+                  Ver catálogo
+                </Button>
+              </Box>
+            </Box>
           </Grid>
-        </Container>
-      </Box>
+
+          {/* Dos tarjetas de apoyo */}
+          <Grid size={{ xs: 12, md: 4 }}>
+            <Stack spacing={2} sx={{ height: '100%' }}>
+              <Box
+                component={Link}
+                href="/services"
+                sx={{
+                  flexGrow: 1, bgcolor: 'secondary.main', color: 'primary.main',
+                  px: 3, py: { xs: 2.5, md: 3 }, textDecoration: 'none',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                  transition: 'filter 0.2s',
+                  '@media (hover: hover)': { '&:hover': { filter: 'brightness(0.95)' } },
+                  '&:active': { transform: 'scale(0.99)' },
+                }}
+              >
+                <Typography sx={{ fontFamily: DISPLAY_FONT, fontSize: { xs: '1.4rem', md: '1.65rem' }, lineHeight: 1.1 }}>
+                  Servicio técnico
+                </Typography>
+                <Typography sx={{ fontSize: '0.88rem', mt: 1, opacity: 0.85, lineHeight: 1.5 }}>
+                  Laptops, PCs, impresoras y celulares.
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  flexGrow: 1, bgcolor: 'background.paper',
+                  border: '1px solid', borderColor: 'divider',
+                  px: 3, py: { xs: 2.5, md: 3 },
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontFamily: DISPLAY_FONT, fontSize: { xs: '1.4rem', md: '1.65rem' },
+                    lineHeight: 1.1, color: 'primary.main',
+                  }}
+                >
+                  Delivery a todo el Perú
+                </Typography>
+                <Typography sx={{ fontSize: '0.88rem', mt: 1, color: 'text.secondary', lineHeight: 1.5 }}>
+                  Despacho en 24 a 48 horas útiles.
+                </Typography>
+              </Box>
+            </Stack>
+          </Grid>
+        </Grid>
+      </Container>
 
       {/* ── CATEGORÍAS ────────────────────────────────────── */}
-      <Container maxWidth="lg" sx={{ py: { xs: 5, md: 9 } }}>
-        <Box sx={{ mb: { xs: 3, md: 5 } }}>
-          <SectionHeading eyebrow="CATEGORÍAS" title="Explora por tipo de componente" center />
-        </Box>
-
-        {/* En móvil es un carrusel que se desliza con el dedo; en escritorio,
-            cinco por fila, así las 10 categorías caben en dos filas exactas. */}
+      <Container maxWidth="lg" sx={{ pb: { xs: 3, md: 4 } }}>
         <Box
           sx={{
             display: 'flex',
-            gap: 2,
+            gap: 1.5,
             flexWrap: { xs: 'nowrap', md: 'wrap' },
             overflowX: { xs: 'auto', md: 'visible' },
             scrollSnapType: { xs: 'x proximity', md: 'none' },
             WebkitOverflowScrolling: 'touch',
             scrollbarWidth: 'none',
             '&::-webkit-scrollbar': { display: 'none' },
-            // El carrusel llega hasta los bordes de la pantalla en móvil
             mx: { xs: -2, md: 0 },
             px: { xs: 2, md: 0 },
-            pb: { xs: 1, md: 0 },
           }}
         >
-          {(loading ? Array.from({ length: 6 }) : categories).map((cat, i) => {
-            const common = {
-              flex: { xs: '0 0 130px', md: '1 1 calc(20% - 16px)' },
+          {(loading ? Array.from({ length: 7 }) : categories).map((cat, i) => {
+            const base = {
+              flex: { xs: '0 0 108px', md: '1 1 calc(14.2857% - 13px)' },
               scrollSnapAlign: 'start' as const,
-              height: { xs: 122, md: 138 },
-              borderRadius: 3,
+              height: { xs: 100, md: 112 },
               border: '1px solid',
               borderColor: 'divider',
             }
 
             if (loading || !cat) {
-              return <Box key={`cat-skeleton-${i}`} sx={{ ...common, bgcolor: 'action.hover' }} />
+              return <Box key={`cat-sk-${i}`} sx={{ ...base, bgcolor: 'action.hover' }} />
             }
 
             const c = cat as CategoryResponse
@@ -355,38 +267,26 @@ export default function HomePage() {
                 component={Link}
                 href={`/catalog?category_id=${c.id}`}
                 sx={{
-                  ...common,
+                  ...base,
+                  bgcolor: 'background.paper', textDecoration: 'none',
                   display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'center',
-                  gap: 1, textAlign: 'center', p: 1.5,
-                  bgcolor: 'background.paper', textDecoration: 'none',
-                  transition: 'all 0.28s cubic-bezier(0.4,0,0.2,1)',
-                  // El hover solo se aplica donde existe un puntero de verdad
+                  gap: 1, p: 1.2, textAlign: 'center',
+                  transition: 'all 0.22s',
                   '@media (hover: hover)': {
                     '&:hover': {
                       borderColor: 'primary.main',
-                      transform: 'translateY(-6px)',
-                      boxShadow: '0 16px 32px -12px rgba(0,0,0,0.16)',
-                      '& .cat-icon': { color: 'primary.main', transform: 'scale(1.12)' },
+                      '& .cat-icon': { color: 'primary.main' },
                     },
                   },
-                  // Retroalimentación al tocar, que es lo que hay en un móvil
-                  '&:active': { transform: 'scale(0.96)', borderColor: 'primary.main' },
+                  '&:active': { transform: 'scale(0.97)', borderColor: 'primary.main' },
                 }}
               >
-                <Icon
-                  className="cat-icon"
-                  sx={{
-                    fontSize: { xs: 30, md: 36 },
-                    color: 'text.secondary',
-                    transition: 'all 0.28s',
-                  }}
-                />
+                <Icon className="cat-icon" sx={{ fontSize: { xs: 24, md: 27 }, color: 'primary.main', transition: 'color 0.22s' }} />
                 <Typography
-                  variant="subtitle2"
                   sx={{
-                    fontWeight: 800, color: 'text.primary', lineHeight: 1.25,
-                    fontSize: { xs: '0.78rem', md: '0.875rem' },
+                    fontSize: { xs: '0.72rem', md: '0.78rem' }, fontWeight: 700,
+                    color: 'text.primary', lineHeight: 1.25,
                   }}
                 >
                   {c.name}
@@ -397,112 +297,109 @@ export default function HomePage() {
         </Box>
       </Container>
 
-      {/* ── PRODUCTOS DESTACADOS ──────────────────────────── */}
-      <Box sx={{ bgcolor: 'background.paper', py: { xs: 5, md: 9 } }}>
-        <Container maxWidth="lg">
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1.5}
+      {/* ── PRODUCTOS ─────────────────────────────────────── */}
+      <Container maxWidth="lg" sx={{ pb: { xs: 5, md: 7 } }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 2.5 }}>
+          <Typography
             sx={{
-              alignItems: { xs: 'flex-start', sm: 'flex-end' },
-              justifyContent: 'space-between',
-              mb: { xs: 3, md: 4 },
+              fontFamily: DISPLAY_FONT, color: 'primary.main',
+              fontSize: { xs: '1.3rem', md: '1.6rem' }, whiteSpace: 'nowrap',
             }}
           >
-            <SectionHeading eyebrow="DESTACADOS" title="Lo más buscado" />
-            <Button
-              component={Link}
-              href="/catalog"
-              endIcon={<ArrowForwardIcon />}
-              sx={{ fontWeight: 700, ml: { xs: -1, sm: 0 } }}
-            >
-              Ver todo el catálogo
+            Lo más vendido
+          </Typography>
+          <Box sx={{ flexGrow: 1, height: 3, bgcolor: 'secondary.main' }} />
+          <Typography
+            component={Link}
+            href="/catalog"
+            sx={{
+              fontSize: '0.85rem', fontWeight: 700, color: 'primary.main',
+              textDecoration: 'none', whiteSpace: 'nowrap',
+            }}
+          >
+            Ver todo →
+          </Typography>
+        </Stack>
+
+        {slow && (
+          <Alert severity="info" sx={{ mb: 2.5 }}>
+            Estamos activando el servidor. La primera carga puede tardar hasta 50 segundos.
+          </Alert>
+        )}
+
+        {failed ? (
+          <Box sx={{ textAlign: 'center', py: { xs: 5, md: 7 }, px: 2, border: '1px dashed', borderColor: 'divider' }}>
+            <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
+              No pudimos cargar los productos
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+              El servidor puede estar despertando. Vuelve a intentarlo en unos segundos.
+            </Typography>
+            <Button variant="contained" startIcon={<RefreshIcon />} onClick={() => setReloadKey((k) => k + 1)}>
+              Reintentar
             </Button>
-          </Stack>
+          </Box>
+        ) : (
+          <Grid container spacing={{ xs: 1.5, sm: 2 }}>
+            {loading
+              ? Array.from({ length: FEATURED_COUNT }).map((_, i) => (
+                  <Grid size={{ xs: 6, sm: 6, md: 3 }} key={`p-sk-${i}`}>
+                    <ProductCardSkeleton />
+                  </Grid>
+                ))
+              : products.map((p, i) => (
+                  <Grid size={{ xs: 6, sm: 6, md: 3 }} key={p.id}>
+                    <ProductCard
+                      product={p}
+                      index={i}
+                      onAdded={(prod) => setSnackbar(`${prod.name} agregado al carrito`)}
+                    />
+                  </Grid>
+                ))}
+          </Grid>
+        )}
+      </Container>
 
-          {slow && (
-            <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
-              Estamos activando el servidor. La primera carga puede tardar hasta 50 segundos.
-            </Alert>
-          )}
-
-          {failed ? (
-            <Box
-              sx={{
-                textAlign: 'center', py: { xs: 5, md: 7 }, px: 2, borderRadius: 3,
-                border: '1px dashed', borderColor: 'divider',
-              }}
-            >
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                No pudimos cargar los productos
-              </Typography>
-              <Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>
-                El servidor puede estar despertando. Vuelve a intentarlo en unos segundos.
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<RefreshIcon />}
-                onClick={() => setReloadKey((k) => k + 1)}
-              >
-                Reintentar
-              </Button>
-            </Box>
-          ) : (
-            <Grid container spacing={{ xs: 1.5, sm: 2.5 }}>
-              {loading
-                ? Array.from({ length: FEATURED_COUNT }).map((_, i) => (
-                    <Grid size={{ xs: 6, sm: 6, md: 3 }} key={`prod-skeleton-${i}`}>
-                      <ProductCardSkeleton />
-                    </Grid>
-                  ))
-                : products.map((p, i) => (
-                    <Grid size={{ xs: 6, sm: 6, md: 3 }} key={p.id}>
-                      <ProductCard
-                        product={p}
-                        index={i}
-                        onAdded={(prod) => setSnackbar(`${prod.name} agregado al carrito`)}
-                      />
-                    </Grid>
-                  ))}
-            </Grid>
-          )}
-        </Container>
-      </Box>
-
-      {/* ── SECCIÓN DE CONFIANZA ──────────────────────────── */}
+      {/* ── CONFIANZA ─────────────────────────────────────── */}
       <FraudSection />
 
       {/* ── SOBRE NOSOTROS ────────────────────────────────── */}
-      <Container maxWidth="lg" sx={{ py: { xs: 5, md: 10 } }}>
-        <Grid container spacing={{ xs: 3, md: 7 }} sx={{ alignItems: 'center' }}>
-          {/* La foto va primero en móvil: entra por los ojos antes que el texto */}
+      <Container maxWidth="lg" sx={{ py: { xs: 5, md: 8 } }}>
+        <Grid container spacing={{ xs: 3, md: 6 }} sx={{ alignItems: 'center' }}>
           <Grid size={{ xs: 12, md: 6 }} sx={{ order: { xs: 1, md: 2 } }}>
-            <Box
-              sx={{
-                borderRadius: { xs: 3, md: 4 },
-                overflow: 'hidden',
-                aspectRatio: '16/10',
-                boxShadow: '0 20px 40px -20px rgba(0,0,0,0.28)',
-              }}
-            >
+            <Box sx={{ overflow: 'hidden', aspectRatio: '16/10' }}>
               <SafeImage src={COMPANY.aboutImage} alt="Equipo de Grupo STS SAC" objectFit="cover" />
             </Box>
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }} sx={{ order: { xs: 2, md: 1 } }}>
-            <SectionHeading
-              eyebrow="SOBRE NOSOTROS"
-              title="Tecnología y soporte que inspiran confianza"
-            />
-            <Typography color="text.secondary" sx={{ lineHeight: 1.85, mt: 2.5, mb: 2 }}>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'baseline', mb: 2 }}>
+              <Typography sx={{ fontFamily: DISPLAY_FONT, fontSize: '2.6rem', color: 'secondary.main', lineHeight: 1 }}>
+                +30
+              </Typography>
+              <Typography sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.95rem' }}>
+                años en el mercado tecnológico
+              </Typography>
+            </Stack>
+
+            <Typography
+              variant="h4"
+              sx={{ fontSize: { xs: '1.45rem', md: '1.9rem' }, color: 'primary.main', mb: 2 }}
+            >
+              Tecnología y soporte que inspiran confianza
+            </Typography>
+
+            <Typography color="text.secondary" sx={{ lineHeight: 1.8, mb: 2.5 }}>
               {COMPANY.description}
             </Typography>
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start', mb: 3.5 }}>
+
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start', mb: 3 }}>
               <LocationOnIcon sx={{ color: 'primary.main', fontSize: 20, mt: 0.2, flexShrink: 0 }} />
               <Typography variant="body2" color="text.secondary">
                 {COMPANY.location}
               </Typography>
             </Stack>
+
             <Button
               component={Link}
               href="/services"
@@ -516,106 +413,43 @@ export default function HomePage() {
         </Grid>
       </Container>
 
-      {/* ── BENEFICIOS ────────────────────────────────────── */}
-      <Box
-        sx={{
-          bgcolor: 'background.paper',
-          py: { xs: 5, md: 8 },
-          borderTop: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
-        <Container maxWidth="lg">
-          <Grid container spacing={{ xs: 2.5, md: 3 }}>
-            {BENEFITS.map((b) => (
-              <Grid size={{ xs: 12, sm: 4 }} key={b.title}>
-                <Stack
-                  direction={{ xs: 'row', sm: 'column', md: 'row' }}
-                  spacing={2}
-                  sx={{ alignItems: { xs: 'center', sm: 'flex-start' } }}
-                >
-                  <Box
-                    sx={{
-                      flexShrink: 0, width: 46, height: 46, borderRadius: 2.5,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      bgcolor: 'primary.main', color: 'white',
-                    }}
-                  >
-                    <b.icon />
-                  </Box>
-                  <Box>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.3 }}>
-                      {b.title}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mt: 0.5, lineHeight: 1.65 }}
-                    >
-                      {b.desc}
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Grid>
-            ))}
-          </Grid>
-        </Container>
-      </Box>
-
-      {/* ── CTA FINAL ─────────────────────────────────────── */}
-      <Box
-        sx={{
-          py: { xs: 6, md: 9 },
-          background: 'linear-gradient(120deg, #1d4ed8 0%, #2563eb 60%, #3b82f6 100%)',
-          color: 'white',
-        }}
-      >
+      {/* ── CIERRE ────────────────────────────────────────── */}
+      <Box sx={{ bgcolor: 'primary.main', color: '#FFFFFF', py: { xs: 5, md: 7 } }}>
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
           <Typography
             variant="h4"
-            sx={{ fontWeight: 900, fontSize: { xs: '1.5rem', md: '2.2rem' }, textWrap: 'balance' }}
+            sx={{ fontSize: { xs: '1.5rem', md: '2rem' }, color: '#FFFFFF' }}
           >
-            ¿Listo para armar tu equipo?
+            ¿No encuentras lo que buscas?
           </Typography>
-          <Typography
-            sx={{
-              mt: 1.5, mb: { xs: 3, md: 4 },
-              color: 'rgba(255,255,255,0.88)',
-              fontSize: { xs: '0.98rem', md: '1.05rem' },
-            }}
-          >
-            Revisa el catálogo completo o escríbenos y te ayudamos a elegir.
+          <Typography sx={{ mt: 1.5, mb: 3.5, color: 'rgba(255,255,255,0.85)', fontSize: '1rem' }}>
+            Escríbenos por WhatsApp y te cotizamos el equipo completo.
           </Typography>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1.5}
-            sx={{ justifyContent: 'center' }}
-          >
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ justifyContent: 'center' }}>
             <Button
-              component={Link}
-              href="/catalog"
+              component="a"
+              href="https://wa.me/51924215320"
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="contained"
+              color="secondary"
               size="large"
-              sx={{
-                px: 4, py: 1.4, fontWeight: 800, bgcolor: 'white', color: 'primary.dark',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
-                '&:active': { transform: 'scale(0.98)' },
-              }}
+              sx={{ px: 4, py: 1.4, fontWeight: 800 }}
             >
-              Ir al catálogo
+              Escribir por WhatsApp
             </Button>
             <Button
               component={Link}
-              href="/register"
-              size="large"
+              href="/catalog"
               variant="outlined"
+              size="large"
               sx={{
-                px: 4, py: 1.4, fontWeight: 800, color: 'white',
+                px: 4, py: 1.4, fontWeight: 800, color: '#FFFFFF',
                 borderColor: 'rgba(255,255,255,0.6)',
-                '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' },
-                '&:active': { transform: 'scale(0.98)' },
+                '&:hover': { borderColor: '#FFFFFF', bgcolor: 'rgba(255,255,255,0.1)' },
               }}
             >
-              Crear cuenta
+              Ir al catálogo
             </Button>
           </Stack>
         </Container>

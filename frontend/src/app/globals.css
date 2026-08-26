@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
 * {
@@ -18,7 +17,7 @@ html {
 
 /* MUI CssBaseline ya maneja el body background y text color. */
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-body), system-ui, -apple-system, sans-serif;
   /* 100dvh sigue la barra de direcciones de Safari/Chrome en móvil; 100vh se
      queda fijo en la altura máxima y deja la página cortada por debajo. */
   min-height: 100vh;

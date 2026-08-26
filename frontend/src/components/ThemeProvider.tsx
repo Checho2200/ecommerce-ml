@@ -6,6 +6,27 @@ import { useThemeStore } from "@/lib/stores/theme";
 
 export { useThemeStore as useThemeMode };
 
+/**
+ * Paleta de Grupo STS.
+ *
+ * Antes el sitio usaba el azul #2563eb y la tipografía Inter, que son los
+ * valores por defecto de MUI: por eso se veía genérico. El azul marino y el
+ * oro salen del logotipo de la empresa; las esquinas rectas y la tipografía
+ * de peso alto son parte de la dirección comercial elegida.
+ */
+export const BRAND = {
+  navy: "#0C3A6E",
+  navyLight: "#12529C",
+  navyDark: "#082A52",
+  gold: "#FFCE00",
+  goldDark: "#E6B800",
+  offer: "#E11D2E",
+  ink: "#16202E",
+} as const;
+
+/** Tipografía de titulares. Se usa desde `sx` donde hace falta peso visual. */
+export const DISPLAY_FONT = "var(--font-display), 'Archivo Black', system-ui, sans-serif";
+
 export default function AppThemeProvider({ children }: { children: ReactNode }) {
   const { mode } = useThemeStore();
   const [hydrated, setHydrated] = useState(false);
@@ -23,19 +44,41 @@ export default function AppThemeProvider({ children }: { children: ReactNode }) 
       createTheme({
         palette: {
           mode,
-          primary: { main: "#2563eb", light: "#60a5fa", dark: "#1d4ed8" },
-          secondary: { main: "#facc15", light: "#fde047", dark: "#eab308" },
-          background: {
-            default: mode === "light" ? "#f8fafc" : "#0f172a",
-            paper: mode === "light" ? "#ffffff" : "#1e293b",
+          primary: {
+            main: BRAND.navy,
+            light: BRAND.navyLight,
+            dark: BRAND.navyDark,
+            contrastText: "#FFFFFF",
           },
-          divider: mode === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.12)",
+          secondary: {
+            main: BRAND.gold,
+            dark: BRAND.goldDark,
+            light: "#FFDC4D",
+            // Sobre el oro el texto va en azul marino: el blanco no contrasta.
+            contrastText: BRAND.navy,
+          },
+          error: { main: BRAND.offer },
+          background: {
+            default: mode === "light" ? "#F2F4F7" : "#0B1520",
+            paper: mode === "light" ? "#FFFFFF" : "#16202E",
+          },
+          text: {
+            primary: mode === "light" ? BRAND.ink : "#E8EDF3",
+            secondary: mode === "light" ? "#5A6878" : "#93A2B4",
+          },
+          divider: mode === "light" ? "#E2E7ED" : "rgba(255,255,255,0.12)",
         },
         typography: {
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          button: { textTransform: "none", fontWeight: 600 },
+          fontFamily: "var(--font-body), system-ui, -apple-system, sans-serif",
+          h1: { fontFamily: DISPLAY_FONT, letterSpacing: "-0.02em" },
+          h2: { fontFamily: DISPLAY_FONT, letterSpacing: "-0.02em" },
+          h3: { fontFamily: DISPLAY_FONT, letterSpacing: "-0.015em" },
+          h4: { fontFamily: DISPLAY_FONT, letterSpacing: "-0.01em" },
+          button: { textTransform: "none", fontWeight: 700 },
         },
-        shape: { borderRadius: 12 },
+        // La dirección comercial es de esquinas rectas: los bordes redondeados
+        // eran parte de lo que hacía que el sitio pareciera una plantilla.
+        shape: { borderRadius: 0 },
         components: {
           MuiButton: {
             styleOverrides: {

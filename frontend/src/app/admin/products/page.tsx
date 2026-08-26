@@ -128,7 +128,7 @@ export default function ProductsPage() {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => { setEditProduct(null); setShowModal(true); }}
-            sx={{ bgcolor: "#2563eb", textTransform: "none", fontWeight: 700, borderRadius: 2 }}
+            sx={{ bgcolor: "#0C3A6E", textTransform: "none", fontWeight: 700, borderRadius: 2 }}
           >
             Nuevo Producto
           </Button>
@@ -268,7 +268,7 @@ export default function ProductsPage() {
                           <IconButton
                             size="small"
                             onClick={() => { setEditProduct(p); setShowModal(true); }}
-                            sx={{ color: "#2563eb", "&:hover": { bgcolor: alpha("#2563eb", 0.08) } }}
+                            sx={{ color: "#0C3A6E", "&:hover": { bgcolor: alpha("#0C3A6E", 0.08) } }}
                           >
                             <EditIcon fontSize="small" />
                           </IconButton>
@@ -456,7 +456,7 @@ function ProductModal({
           <Button onClick={onClose} variant="outlined" sx={{ textTransform: "none" }}>
             Cancelar
           </Button>
-          <Button type="submit" variant="contained" sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#2563eb" }}>
+          <Button type="submit" variant="contained" sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#0C3A6E" }}>
             {product ? "Guardar Cambios" : "Crear Producto"}
           </Button>
         </DialogActions>

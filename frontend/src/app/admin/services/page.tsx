@@ -369,7 +369,7 @@ function ServiceModal({
         <Button onClick={onClose} variant="outlined" sx={{ textTransform: "none" }}>
           Cancelar
         </Button>
-        <Button type="submit" form="service-form" variant="contained" sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#2563eb" }}>
+        <Button type="submit" form="service-form" variant="contained" sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#0C3A6E" }}>
           Guardar Cambios
         </Button>
       </DialogActions>

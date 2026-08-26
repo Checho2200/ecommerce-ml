@@ -100,7 +100,7 @@ export default function CategoriesPage() {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => { setEditCat(null); setShowModal(true); }}
-            sx={{ bgcolor: "#2563eb", textTransform: "none", fontWeight: 700, borderRadius: 2 }}
+            sx={{ bgcolor: "#0C3A6E", textTransform: "none", fontWeight: 700, borderRadius: 2 }}
           >
             Nueva Categoría
           </Button>
@@ -311,7 +311,7 @@ function CategoryModal({
           <Button onClick={onClose} variant="outlined" sx={{ textTransform: "none" }}>
             Cancelar
           </Button>
-          <Button type="submit" variant="contained" sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#2563eb" }}>
+          <Button type="submit" variant="contained" sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#0C3A6E" }}>
             {category ? "Guardar Cambios" : "Crear Categoría"}
           </Button>
         </DialogActions>
