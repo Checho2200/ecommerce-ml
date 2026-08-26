@@ -428,7 +428,7 @@ export default function HomePage() {
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ justifyContent: 'center' }}>
             <Button
               component="a"
-              href="https://wa.me/51924215320"
+              href="https://wa.me/51975021947"
               target="_blank"
               rel="noopener noreferrer"
               variant="contained"

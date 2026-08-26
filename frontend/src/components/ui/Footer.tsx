@@ -13,6 +13,7 @@ import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
 import MailOutlineIcon from "@mui/icons-material/EmailOutlined";
 import PhoneOutlinedIcon from "@mui/icons-material/PhoneOutlined";
 import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
+import PersonOutlinedIcon from "@mui/icons-material/PersonOutlined";
 
 const TIENDA = [
   { label: "Catálogo", href: "/catalog" },
@@ -114,7 +115,8 @@ export default function Footer() {
             <Stack spacing={1.2}>
               {[
                 { icon: <LocationOnOutlinedIcon fontSize="small" />, text: "Jr. Alfonso Ugarte 493 — Centro Histórico, Trujillo" },
-                { icon: <PhoneOutlinedIcon fontSize="small" />, text: "WhatsApp 924 215 320", href: "https://wa.me/51924215320" },
+                { icon: <PhoneOutlinedIcon fontSize="small" />, text: "+51 975 021 947 · WhatsApp", href: "https://wa.me/51975021947" },
+                { icon: <PersonOutlinedIcon fontSize="small" />, text: "Jefferson Sánchez" },
                 { icon: <MailOutlineIcon fontSize="small" />, text: "soporte@gruposts.com.pe", href: "mailto:soporte@gruposts.com.pe" },
                 { icon: <ScheduleOutlinedIcon fontSize="small" />, text: "Lun a Sáb · 9:00 – 21:00" },
               ].map((item, i) => (
