@@ -38,3 +38,15 @@ enlazarse en caliente, para que la tienda no dependa de la disponibilidad de ter
 
 Las fotografías son representativas de cada tipo de componente y no corresponden
 necesariamente al modelo exacto del producto listado.
+
+## Material de Grupo STS
+
+Las siguientes imágenes provienen del sitio oficial de la empresa,
+<https://gruposts.com.pe>, y son material propio de Grupo STS SAC:
+
+| Archivo | Contenido |
+|---|---|
+| `../brand/logo-sts.png` | Logotipo institucional |
+| `../brand/logo-sts-blanco.png` | Logotipo en versión clara |
+| `../brand/favicon-sts.png` | Isotipo |
+| `../brand/local.jpg` | Fotografía del equipo en el taller de Trujillo |

@@ -43,12 +43,13 @@ import CategoryIcon from '@mui/icons-material/Category'
 import type { SvgIconComponent } from '@mui/icons-material'
 
 /* ── Datos de la empresa ──────────────────────────────────── */
+// Datos tomados del sitio oficial: https://gruposts.com.pe
 const COMPANY = {
   heroImage: '/brand/hero.webp',
-  aboutImage: '/brand/about.webp',
-  location: 'Trujillo, La Libertad — Perú',
+  aboutImage: '/brand/local.jpg',
+  location: 'Jr. Alfonso Ugarte 493 — Centro Histórico de Trujillo',
   description:
-    'Somos una empresa trujillana especializada en componentes de cómputo, periféricos y servicio técnico. Asesoramos a profesionales, gamers y empresas para que cada equipo rinda lo que promete.',
+    'Grupo STS es una empresa con más de 30 años de trayectoria en el mercado tecnológico y presencia en La Libertad y Piura. Brindamos soluciones integrales en soporte técnico de equipos informáticos, servidores de datos, y administración de redes y comunicaciones.',
 }
 
 /* Una sola fuente de verdad: alimenta la petición, los esqueletos y el render. */
@@ -68,8 +69,8 @@ const CATEGORY_ICONS: Record<string, SvgIconComponent> = {
 }
 
 const STATS = [
-  { icon: EmojiEventsIcon, value: '+10 años', label: 'de experiencia' },
-  { icon: GroupsIcon, value: '+500', label: 'clientes atendidos' },
+  { icon: EmojiEventsIcon, value: '+30 años', label: 'en el mercado tecnológico' },
+  { icon: GroupsIcon, value: 'La Libertad y Piura', label: 'presencia regional' },
   { icon: LocationOnIcon, value: 'Trujillo', label: 'envíos a todo el Perú' },
 ]
 
@@ -396,7 +397,7 @@ export default function HomePage() {
               SOBRE NOSOTROS
             </Typography>
             <Typography variant="h4" sx={{ fontWeight: 900, mt: 0.5, mb: 2.5 }}>
-              Tecnología con asesoría de verdad
+              Tecnología y soporte que inspiran confianza
             </Typography>
             <Typography color="text.secondary" sx={{ lineHeight: 1.85, mb: 2 }}>
               {COMPANY.description}
@@ -419,7 +420,7 @@ export default function HomePage() {
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             <Box sx={{ borderRadius: 4, overflow: 'hidden', aspectRatio: '16/10' }}>
-              <SafeImage src={COMPANY.aboutImage} alt="Nuestro taller y tienda" objectFit="cover" />
+              <SafeImage src={COMPANY.aboutImage} alt="Equipo de Grupo STS en su taller de Trujillo" objectFit="cover" />
             </Box>
           </Grid>
         </Grid>

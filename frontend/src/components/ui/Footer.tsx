@@ -9,7 +9,6 @@
 
 import Link from "next/link";
 import { Box, Container, Grid, Typography, Divider, Stack } from "@mui/material";
-import ShieldIcon from "@mui/icons-material/Shield";
 import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
 import MailOutlineIcon from "@mui/icons-material/EmailOutlined";
 import PhoneOutlinedIcon from "@mui/icons-material/PhoneOutlined";
@@ -19,6 +18,12 @@ const TIENDA = [
   { label: "Catálogo", href: "/catalog" },
   { label: "Servicio técnico", href: "/services" },
   { label: "Mi carrito", href: "/cart" },
+];
+
+const SOCIAL = [
+  { label: "Facebook", href: "https://www.facebook.com/grupostssac" },
+  { label: "Instagram", href: "https://www.instagram.com/grupo_sts_sac" },
+  { label: "gruposts.com.pe", href: "https://gruposts.com.pe" },
 ];
 
 const CUENTA = [
@@ -64,16 +69,16 @@ export default function Footer() {
         <Grid container spacing={{ xs: 4, md: 5 }}>
           {/* Marca */}
           <Grid size={{ xs: 12, md: 4 }}>
-            <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
-              <ShieldIcon sx={{ color: "primary.main" }} />
-              <Typography variant="subtitle1" sx={{ fontWeight: 800, letterSpacing: 0.3 }}>
-                GRUPO STS SAC
-              </Typography>
-            </Stack>
+            <Box
+              component="img"
+              src="/brand/logo-sts.png"
+              alt="Grupo STS SAC"
+              sx={{ height: 44, width: "auto", mb: 1.8, display: "block" }}
+            />
             <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 340, lineHeight: 1.7 }}>
-              Tienda especializada en componentes de cómputo, periféricos y servicio
-              técnico. Cada pedido se valida con un modelo de detección de fraude
-              antes de confirmarse.
+              Más de 30 años en el mercado tecnológico, con presencia en La Libertad
+              y Piura. Soporte técnico de equipos informáticos, servidores de datos,
+              redes y comunicaciones.
             </Typography>
           </Grid>
 
@@ -108,14 +113,26 @@ export default function Footer() {
             </Typography>
             <Stack spacing={1.2}>
               {[
-                { icon: <LocationOnOutlinedIcon fontSize="small" />, text: "Trujillo, La Libertad — Perú" },
-                { icon: <PhoneOutlinedIcon fontSize="small" />, text: "(044) 000 000" },
-                { icon: <MailOutlineIcon fontSize="small" />, text: "contacto@sanchezstore.pe" },
-                { icon: <ScheduleOutlinedIcon fontSize="small" />, text: "Lun a Sáb · 9:00 – 19:00" },
+                { icon: <LocationOnOutlinedIcon fontSize="small" />, text: "Jr. Alfonso Ugarte 493 — Centro Histórico, Trujillo" },
+                { icon: <PhoneOutlinedIcon fontSize="small" />, text: "WhatsApp 924 215 320", href: "https://wa.me/51924215320" },
+                { icon: <MailOutlineIcon fontSize="small" />, text: "soporte@gruposts.com.pe", href: "mailto:soporte@gruposts.com.pe" },
+                { icon: <ScheduleOutlinedIcon fontSize="small" />, text: "Lun a Sáb · 9:00 – 21:00" },
               ].map((item, i) => (
                 <Stack key={i} direction="row" spacing={1.2} sx={{ alignItems: "center" }}>
                   <Box sx={{ color: "primary.main", display: "flex" }}>{item.icon}</Box>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    {...(item.href
+                      ? {
+                          component: "a",
+                          href: item.href,
+                          target: "_blank",
+                          rel: "noopener noreferrer",
+                          sx: { textDecoration: "none", "&:hover": { color: "primary.main" } },
+                        }
+                      : {})}
+                  >
                     {item.text}
                   </Typography>
                 </Stack>
@@ -132,9 +149,24 @@ export default function Footer() {
           <Typography variant="caption" color="text.secondary">
             © {year} Grupo STS SAC. Todos los derechos reservados.
           </Typography>
-          <Typography variant="caption" color="text.disabled">
-            Detección de fraude con LightGBM · Proyecto de tesis
-          </Typography>
+          <Stack direction="row" spacing={2}>
+            {SOCIAL.map((r) => (
+              <Typography
+                key={r.label}
+                component="a"
+                href={r.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="caption"
+                sx={{
+                  color: "text.disabled", textDecoration: "none",
+                  "&:hover": { color: "primary.main" },
+                }}
+              >
+                {r.label}
+              </Typography>
+            ))}
+          </Stack>
         </Stack>
       </Container>
     </Box>
