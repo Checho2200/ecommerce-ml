@@ -1,27 +1,28 @@
-# Mantiene despierto el backend en Render.
+# Despierta el backend en Render cuando lo necesites.
 #
 # El plan gratuito de Render suspende el servicio tras ~15 minutos sin
-# tráfico, y la siguiente petición tarda entre 30 y 50 segundos en responder.
-# Este flujo le hace una petición cada 10 minutos para que no llegue a
-# dormirse.
+# tráfico, y la siguiente petición tarda entre 30 y 50 segundos. Eso solo
+# molesta a quien llega primero: el frontend hace un ping al cargar cualquier
+# página (src/components/system/BackendWarmup.tsx), así que el servidor
+# empieza a levantarse mientras la persona todavía está leyendo la portada.
 #
-# La ventana horaria es deliberada: el plan gratuito de Render reparte un
-# número limitado de horas de ejecución al mes, así que solo se mantiene
-# despierto entre las 06:00 y la medianoche de Perú (UTC-5) y se deja dormir
-# de madrugada, cuando nadie lo va a usar.
+# Por eso este flujo NO corre en automático: mantenerlo despierto todo el día
+# gastaría las horas de ejecución del plan gratuito a cambio de muy poco.
 #
-# También se puede lanzar a mano desde la pestaña Actions: útil para
-# despertarlo unos minutos antes de una demostración.
+# Úsalo a mano desde la pestaña Actions unos 5 minutos antes de una
+# sustentación o de una demostración, y el primer acceso será instantáneo.
+#
+# Si en algún momento sí conviene un horario fijo (por ejemplo, la semana de
+# la sustentación), basta con descomentar el bloque `schedule`: pinga cada 10
+# minutos entre las 08:00 y las 20:00 de Perú, de lunes a viernes.
 
-name: Mantener el backend despierto
+name: Despertar el backend
 
 on:
-  schedule:
-    # Cada 10 minutos, de 11:00 a 04:59 UTC = 06:00 a 23:59 en Perú
-    - cron: "*/10 11-23,0-4 * * *"
   workflow_dispatch:
+  # schedule:
+  #   - cron: "*/10 13-23,0-1 * * 1-5"
 
-# Si un ping se demora, que no se acumulen ejecuciones
 concurrency:
   group: keep-alive
   cancel-in-progress: true
