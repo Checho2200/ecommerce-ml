@@ -89,6 +89,18 @@ async def seed():
             # Cases y Fuentes
             Product(name="Corsair 4000D Airflow", description="Case ATX con flujo de aire optimizado, panel de vidrio templado, incluye 2 ventiladores.", price=329.00, stock=12, category_id=7, image_url="/products/case.webp"),
             Product(name="EVGA SuperNOVA 750 G6", description="Fuente 750W 80+ Gold, full modular. Protecciones completas, silenciosa.", price=399.00, stock=10, category_id=7, image_url="/products/psu-build.webp"),
+
+            # Placas Madre (high risk)
+            Product(name="ASUS TUF Gaming B550-PLUS", description="Placa madre ATX socket AM4 para procesadores Ryzen. PCIe 4.0, doble M.2, disipadores VRM reforzados y red Realtek 2.5 Gb.", price=699.00, stock=8, category_id=8, image_url="/products/mainboard.webp"),
+            Product(name="MSI PRO B760M-A WiFi", description="Placa madre micro-ATX socket LGA1700 para Intel de 12.a y 13.a generacion. Soporta DDR5, WiFi 6E y doble ranura M.2.", price=799.00, stock=6, category_id=8, image_url="/products/chipset.webp"),
+
+            # Audio
+            Product(name="Logitech G733 Lightspeed", description="Audifonos gaming inalambricos con microfono desmontable, iluminacion RGB y hasta 29 horas de bateria.", price=499.00, stock=12, category_id=9, image_url="/products/audio.webp"),
+            Product(name="HyperX Cloud II", description="Audifonos gaming con sonido envolvente 7.1 virtual, almohadillas de espuma viscoelastica y microfono con cancelacion de ruido.", price=349.00, stock=15, category_id=9, image_url="/products/audio-2.webp"),
+
+            # Redes
+            Product(name="TP-Link Archer AX55", description="Router WiFi 6 de doble banda AX3000. Cuatro antenas de alta ganancia, OFDMA y MU-MIMO.", price=329.00, stock=18, category_id=10, image_url="/products/redes.webp"),
+            Product(name="TP-Link TL-SG108 Gigabit", description="Switch de 8 puertos Gigabit con carcasa metalica. Plug and play, ideal para ampliar la red de una oficina pequena.", price=149.00, stock=25, category_id=10, image_url="/products/redes-2.webp"),
         ]
         for product in products:
             db.add(product)

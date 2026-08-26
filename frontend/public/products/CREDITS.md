@@ -27,6 +27,9 @@ enlazarse en caliente, para que la tienda no dependa de la disponibilidad de ter
 | `psu-build.webp` | Interior de equipo armado | `photo-1597872200969-2b65d56bd16b` |
 | `audio.webp` | Audífonos | `photo-1505740420928-5e560c06d30e` |
 | `redes.webp` | Router inalámbrico | `photo-1606904825846-647eb07f5be2` |
+| `audio-2.webp` | Audífonos de diadema | `photo-1546435770-a3e426bf472b` |
+| `redes-2.webp` | Switch de red y cableado | `photo-1544197150-b99a580bb7a8` |
+| `mainboard.webp` | Placa madre (circuito impreso) | `photo-1580584126903-c17d41830450` |
 | `../brand/hero.webp` | Estación de trabajo gamer | `photo-1616588589676-62b3bd4ff6d2` |
 | `../brand/about.webp` | Escritorio con equipo de cómputo | `photo-1587831990711-23ca6441447b` |
 | `../brand/security.webp` | Tarjetas de crédito (sección antifraude) | `photo-1560472355-536de3962603` |
