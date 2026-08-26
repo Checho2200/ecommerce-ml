@@ -194,7 +194,7 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <Box sx={{ bgcolor: "background.default", minHeight: "100vh" }}>
+      <Box sx={{ bgcolor: "background.default", minHeight: "100dvh" }}>
         <Header />
         <DetailSkeleton />
       </Box>
@@ -203,7 +203,7 @@ export default function ProductDetailPage() {
 
   if (notFound || loadError || !product) {
     return (
-      <Box sx={{ bgcolor: "background.default", minHeight: "100vh" }}>
+      <Box sx={{ bgcolor: "background.default", minHeight: "100dvh" }}>
         <Header />
         <Container maxWidth="sm" sx={{ py: 12, textAlign: "center" }}>
           <ErrorOutlineIcon sx={{ fontSize: 64, color: "text.disabled", mb: 2 }} />
@@ -238,7 +238,7 @@ export default function ProductDetailPage() {
     : 0;
 
   return (
-    <Box sx={{ bgcolor: "background.default", minHeight: "100vh" }}>
+    <Box sx={{ bgcolor: "background.default", minHeight: "100dvh" }}>
       <Header />
 
       <Container maxWidth="lg" sx={{ py: { xs: 3, md: 5 } }}>

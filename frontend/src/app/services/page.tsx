@@ -70,7 +70,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
       <Header />
 
       {/* ── Hero ─────────────────────────────────────────── */}

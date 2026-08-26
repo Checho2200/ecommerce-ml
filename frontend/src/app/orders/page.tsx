@@ -71,7 +71,7 @@ export default function MyOrdersPage() {
 
   if (authLoading || loading) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
         <Header />
         <Container maxWidth="lg" sx={{ py: 6 }}>
           <Skeleton width={200} height={40} sx={{ mb: 4 }} />
@@ -82,7 +82,7 @@ export default function MyOrdersPage() {
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
       <Header />
 
       <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>

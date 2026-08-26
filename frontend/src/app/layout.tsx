@@ -24,6 +24,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // Necesario para que env(safe-area-inset-*) funcione en iPhone con notch
+  viewportFit: 'cover',
   colorScheme: 'light dark',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
@@ -56,7 +60,7 @@ export default function RootLayout({
       <body className="antialiased">
         <AppThemeProvider>
           <AuthProvider>
-            <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1 }}>{children}</div>
               <Footer />
             </div>

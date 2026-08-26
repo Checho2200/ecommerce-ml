@@ -347,7 +347,7 @@ function CatalogContent() {
 
 export default function CatalogPage() {
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column", bgcolor: "background.default" }}>
+    <Box sx={{ minHeight: "100dvh", display: "flex", flexDirection: "column", bgcolor: "background.default" }}>
       <Header />
       <Suspense
         fallback={

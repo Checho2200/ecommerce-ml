@@ -35,7 +35,7 @@ export default function CheckoutPage() {
   // ── Not authenticated ────────────────────────────────────
   if (!isAuthenticated) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
         <Header />
         <Container maxWidth="sm">
           <Box sx={{ py: 12, textAlign: 'center' }}>
@@ -93,7 +93,7 @@ export default function CheckoutPage() {
   // ── Success ──────────────────────────────────────────────
   if (success) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
         <Header />
         <Container maxWidth="sm">
           <Box sx={{ py: 12, textAlign: 'center' }}>
@@ -121,7 +121,7 @@ export default function CheckoutPage() {
 
   // ── Checkout form ────────────────────────────────────────
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
       <Header />
       <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
         <Typography variant="h4" sx={{ fontWeight: 900, mb: 4 }}>Checkout</Typography>

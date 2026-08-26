@@ -55,7 +55,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (loading) {
     return (
-      <Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", bgcolor: "background.default", gap: 2 }}>
+      <Box sx={{ display: "flex", height: "100dvh", alignItems: "center", justifyContent: "center", bgcolor: "background.default", gap: 2 }}>
         <CircularProgress />
         <Typography color="text.secondary">Cargando panel...</Typography>
       </Box>
@@ -154,7 +154,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   );
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
+    <Box sx={{ display: "flex", minHeight: "100dvh", bgcolor: "background.default" }}>
       {/* Mobile AppBar */}
       {isMobile && (
         <AppBar position="fixed" sx={{ bgcolor: "background.paper", color: "text.primary", boxShadow: 1 }}>

@@ -25,7 +25,7 @@ export default function CartPage() {
   const { items, updateQuantity, removeFromCart, totalPrice, totalItems } = useCartStore();
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+    <Box sx={{ minHeight: "100dvh", bgcolor: "background.default" }}>
       <Header />
 
       <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>

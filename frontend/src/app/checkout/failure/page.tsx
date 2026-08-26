@@ -41,7 +41,7 @@ function FailureContent() {
 
 export default function CheckoutFailurePage() {
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
       <Header />
       <Suspense fallback={<Box sx={{ py: 12, textAlign: 'center' }}><Typography>Cargando...</Typography></Box>}>
         <FailureContent />

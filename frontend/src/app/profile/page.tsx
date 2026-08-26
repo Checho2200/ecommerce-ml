@@ -77,7 +77,7 @@ export default function ProfilePage() {
 
   if (authLoading) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
         <Header />
         <Container maxWidth="sm" sx={{ py: 6 }}>
           <Skeleton variant="circular" width={96} height={96} sx={{ mx: 'auto', mb: 2 }} />
@@ -91,7 +91,7 @@ export default function ProfilePage() {
   if (!user) return null
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
       <Header />
 
       <Container maxWidth="sm" sx={{ py: { xs: 4, md: 6 } }}>
