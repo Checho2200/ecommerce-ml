@@ -52,27 +52,14 @@ export const viewport: Viewport = {
   ],
 }
 
-// Pinta el color de fondo correcto ANTES del primer render, leyendo la
-// preferencia guardada por Zustand. Sin esto, quien tiene modo oscuro ve un
-// destello blanco en cada carga.
-const themeInitScript = `
-(function(){try{
-  var raw = localStorage.getItem('sts-theme');
-  var mode = raw ? (JSON.parse(raw).state || {}).mode : null;
-  if (mode !== 'dark' && mode !== 'light') mode = 'light';
-  var bg = mode === 'dark' ? '#0B1520' : '#F2F4F7';
-  document.documentElement.style.colorScheme = mode;
-  document.documentElement.style.backgroundColor = bg;
-}catch(e){}})();
-`;
-
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es" suppressHydrationWarning className={`${display.variable} ${body.variable}`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Debe ejecutarse antes de pintar el body: ver public/theme-init.js */}
+        <script src="/theme-init.js" />
       </head>
       <body className="antialiased">
         <AppThemeProvider>
