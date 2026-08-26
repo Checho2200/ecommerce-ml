@@ -1,15 +1,21 @@
 import mercadopago
 from fastapi import HTTPException
-from pydantic_settings import BaseSettings
 import os
 from typing import List, Dict, Any
 
-# We use a dummy test token if not provided. In production, this should come from .env
-MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "***TOKEN-RETIRADO***")
+# El token SIEMPRE viene del entorno. Antes había uno de prueba escrito en el
+# código como valor por defecto: quedó inservible (MercadoPago lo rechaza) y
+# además viajaba en el repositorio, que es público.
+MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "")
+
 
 class PaymentService:
     def __init__(self):
-        self.sdk = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN)
+        self.sdk = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN) if MERCADOPAGO_ACCESS_TOKEN else None
+
+    @property
+    def is_configured(self) -> bool:
+        return self.sdk is not None
 
     def create_preference(self, order_id: str, items: List[Dict[str, Any]], payer_email: str) -> str:
         """
@@ -51,6 +57,12 @@ class PaymentService:
             # though actually MP strictly requires HTTPS. If testing locally, we'll need ngrok.
         }
 
+        if not self.is_configured:
+            raise HTTPException(
+                status_code=503,
+                detail="Los pagos no están configurados: falta MERCADOPAGO_ACCESS_TOKEN.",
+            )
+
         try:
             preference_response = self.sdk.preference().create(preference_data)
             preference = preference_response["response"]
@@ -73,6 +85,12 @@ class PaymentService:
         Verify a payment status in MercadoPago API.
         Used by the webhook.
         """
+        if not self.is_configured:
+            raise HTTPException(
+                status_code=503,
+                detail="Los pagos no están configurados: falta MERCADOPAGO_ACCESS_TOKEN.",
+            )
+
         try:
             payment_info = self.sdk.payment().get(payment_id)
             return payment_info["response"]
