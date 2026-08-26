@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800" role="img" aria-label="Imagen no disponible">
+  <rect width="800" height="800" fill="#f1f5f9"/>
+  <g fill="none" stroke="#94a3b8" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="250" y="286" width="300" height="228" rx="20"/>
+    <path d="M250 452l74-70 62 58 74-84 90 96"/>
+  </g>
+  <circle cx="344" cy="352" r="24" fill="#94a3b8"/>
+  <text x="400" y="600" text-anchor="middle" font-family="Inter, Segoe UI, sans-serif" font-size="34" font-weight="600" fill="#64748b">Imagen no disponible</text>
+  <text x="400" y="648" text-anchor="middle" font-family="Inter, Segoe UI, sans-serif" font-size="26" fill="#94a3b8">Sanchez Tech Store</text>
+</svg>
