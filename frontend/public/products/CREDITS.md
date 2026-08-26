@@ -49,4 +49,6 @@ Las siguientes imágenes provienen del sitio oficial de la empresa,
 | `../brand/logo-sts.png` | Logotipo institucional |
 | `../brand/logo-sts-blanco.png` | Logotipo en versión clara |
 | `../brand/favicon-sts.png` | Isotipo |
-| `../brand/local.jpg` | Fotografía del equipo en el taller de Trujillo |
+| `../brand/tienda.webp` | Fotografía del local de atención |
+| `../brand/equipo.webp` | Fotografía del equipo de Grupo STS |
+| `../brand/isotipo-sts.png` | Isotipo recortado del logotipo, con transparencia |

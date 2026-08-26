@@ -46,7 +46,7 @@ import type { SvgIconComponent } from '@mui/icons-material'
 // Datos tomados del sitio oficial: https://gruposts.com.pe
 const COMPANY = {
   heroImage: '/brand/tienda.webp',
-  aboutImage: '/brand/local.jpg',
+  aboutImage: '/brand/equipo.webp',
   location: 'Jr. Alfonso Ugarte 493 — Centro Histórico de Trujillo',
   description:
     'Grupo STS es una empresa con más de 30 años de trayectoria en el mercado tecnológico y presencia en La Libertad y Piura. Brindamos soluciones integrales en soporte técnico de equipos informáticos, servidores de datos, y administración de redes y comunicaciones.',
@@ -420,7 +420,7 @@ export default function HomePage() {
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             <Box sx={{ borderRadius: 4, overflow: 'hidden', aspectRatio: '16/10' }}>
-              <SafeImage src={COMPANY.aboutImage} alt="Equipo de Grupo STS en su taller de Trujillo" objectFit="cover" />
+              <SafeImage src={COMPANY.aboutImage} alt="Equipo de Grupo STS SAC" objectFit="cover" />
             </Box>
           </Grid>
         </Grid>
