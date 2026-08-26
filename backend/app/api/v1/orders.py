@@ -165,7 +165,15 @@ async def create_order(
         decision=decision,
         risk_level=risk_level,
         explanation=explanation,
-        detection_time_ms=detection_time_ms
+        detection_time_ms=detection_time_ms,
+        # Sin esto el reentrenamiento con datos reales no tendría variables que
+        # leer: ml/train.py saca las features de esta columna.
+        feature_vector={
+            "total_amount": float(total_amount),
+            "high_risk_items_count": int(high_risk_items_count),
+            "checkout_duration_seconds": float(checkout_duration),
+            "is_new_shipping_address": int(is_new_shipping_address),
+        },
     )
     db.add(fraud_log)
 

@@ -34,6 +34,10 @@ class FraudLog(Base):
     decision: Mapped[str] = mapped_column(
         Enum(FraudDecision), nullable=False
     )
+    # Nivel de riesgo (LOW / MEDIUM / HIGH) y explicación legible que acompañan
+    # a la decisión. `orders.py` los devuelve en la respuesta del pedido.
+    risk_level: Mapped[str] = mapped_column(String(10), nullable=True)
+    explanation: Mapped[str] = mapped_column(Text, nullable=True)
     admin_notes: Mapped[str] = mapped_column(Text, nullable=True)
     is_actual_fraud: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
