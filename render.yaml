@@ -16,6 +16,6 @@ services:
       - key: DEBUG
         value: "false"
       - key: FRONTEND_URL
-        value: http://localhost:3000
+        value: https://ecommerce-ml.vercel.app
       - key: BACKEND_URL
         value: https://sanchez-tech-store-api.onrender.com
