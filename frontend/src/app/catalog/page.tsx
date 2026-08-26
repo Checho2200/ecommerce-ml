@@ -6,6 +6,7 @@ import Link from "next/link";
 import { api, ProductResponse, CategoryResponse } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import Header from "@/components/ui/Header";
+import ProductCard, { ProductCardSkeleton } from "@/components/ui/ProductCard";
 
 // MUI
 import {
@@ -44,214 +45,6 @@ import ImageNotSupportedIcon from "@mui/icons-material/ImageNotSupported";
 import PackageIcon from "@mui/icons-material/Inventory2Outlined";
 import { keyframes } from "@mui/system";
 
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
-
-function ProductCard({
-  product,
-  index,
-}: {
-  product: ProductResponse;
-  index: number;
-}) {
-  const { addToCart } = useCart();
-  const [added, setAdded] = useState(false);
-
-  const handleAdd = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    addToCart(product);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
-  };
-
-  const hasDiscount = !!product.discount_price;
-  const displayPrice = hasDiscount ? product.discount_price! : product.price;
-  const discountPct = hasDiscount
-    ? Math.round(((product.price - product.discount_price!) / product.price) * 100)
-    : 0;
-
-  return (
-    <Card
-      component={Link}
-      href={`/producto/${product.id}`}
-      elevation={0}
-      sx={{
-        textDecoration: "none",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        borderRadius: 3,
-        border: "1px solid",
-        borderColor: "divider",
-        transition: "all 0.35s cubic-bezier(0.4,0,0.2,1)",
-        animation: `${fadeIn} 0.5s ease-out ${index * 0.04}s both`,
-        "&:hover": {
-          transform: "translateY(-8px)",
-          boxShadow: "0 20px 40px -12px rgba(0,0,0,0.14)",
-          borderColor: "primary.main",
-          "& .product-img": { transform: "scale(1.08)" },
-        },
-      }}
-    >
-      {/* Image */}
-      <Box
-        sx={{
-          position: "relative",
-          overflow: "hidden",
-          aspectRatio: "1/1",
-          bgcolor: "action.hover",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {product.image_url ? (
-          <CardMedia
-            component="img"
-            image={product.image_url}
-            alt={product.name}
-            className="product-img"
-            sx={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              p: 3,
-              transition: "transform 0.5s cubic-bezier(0.4,0,0.2,1)",
-            }}
-          />
-        ) : (
-          <Box sx={{ textAlign: "center", color: "text.disabled", p: 4 }}>
-            <ImageNotSupportedIcon sx={{ fontSize: 48, mb: 1 }} />
-            <Typography variant="caption" sx={{ display: "block" }}>Sin imagen</Typography>
-          </Box>
-        )}
-
-        {/* Badges */}
-        {hasDiscount && (
-          <Box sx={{
-            position: "absolute", top: 10, left: 10, zIndex: 2,
-            bgcolor: "#dc2626", color: "white",
-            borderRadius: 1.5, px: 1, py: 0.3,
-            fontSize: "0.68rem", fontWeight: 800, letterSpacing: 0.5,
-          }}>
-            -{discountPct}%
-          </Box>
-        )}
-        {product.stock === 0 ? (
-          <Chip
-            label="Agotado"
-            size="small"
-            color="error"
-            sx={{ position: "absolute", top: hasDiscount ? 38 : 10, left: 10, fontWeight: 700, fontSize: "0.68rem" }}
-          />
-        ) : product.stock <= 5 ? (
-          <Chip
-            label={`¡Solo ${product.stock}!`}
-            size="small"
-            sx={{ position: "absolute", top: hasDiscount ? 38 : 10, left: 10, bgcolor: "#fff7ed", color: "#c2410c", fontWeight: 700, fontSize: "0.68rem", border: "1px solid #fed7aa" }}
-          />
-        ) : null}
-      </Box>
-
-      {/* Content */}
-      <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-        <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
-          {product.category?.name || "Hardware"}
-        </Typography>
-        <Typography
-          variant="subtitle2"
-          sx={{
-            fontWeight: 800,
-            color: "text.primary",
-            lineHeight: 1.35,
-            mt: 0.5,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {product.name}
-        </Typography>
-        {product.description && (
-          <Typography
-            variant="caption"
-            sx={{
-              color: "text.secondary",
-              mt: 0.75,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {product.description}
-          </Typography>
-        )}
-      </CardContent>
-
-      <CardActions sx={{ px: 2, pb: 2, pt: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Box>
-          {hasDiscount ? (
-            <>
-              <Typography variant="caption" sx={{ color: "text.disabled", textDecoration: "line-through", display: "block", lineHeight: 1 }}>
-                S/{product.price.toFixed(2)}
-              </Typography>
-              <Typography variant="h6" sx={{ fontWeight: 900, color: "#dc2626", lineHeight: 1 }}>
-                S/{displayPrice.toFixed(2)}
-              </Typography>
-            </>
-          ) : (
-            <Typography variant="h6" sx={{ fontWeight: 900, color: "primary.dark", lineHeight: 1 }}>
-              S/{displayPrice.toFixed(2)}
-            </Typography>
-          )}
-        </Box>
-        <IconButton
-          onClick={handleAdd}
-          disabled={product.stock === 0}
-          size="small"
-          sx={{
-            bgcolor: added ? "success.main" : "text.primary",
-            color: "white",
-            width: 42,
-            height: 42,
-            "&:hover": { bgcolor: added ? "success.main" : "primary.main" },
-            "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" },
-            transition: "all 0.2s",
-          }}
-        >
-          {added
-            ? <CheckCircleIcon sx={{ fontSize: 20 }} />
-            : <ShoppingCartIcon sx={{ fontSize: 18 }} />}
-        </IconButton>
-      </CardActions>
-    </Card>
-  );
-}
-
-function ProductSkeleton() {
-  return (
-    <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
-      <Skeleton variant="rectangular" sx={{ aspectRatio: "1/1" }} />
-      <CardContent>
-        <Skeleton width="40%" height={14} sx={{ mb: 1 }} />
-        <Skeleton width="85%" height={18} sx={{ mb: 0.5 }} />
-        <Skeleton width="60%" height={18} sx={{ mb: 1 }} />
-        <Skeleton width="70%" height={14} />
-      </CardContent>
-      <CardActions sx={{ px: 2, pb: 2 }}>
-        <Skeleton width="35%" height={28} />
-        <Box sx={{ flexGrow: 1 }} />
-        <Skeleton variant="circular" width={42} height={42} />
-      </CardActions>
-    </Card>
-  );
-}
-
 function CatalogContent() {
   const searchParams = useSearchParams();
   const theme = useTheme();
@@ -263,13 +56,25 @@ function CatalogContent() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
-  const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<number | null>(() => {
+    const raw = Number(searchParams.get("category_id"));
+    return Number.isInteger(raw) && raw > 0 ? raw : null;
+  });
   const [search, setSearch] = useState(searchParams.get("q") || "");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   useEffect(() => {
     api.categories.list().then(setCategories).catch(console.error);
   }, []);
+
+  // El componente no se remonta al navegar dentro de /catalog, así que hay que
+  // reaccionar a los cambios de la URL a mano.
+  useEffect(() => {
+    const raw = Number(searchParams.get("category_id"));
+    setCategoryFilter(Number.isInteger(raw) && raw > 0 ? raw : null);
+    setSearch(searchParams.get("q") || "");
+    setPage(1);
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -462,7 +267,7 @@ function CatalogContent() {
             <Grid container spacing={3}>
               {[...Array(12)].map((_, i) => (
                 <Grid size={{ xs: 6, sm: 4, lg: 3 }} key={i}>
-                  <ProductSkeleton />
+                  <ProductCardSkeleton />
                 </Grid>
               ))}
             </Grid>
@@ -550,7 +355,7 @@ export default function CatalogPage() {
             <Grid container spacing={3}>
               {[...Array(12)].map((_, i) => (
                 <Grid size={{ xs: 6, sm: 4, md: 3 }} key={i}>
-                  <ProductSkeleton />
+                  <ProductCardSkeleton />
                 </Grid>
               ))}
             </Grid>
