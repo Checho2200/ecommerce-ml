@@ -1,0 +1,4 @@
+# Dependencias solo para desarrollo y pruebas.
+# No van en requirements.txt para no instalarlas en el servidor de Render.
+-r requirements.txt
+pytest==8.3.4
