@@ -5,12 +5,24 @@ Ejecutar: python -m app.seed
 """
 
 import asyncio
+import os
+
 from app.core.database import AsyncSessionLocal, create_tables, engine
 from app.core.security import hash_password
 from app.models.user import User, UserRole
 from app.models.product import Category, Product
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.review import ProductReview
+
+# Las credenciales salen del entorno: este repositorio es publico y antes
+# estaban escritas aqui, asi que cualquiera podia entrar al panel de
+# administracion de la tienda desplegada. Los valores por defecto son solo
+# para desarrollo local.
+ADMIN_EMAIL = os.getenv("SEED_ADMIN_EMAIL", "admin@local.test")
+ADMIN_PASSWORD = os.getenv("SEED_ADMIN_PASSWORD", "cambiame-en-produccion")
+CLIENTE_EMAIL = os.getenv("SEED_CLIENTE_EMAIL", "cliente@local.test")
+CLIENTE_PASSWORD = os.getenv("SEED_CLIENTE_PASSWORD", "cambiame-en-produccion")
+
 
 async def seed():
     """Pobla la base de datos con datos iniciales."""
@@ -23,8 +35,8 @@ async def seed():
     async with AsyncSessionLocal() as db:
         # ===== ADMIN USER =====
         admin = User(
-            email="admin@sanchez.pe",
-            hashed_password=hash_password("Admin123!"),
+            email=ADMIN_EMAIL,
+            hashed_password=hash_password(ADMIN_PASSWORD),
             full_name="Administrador Sanchez",
             phone="944123456",
             role=UserRole.ADMIN,
@@ -33,8 +45,8 @@ async def seed():
 
         # ===== CLIENTE DE PRUEBA =====
         cliente = User(
-            email="cliente@test.com",
-            hashed_password=hash_password("Cliente123!"),
+            email=CLIENTE_EMAIL,
+            hashed_password=hash_password(CLIENTE_PASSWORD),
             full_name="Juan Pérez López",
             phone="976543210",
             role=UserRole.CLIENTE,
@@ -138,8 +150,8 @@ async def seed():
 
         await db.commit()
         print("✅ Base de datos poblada exitosamente con reviews!")
-        print(f"   Admin: admin@sanchez.pe / Admin123!")
-        print(f"   Cliente: cliente@test.com / Cliente123!")
+        print(f"   Admin: {ADMIN_EMAIL} (contrasena tomada del entorno)")
+        print(f"   Cliente: {CLIENTE_EMAIL} (contrasena tomada del entorno)")
         print(f"   Categorías: {len(categories)}")
         print(f"   Productos: {len(products)}")
 

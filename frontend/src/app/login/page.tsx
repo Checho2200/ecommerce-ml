@@ -16,17 +16,11 @@ import {
   IconButton,
   Alert,
   CircularProgress,
-  Divider,
   Stack,
 } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-
-const DEMO = [
-  { role: "Admin", email: "admin@sanchez.pe", pass: "Admin123!" },
-  { role: "Cliente", email: "cliente@test.com", pass: "Cliente123!" },
-];
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -52,11 +46,6 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillDemo = (d: (typeof DEMO)[number]) => {
-    setEmail(d.email);
-    setPassword(d.pass);
   };
 
   return (
@@ -183,27 +172,6 @@ export default function LoginPage() {
               Créala aquí
             </Box>
           </Typography>
-
-          <Divider sx={{ my: 3 }}>
-            <Typography variant="caption" color="text.disabled">
-              Cuentas de prueba
-            </Typography>
-          </Divider>
-
-          <Stack direction="row" spacing={1.5} sx={{ justifyContent: "center" }}>
-            {DEMO.map((d) => (
-              <Button
-                key={d.role}
-                onClick={() => fillDemo(d)}
-                size="small"
-                variant="outlined"
-                color="inherit"
-                sx={{ flex: 1, color: "text.secondary", borderColor: "divider", fontWeight: 600 }}
-              >
-                {d.role}
-              </Button>
-            ))}
-          </Stack>
         </Paper>
       </Box>
     </Box>
