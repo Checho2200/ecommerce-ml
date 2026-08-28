@@ -55,6 +55,20 @@ class PaymentService:
             },
             "auto_return": "approved",
             "external_reference": str(order_id),
+            # Solo tarjeta. El resto de medios que ofrece Checkout Pro en Peru
+            # (PagoEfectivo, banca y agentes, transferencia) llenaban de ruido
+            # el checkout, y ademas no encajan con el sistema: la deteccion de
+            # fraude cubre el pago con tarjeta no presente, donde existe el
+            # riesgo de tarjeta robada y contracargo. En un pago que el propio
+            # comprador empuja desde su banco o en efectivo no hay nada que
+            # detectar.
+            "payment_methods": {
+                "excluded_payment_types": [
+                    {"id": "ticket"},         # efectivo / PagoEfectivo
+                    {"id": "atm"},            # banca y agentes
+                    {"id": "bank_transfer"},  # transferencia bancaria
+                ]
+            },
             # Important: Set the webhook URL
             "notification_url": notification_url,
             # Force HTTPS for notification url? MP requires it, but in test mode it might accept http if using some tunneling, 
