@@ -1,0 +1,35 @@
+Migraciones de esquema (Alembic)
+================================
+
+La URL de conexion NO se escribe en alembic.ini: env.py la toma de
+DATABASE_URL a traves de app.core.config. La cadena de Neon lleva
+contrasena y este repositorio es publico.
+
+Todos los comandos se ejecutan desde la carpeta backend/, y actuan sobre la
+base a la que apunte tu .env (en local, produccion si asi lo tienes
+configurado). Comprueba siempre contra que base estas trabajando.
+
+    python -m alembic current                     # revision aplicada
+    python -m alembic check                       # hay cambios sin migrar?
+    python -m alembic revision --autogenerate -m "descripcion"
+    python -m alembic upgrade head                # aplicar
+    python -m alembic downgrade -1                # deshacer la ultima
+
+
+Por que create_tables() sigue existiendo
+----------------------------------------
+
+app/main.py llama a create_tables() al arrancar, que ejecuta
+Base.metadata.create_all. Es intencionado: el plan gratuito de Render no
+permite comandos pre-deploy, asi que no hay ningun sitio donde correr
+"alembic upgrade" de forma automatica al desplegar. create_all es
+idempotente y hace de red de seguridad para crear tablas nuevas.
+
+Alembic es el registro formal de los cambios de esquema y sirve para lo que
+create_all no sabe hacer: modificar o eliminar columnas existentes. Cuando
+un cambio no consista solo en anadir tablas, genera la revision y aplicala
+a mano contra Neon ANTES de desplegar el codigo que la necesita.
+
+La revision inicial (bda8925f7f8a) describe el esquema completo. La base de
+produccion se sello con "alembic stamp head", asi que Alembic la considera
+al dia sin haber tenido que recrear nada.
