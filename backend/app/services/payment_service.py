@@ -31,7 +31,7 @@ class PaymentService:
                 "currency_id": "PEN"  # Assuming Peruvian Soles
             })
 
-        # FRONTEND_URL is used for the return URLs. Should be dynamic, but hardcoded for now for local dev
+        # URLs de retorno del checkout. En produccion las define el entorno.
         FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
         
         # Webhook URL for IPN notifications (must be publicly accessible in prod, like ngrok for local)
@@ -47,7 +47,11 @@ class PaymentService:
             "back_urls": {
                 "success": f"{FRONTEND_URL}/checkout/success?order_id={order_id}",
                 "failure": f"{FRONTEND_URL}/checkout/failure?order_id={order_id}",
-                "pending": f"{FRONTEND_URL}/checkout/failure?order_id={order_id}"
+                # Un pago pendiente no es un pago fallido: con tarjeta ocurre
+                # cuando MercadoPago lo deja en revision y puede acabar
+                # aprobandose. Mandarlo a /failure le decia al cliente que su
+                # compra habia fallado cuando todavia no se sabia.
+                "pending": f"{FRONTEND_URL}/checkout/pending?order_id={order_id}"
             },
             "auto_return": "approved",
             "external_reference": str(order_id),
