@@ -26,6 +26,7 @@ from app.api.v1.fraud import router as fraud_router
 from app.api.v1.reviews import router as reviews_router
 from app.api.v1.upload import router as upload_router
 from app.services.fraud_service import fraud_service
+from app.services.payment_service import payment_service
 
 settings = get_settings()
 
@@ -131,4 +132,7 @@ async def health():
         "status": "healthy" if database == "connected" else "degraded",
         "database": database,
         "ml_model": "loaded" if fraud_service.is_loaded() else "not_loaded",
+        # Solo dice si hay token cargado, nunca el token en si: sirve para
+        # comprobar desde fuera que la variable de entorno llego al servidor.
+        "payments": "configured" if payment_service.is_configured else "not_configured",
     }
