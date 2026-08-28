@@ -9,6 +9,7 @@ from app.models.order import Order, OrderItem, OrderStatus
 from app.models.fraud_log import FraudLog, FraudDecision
 from app.models.service_order import ServiceOrder, ServiceStatus
 from app.models.review import ProductReview
+from app.models.uploaded_image import UploadedImage
 
 __all__ = [
     "User",
@@ -23,4 +24,5 @@ __all__ = [
     "ServiceOrder",
     "ServiceStatus",
     "ProductReview",
+    "UploadedImage",
 ]
