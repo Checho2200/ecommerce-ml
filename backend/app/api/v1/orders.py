@@ -75,6 +75,9 @@ async def create_order(
     """
     total_amount = 0.0
     order_items = []
+    # El checkout de MercadoPago muestra el titulo de cada item, asi que hace
+    # falta el nombre del producto y no su UUID.
+    product_names: dict = {}
 
     # Fraud Evaluation Variables
     high_risk_items_count = 0
@@ -107,6 +110,7 @@ async def create_order(
         subtotal = product.price * item_data.quantity
         total_amount += subtotal
 
+        product_names[product.id] = product.name
         order_items.append(OrderItem(
             product_id=product.id,
             quantity=item_data.quantity,
@@ -188,13 +192,10 @@ async def create_order(
     # Generate Payment URL if PENDING
     payment_url = None
     if order.status == OrderStatus.PENDING:
-        # We need product names for MercadoPago preference
         mp_items = []
         for item in order_items:
-            # We already fetched products before, but it's easier to just pass generic or specific if we have it
-            # We can use a simple dict for MP
             mp_items.append({
-                "title": f"Producto {item.product_id}", # Or fetch name
+                "title": product_names.get(item.product_id, "Producto"),
                 "quantity": item.quantity,
                 "unit_price": item.unit_price
             })
@@ -310,11 +311,31 @@ async def mercadopago_webhook(
     """
     Recibe notificaciones de MercadoPago cuando un pago es creado o actualizado.
     """
-    # MercadoPago envia topic e id en los query params (o en el body dependiente de la version)
-    action = request.query_params.get("action") or request.query_params.get("topic")
-    payment_id = request.query_params.get("data.id") or request.query_params.get("id")
+    # MercadoPago avisa de dos formas segun la version de la integracion: los
+    # webhooks actuales mandan "type" en la query y {"action", "data": {"id"}}
+    # en el cuerpo JSON, mientras que el IPN antiguo solo manda "topic" e "id".
+    # Antes solo se miraban "action" y "topic" de la query, asi que una
+    # notificacion moderna (type=payment, action=payment.updated) se descartaba
+    # y el pedido se quedaba en PENDING aunque el pago estuviera aprobado.
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 - la notificacion puede venir sin cuerpo
+        body = {}
 
-    if not payment_id or (action != "payment" and action != "payment.created"):
+    topic = (
+        request.query_params.get("type")
+        or request.query_params.get("topic")
+        or body.get("type")
+        or ""
+    )
+    action = request.query_params.get("action") or body.get("action") or ""
+    payment_id = (
+        request.query_params.get("data.id")
+        or request.query_params.get("id")
+        or (body.get("data") or {}).get("id")
+    )
+
+    if not payment_id or not (topic == "payment" or action.startswith("payment.")):
         return {"status": "ignored"}
 
     try:
