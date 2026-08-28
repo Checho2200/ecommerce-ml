@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 interface User {
   id: string;
@@ -41,16 +41,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchUser = useCallback(async () => {
-    try {
-      if (api.auth.isAuthenticated()) {
-        const userData = await api.auth.me();
-        setUser(userData);
-      }
-    } catch {
+    if (!api.auth.isAuthenticated()) {
       setUser(null);
-    } finally {
       setLoading(false);
+      return;
     }
+
+    // El backend vive en el plan gratuito de Render y se suspende por
+    // inactividad: al volver de MercadoPago, la primera peticion puede tardar
+    // casi un minuto o fallar directamente. Antes cualquier error cerraba la
+    // sesion, asi que el cliente regresaba del pago aparentemente
+    // deslogueado aunque su token siguiera siendo valido. Solo un 401
+    // significa credencial invalida; lo demas se reintenta.
+    const esperas = [0, 2000, 5000, 10000];
+
+    for (const espera of esperas) {
+      if (espera > 0) {
+        await new Promise((resolve) => setTimeout(resolve, espera));
+      }
+
+      try {
+        setUser(await api.auth.me());
+        setLoading(false);
+        return;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        // Fallo transitorio: se reintenta sin descartar el token.
+      }
+    }
+
+    setLoading(false);
   }, []);
 
   useEffect(() => {
