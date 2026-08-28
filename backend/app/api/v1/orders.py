@@ -38,6 +38,11 @@ router = APIRouter(prefix="/orders", tags=["Órdenes"])
 # orden creada como REJECTED por el modelo de fraude ya recupero su inventario.
 STOCK_LIBERADO = {OrderStatus.CANCELLED, OrderStatus.REJECTED}
 
+# Cuanto aguanta una orden sin pagar antes de soltar su inventario. Se aplica
+# de forma perezosa, cuando el propio cliente vuelve a comprar, porque el plan
+# gratuito de Render no tiene donde ejecutar una tarea programada.
+PENDIENTE_CADUCA_EN = timedelta(hours=2)
+
 
 def _leer_notificacion(query: dict, body: dict) -> tuple:
     """
@@ -66,6 +71,32 @@ async def _restore_stock(db: AsyncSession, order: Order) -> None:
         product = result.scalar_one_or_none()
         if product:
             product.stock += item.quantity
+
+
+async def _caducar_pendientes(db: AsyncSession, user_id: str) -> None:
+    """
+    Cierra las ordenes que este cliente dejo a medias y devuelve su stock.
+
+    Quien abandona el checkout de MercadoPago deja una orden en PENDING que
+    retiene unidades. Como el carrito ya no se vacia hasta que el pago se
+    confirma, al reintentar la compra se reservaria dos veces el mismo
+    producto; esto lo evita.
+    """
+    limite = datetime.now(timezone.utc) - PENDIENTE_CADUCA_EN
+    result = await db.execute(
+        select(Order).where(
+            Order.user_id == user_id,
+            Order.status == OrderStatus.PENDING,
+            Order.created_at < limite,
+        )
+    )
+
+    for orden in result.scalars().all():
+        await _restore_stock(db, orden)
+        orden.status = OrderStatus.CANCELLED
+        print(f"Order {orden.id} caducada por falta de pago; stock devuelto.")
+
+    await db.flush()
 
 
 def _build_order_response(order: Order) -> OrderResponse:
@@ -107,6 +138,8 @@ async def create_order(
     Crear una nueva orden de compra.
     Calcula el total basado en precios actuales y valida stock.
     """
+    await _caducar_pendientes(db, current_user.id)
+
     total_amount = 0.0
     order_items = []
     # El checkout de MercadoPago muestra el titulo de cada item, asi que hace

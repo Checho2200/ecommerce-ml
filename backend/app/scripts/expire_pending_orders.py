@@ -6,9 +6,12 @@ de MercadoPago, la orden se queda en PENDING y ese inventario no vuelve nunca:
 la tienda acaba mostrando productos agotados que en realidad estan en almacen.
 Este script cierra esas ordenes y devuelve las unidades.
 
-Uso (por defecto caducan a las 24 horas):
+La API ya caduca de forma perezosa las ordenes del cliente que vuelve a
+comprar; este script hace la pasada completa sobre toda la tienda.
+
+Uso (por defecto caducan a las 2 horas, igual que en la API):
     python -m app.scripts.expire_pending_orders
-    ORDER_EXPIRY_HOURS=6 python -m app.scripts.expire_pending_orders
+    ORDER_EXPIRY_HOURS=24 python -m app.scripts.expire_pending_orders
 """
 
 import asyncio
@@ -24,7 +27,7 @@ from app.models.product import Product
 
 
 async def expire() -> int:
-    horas = float(os.getenv("ORDER_EXPIRY_HOURS", "24"))
+    horas = float(os.getenv("ORDER_EXPIRY_HOURS", "2"))
     limite = datetime.now(timezone.utc) - timedelta(hours=horas)
 
     async with AsyncSessionLocal() as db:
