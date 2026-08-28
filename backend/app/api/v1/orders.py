@@ -33,6 +33,40 @@ from fastapi import Request
 
 router = APIRouter(prefix="/orders", tags=["Órdenes"])
 
+# El stock se descuenta al crear la orden y se devuelve al pasar a uno de estos
+# estados. Tenerlos en un conjunto evita el fallo de devolverlo dos veces: una
+# orden creada como REJECTED por el modelo de fraude ya recupero su inventario.
+STOCK_LIBERADO = {OrderStatus.CANCELLED, OrderStatus.REJECTED}
+
+
+def _leer_notificacion(query: dict, body: dict) -> tuple:
+    """
+    Saca (payment_id, es_de_pago) de una notificacion de MercadoPago.
+
+    Hay dos formatos vivos: los webhooks actuales mandan "type" en la query y
+    {"action", "data": {"id"}} en el cuerpo JSON, y el IPN antiguo manda solo
+    "topic" e "id" en la query. Se aceptan los dos.
+    """
+    topic = query.get("type") or query.get("topic") or body.get("type") or ""
+    action = query.get("action") or body.get("action") or ""
+    payment_id = (
+        query.get("data.id")
+        or query.get("id")
+        or (body.get("data") or {}).get("id")
+    )
+
+    es_de_pago = topic == "payment" or str(action).startswith("payment.")
+    return payment_id, es_de_pago
+
+
+async def _restore_stock(db: AsyncSession, order: Order) -> None:
+    """Devuelve al inventario las unidades que la orden tenia reservadas."""
+    for item in order.items:
+        result = await db.execute(select(Product).where(Product.id == item.product_id))
+        product = result.scalar_one_or_none()
+        if product:
+            product.stock += item.quantity
+
 
 def _build_order_response(order: Order) -> OrderResponse:
     """Construye la respuesta de una orden con items y datos de fraude."""
@@ -322,20 +356,9 @@ async def mercadopago_webhook(
     except Exception:  # noqa: BLE001 - la notificacion puede venir sin cuerpo
         body = {}
 
-    topic = (
-        request.query_params.get("type")
-        or request.query_params.get("topic")
-        or body.get("type")
-        or ""
-    )
-    action = request.query_params.get("action") or body.get("action") or ""
-    payment_id = (
-        request.query_params.get("data.id")
-        or request.query_params.get("id")
-        or (body.get("data") or {}).get("id")
-    )
+    payment_id, es_de_pago = _leer_notificacion(dict(request.query_params), body)
 
-    if not payment_id or not (topic == "payment" or action.startswith("payment.")):
+    if not payment_id or not es_de_pago:
         return {"status": "ignored"}
 
     try:
@@ -355,10 +378,18 @@ async def mercadopago_webhook(
         if not order:
             return {"status": "order not found"}
 
-        if status_mp == "approved" and order.status == OrderStatus.PENDING:
-            order.status = OrderStatus.COMPLETED
-            await db.commit()
-            print(f"Order {order.id} marked as COMPLETED by MercadoPago webhook.")
+        if order.status == OrderStatus.PENDING:
+            if status_mp == "approved":
+                order.status = OrderStatus.COMPLETED
+                await db.commit()
+                print(f"Order {order.id} marcada como COMPLETED por el webhook.")
+            elif status_mp in ("rejected", "cancelled"):
+                # Sin esto un pago rechazado dejaba la orden en PENDING para
+                # siempre, con su stock reservado y sin forma de cobrarla.
+                order.status = OrderStatus.CANCELLED
+                await _restore_stock(db, order)
+                await db.commit()
+                print(f"Order {order.id} cancelada: MercadoPago devolvio '{status_mp}'.")
             
         return {"status": "success"}
 
@@ -395,6 +426,12 @@ async def update_order_status(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Estado inválido. Valores válidos: {[s.value for s in OrderStatus]}",
         )
+
+    # Antes esto solo cambiaba la etiqueta: cancelar o rechazar un pedido desde
+    # el panel dejaba el stock reservado para siempre, al reves que la
+    # cancelacion del cliente, que si lo devolvia.
+    if new_status in STOCK_LIBERADO and order.status not in STOCK_LIBERADO:
+        await _restore_stock(db, order)
 
     order.status = new_status
     await db.flush()
@@ -436,13 +473,7 @@ async def cancel_my_order(
         )
 
     order.status = OrderStatus.CANCELLED
-    
-    # Devolver stock
-    for item in order.items:
-        result_prod = await db.execute(select(Product).where(Product.id == item.product_id))
-        product = result_prod.scalar_one_or_none()
-        if product:
-            product.stock += item.quantity
+    await _restore_stock(db, order)
 
     await db.flush()
     await db.refresh(order)
