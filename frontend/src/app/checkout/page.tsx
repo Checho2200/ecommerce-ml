@@ -76,10 +76,14 @@ export default function CheckoutPage() {
         shipping_city: city,
         checkout_duration_seconds: (Date.now() - mountTime) / 1000,
       })
-      clearCart()
       if (order.payment_url) {
+        // El carrito NO se vacia aqui: si el pago falla o el cliente lo
+        // abandona, volveria a la tienda sin sus productos y teniendo que
+        // buscarlos otra vez. Se vacia en /checkout/success, cuando
+        // MercadoPago confirma el cobro.
         window.location.href = order.payment_url
       } else {
+        clearCart()
         setOrderId(order.id)
         setSuccess(true)
       }

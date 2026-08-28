@@ -6,11 +6,19 @@ import Header from '@/components/ui/Header'
 import { Container, Box, Typography, Button } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
+import { useCartStore } from '@/lib/stores/cart'
 
 function SuccessContent() {
   const searchParams = useSearchParams()
   const orderId = searchParams.get('order_id') || 'desconocido'
+  const clearCart = useCartStore((state) => state.clearCart)
+
+  // Este es el unico punto donde se vacia el carrito de una compra pagada:
+  // MercadoPago solo redirige aqui cuando el cobro se aprueba.
+  useEffect(() => {
+    clearCart()
+  }, [clearCart])
 
   return (
     <Container maxWidth="sm">
