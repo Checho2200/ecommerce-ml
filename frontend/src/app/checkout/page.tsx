@@ -18,6 +18,8 @@ import CreditCardIcon from '@mui/icons-material/CreditCard'
 import ShieldIcon from '@mui/icons-material/Shield'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import GppMaybeIcon from '@mui/icons-material/GppMaybe'
+import HourglassTopIcon from '@mui/icons-material/HourglassTop'
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -30,6 +32,7 @@ export default function CheckoutPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [orderId, setOrderId] = useState('')
+  const [orderStatus, setOrderStatus] = useState('')
   const [mountTime] = useState(Date.now())
 
   // ── Not authenticated ────────────────────────────────────
@@ -85,6 +88,7 @@ export default function CheckoutPage() {
       } else {
         clearCart()
         setOrderId(order.id)
+        setOrderStatus(order.status)
         setSuccess(true)
       }
     } catch (err) {
@@ -94,18 +98,48 @@ export default function CheckoutPage() {
     }
   }
 
-  // ── Success ──────────────────────────────────────────────
+  // ── Desenlace de la orden ────────────────────────────────
+  // Solo se llega aqui cuando no hubo enlace de pago, y eso pasa por tres
+  // motivos muy distintos. Antes los tres mostraban "compra exitosa", asi que
+  // un pedido bloqueado por el detector de fraude felicitaba al cliente.
   if (success) {
+    const desenlace = {
+      REJECTED: {
+        icono: <GppMaybeIcon sx={{ fontSize: 44 }} />,
+        color: 'error.main',
+        titulo: 'No pudimos procesar tu pedido',
+        detalle:
+          'Nuestro sistema de seguridad detecto una anomalia en esta compra y la ' +
+          'detuvo antes de cobrarte. No se realizo ningun cargo. Si crees que es ' +
+          'un error, escribenos y lo revisamos.',
+      },
+      FRAUD_REVIEW: {
+        icono: <HourglassTopIcon sx={{ fontSize: 44 }} />,
+        color: 'warning.main',
+        titulo: 'Tu pedido esta en revision',
+        detalle:
+          'Un miembro del equipo va a revisar esta compra antes de continuar. ' +
+          'Todavia no se te ha cobrado nada; te avisaremos en cuanto este resuelta.',
+      },
+    }[orderStatus] ?? {
+      icono: <CheckCircleIcon sx={{ fontSize: 44 }} />,
+      color: 'success.main',
+      titulo: 'Pedido registrado',
+      detalle:
+        'Tu pedido quedo registrado, pero no pudimos iniciar el pago en linea. ' +
+        'Puedes reintentarlo desde tus compras en unos minutos.',
+    }
+
     return (
       <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
         <Header />
         <Container maxWidth="sm">
           <Box sx={{ py: 12, textAlign: 'center' }}>
-            <Box sx={{ width: 80, height: 80, borderRadius: '50%', bgcolor: 'success.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3 }}>
-              <CheckCircleIcon sx={{ fontSize: 44 }} />
+            <Box sx={{ width: 80, height: 80, borderRadius: '50%', bgcolor: desenlace.color, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3 }}>
+              {desenlace.icono}
             </Box>
-            <Typography variant="h4" sx={{ fontWeight: 900, mb: 1 }}>¡Compra exitosa!</Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>Tu orden ha sido procesada correctamente.</Typography>
+            <Typography variant="h4" sx={{ fontWeight: 900, mb: 1 }}>{desenlace.titulo}</Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>{desenlace.detalle}</Typography>
             <Box sx={{ display: 'inline-block', bgcolor: 'action.hover', px: 3, py: 1, borderRadius: 2, mb: 4 }}>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>Orden ID: {orderId.split('-')[0]}...</Typography>
             </Box>
