@@ -1,10 +1,17 @@
+# Despliegue del backend en Render (plan gratuito).
+#
+# Las migraciones se aplican en el build y no en el arranque a propósito: el
+# plan gratuito suspende el servicio tras ~15 minutos sin tráfico y lo vuelve a
+# levantar en la siguiente visita. Si el arranque tuviera que hablar con la
+# base antes de servir, ese retraso se sumaría a los 30-50 segundos que ya
+# tarda cada despertar. El build ocurre una sola vez por despliegue.
 services:
   - type: web
     name: sanchez-tech-store-api
     runtime: python
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python -m app.scripts.apply_migrations
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
@@ -13,7 +20,24 @@ services:
         sync: false
       - key: MERCADOPAGO_ACCESS_TOKEN
         sync: false
+      # Clave del webhook: panel de MercadoPago -> Tus integraciones ->
+      # Webhooks. Mientras esté vacía, la firma de las notificaciones no se
+      # exige y el webhook acepta cualquier aviso.
+      - key: MERCADOPAGO_WEBHOOK_SECRET
+        sync: false
       - key: SECRET_KEY
+        sync: false
+      # Correo saliente. Sin SMTP_HOST la aplicación no envía nada: escribe el
+      # mensaje en el log y sigue, así que el resto del sistema funciona igual.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
         sync: false
       - key: DEBUG
         value: "false"
