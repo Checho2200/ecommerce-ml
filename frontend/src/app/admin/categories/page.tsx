@@ -1,20 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import CategoryModal from "@/components/admin/CategoriaModal";
 import { api, type CategoryResponse } from "@/lib/api";
-import ImageUploadField from "@/components/ui/ImageUploadField";
 
 // MUI
 import {
   Box,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Grid,
-  TextField,
-  Chip,
   IconButton,
   Tooltip,
   Card,
@@ -30,8 +24,6 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CategoryIcon from "@mui/icons-material/Category";
 
 export default function CategoriesPage() {
@@ -41,7 +33,31 @@ export default function CategoriesPage() {
   const [editCat, setEditCat] = useState<CategoryResponse | null>(null);
   const [snack, setSnack] = useState<{ msg: string; severity: "success" | "error" } | null>(null);
 
-  const fetchCategories = useCallback(async () => {
+  // La carga inicial va dentro del efecto y guarda el resultado en el callback
+  // de la promesa. Dos razones: el estado de `loading` ya empieza en true, asi
+  // que marcarlo otra vez encadenaria un render de mas; y el interruptor
+  // `vigente` descarta la respuesta si el componente se desmonto mientras el
+  // servidor contestaba.
+  useEffect(() => {
+    let vigente = true;
+    api.categories
+      .list()
+      .then((datos) => {
+        if (!vigente) return;
+        setCategories(datos);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (!vigente) return;
+        console.error(err);
+        setLoading(false);
+      });
+    return () => { vigente = false; };
+  }, []);
+
+  // Las recargas que vienen de guardar o borrar una categoria si muestran el
+  // indicador de carga: ahi el usuario acaba de pedir la accion.
+  const recargarCategorias = useCallback(async () => {
     setLoading(true);
     try {
       setCategories(await api.categories.list());
@@ -52,7 +68,6 @@ export default function CategoriesPage() {
     }
   }, []);
 
-  useEffect(() => { fetchCategories(); }, [fetchCategories]);
 
   const showSnack = (msg: string, severity: "success" | "error" = "success") =>
     setSnack({ msg, severity });
@@ -68,7 +83,7 @@ export default function CategoriesPage() {
       }
       setShowModal(false);
       setEditCat(null);
-      fetchCategories();
+      recargarCategorias();
     } catch (err: unknown) {
       showSnack(err instanceof Error ? err.message : "Error al guardar", "error");
     }
@@ -79,7 +94,7 @@ export default function CategoriesPage() {
     try {
       await api.categories.delete(id);
       showSnack("Categoría eliminada");
-      fetchCategories();
+      recargarCategorias();
     } catch (err: unknown) {
       showSnack(err instanceof Error ? err.message : "Error al eliminar", "error");
     }
@@ -238,84 +253,5 @@ export default function CategoriesPage() {
         </Alert>
       </Snackbar>
     </>
-  );
-}
-
-function CategoryModal({
-  category,
-  onSave,
-  onClose,
-}: {
-  category: CategoryResponse | null;
-  onSave: (data: { name: string; slug: string; is_high_risk: boolean; image_url: string }) => void;
-  onClose: () => void;
-}) {
-  const [form, setForm] = useState({
-    name: category?.name || "",
-    slug: category?.slug || "",
-    is_high_risk: category?.is_high_risk ?? false,
-    image_url: category?.image_url || "",
-  });
-
-  const autoSlug = (name: string) =>
-    name.toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: 3 } }}>
-      <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>
-        {category ? "Editar Categoría" : "Nueva Categoría"}
-      </DialogTitle>
-      <form onSubmit={(e) => { e.preventDefault(); onSave(form); }}>
-        <DialogContent sx={{ pt: 1 }}>
-          <Grid container spacing={2}>
-            <Grid size={12}>
-              <TextField
-                label="Nombre"
-                fullWidth
-                required
-                value={form.name}
-                onChange={(e) => setForm({
-                  ...form,
-                  name: e.target.value,
-                  slug: category ? form.slug : autoSlug(e.target.value),
-                })}
-              />
-            </Grid>
-            <Grid size={12}>
-              <TextField
-                label="Slug (URL)"
-                fullWidth
-                required
-                value={form.slug}
-                onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                slotProps={{ htmlInput: { pattern: "^[a-z0-9\\-]+$" } }}
-                helperText="Solo minúsculas, números y guiones"
-              />
-            </Grid>
-            <Grid size={12}>
-              <ImageUploadField
-                label="Imagen de la categoría"
-                value={form.image_url}
-                onChange={(url) => setForm({ ...form, image_url: url })}
-              />
-            </Grid>
-            <Grid size={12}>
-              {/* is_high_risk se mantiene internamente (relevante para el sistema antifraude) */}
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
-          <Button onClick={onClose} variant="outlined" sx={{ textTransform: "none" }}>
-            Cancelar
-          </Button>
-          <Button type="submit" variant="contained" sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#0C3A6E" }}>
-            {category ? "Guardar Cambios" : "Crear Categoría"}
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
   );
 }

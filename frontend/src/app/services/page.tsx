@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { api, ApiError } from '@/lib/api'
 import Header from '@/components/ui/Header'
@@ -37,8 +36,7 @@ const WHY_US = [
 ]
 
 export default function ServicesPage() {
-  const { isAuthenticated, user } = useAuth()
-  const router = useRouter()
+  const { isAuthenticated } = useAuth()
 
   const [form, setForm] = useState({ device_type: '', brand: '', issue_description: '' })
   const [loading, setLoading] = useState(false)

@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { api, ProductResponse, CategoryResponse } from "@/lib/api";
-import { useCart } from "@/lib/cart";
 import Header from "@/components/ui/Header";
 import ProductCard, { ProductCardSkeleton } from "@/components/ui/ProductCard";
 
@@ -14,10 +12,6 @@ import {
   Container,
   Typography,
   Grid,
-  Card,
-  CardMedia,
-  CardContent,
-  CardActions,
   Button,
   IconButton,
   Chip,
@@ -28,22 +22,105 @@ import {
   Divider,
   TextField,
   InputAdornment,
-  Skeleton,
   Pagination,
-  Badge,
   alpha,
   useTheme,
   useMediaQuery,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import CloseIcon from "@mui/icons-material/Close";
 import TuneIcon from "@mui/icons-material/Tune";
-import ImageNotSupportedIcon from "@mui/icons-material/ImageNotSupported";
 import PackageIcon from "@mui/icons-material/Inventory2Outlined";
-import { keyframes } from "@mui/system";
+
+/**
+ * Panel de filtros del catálogo.
+ *
+ * Vive fuera de CatalogContent a propósito: definido dentro del render, cada
+ * repintado creaba un componente distinto, React desmontaba el anterior y el
+ * panel perdía su estado interno (y el foco del buscador en móvil).
+ */
+function FilterPanel({
+  isMobile,
+  search,
+  categories,
+  categoryFilter,
+  onSearch,
+  onCategoryChange,
+}: {
+  isMobile: boolean;
+  search: string;
+  categories: CategoryResponse[];
+  categoryFilter: number | null;
+  onSearch: (valor: string) => void;
+  onCategoryChange: (id: number | null) => void;
+}) {
+  return (
+
+    <Box>
+      {/* Search (mobile) */}
+      {isMobile && (
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Buscar productos..."
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          sx={{ mb: 3 }}
+          slotProps={{
+            input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18 }} /></InputAdornment> }
+          }}
+        />
+      )}
+
+      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, textTransform: "uppercase", letterSpacing: 1, fontSize: "0.72rem", color: "text.secondary" }}>
+        Categorías
+      </Typography>
+      <List dense disablePadding>
+        <ListItemButton
+          selected={categoryFilter === null}
+          onClick={() => onCategoryChange(null)}
+          sx={{
+            borderRadius: 2,
+            mb: 0.5,
+            "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52", fontWeight: 800 },
+            "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
+          }}
+        >
+          <ListItemText
+            primary={<Typography sx={{ fontWeight: categoryFilter === null ? 800 : 500, fontSize: "0.875rem" }}>Todas las categorías</Typography>}
+          />
+          {categoryFilter === null && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
+        </ListItemButton>
+
+        {categories.map((cat) => (
+          <ListItemButton
+            key={cat.id}
+            selected={categoryFilter === cat.id}
+            onClick={() => onCategoryChange(cat.id)}
+            sx={{
+              borderRadius: 2,
+              mb: 0.5,
+              "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52" },
+              "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
+            }}
+          >
+            <ListItemText
+              primary={<Typography sx={{ fontWeight: categoryFilter === cat.id ? 800 : 500, fontSize: "0.875rem" }}>{cat.name}</Typography>}
+            />
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              {cat.is_high_risk && (
+                <Chip label="⚠" size="small" color="error" variant="outlined" sx={{ fontSize: "0.6rem", height: 18, "& .MuiChip-label": { px: 0.5 } }} />
+              )}
+              {categoryFilter === cat.id && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
+            </Box>
+          </ListItemButton>
+        ))}
+      </List>
+    </Box>
+  );
+}
 
 function CatalogContent() {
   const searchParams = useSearchParams();
@@ -54,27 +131,56 @@ function CatalogContent() {
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
-  const [categoryFilter, setCategoryFilter] = useState<number | null>(() => {
-    const raw = Number(searchParams.get("category_id"));
-    return Number.isInteger(raw) && raw > 0 ? raw : null;
-  });
-  const [search, setSearch] = useState(searchParams.get("q") || "");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   useEffect(() => {
     api.categories.list().then(setCategories).catch(console.error);
   }, []);
 
-  // El componente no se remonta al navegar dentro de /catalog, así que hay que
-  // reaccionar a los cambios de la URL a mano.
-  useEffect(() => {
+  // Los filtros tienen dos orígenes: la URL (el menú del header entra con
+  // ?category_id=…, y el buscador con ?q=…) y lo que la persona toca aquí
+  // dentro. El componente no se remonta al navegar dentro de /catalog, así
+  // que antes hacía falta un efecto que copiara la URL al estado cada vez que
+  // cambiaba; ese efecto encadenaba un render y, entre uno y otro, la lista se
+  // pedía con los filtros viejos.
+  //
+  // Ahora no se copia nada: lo que manda es la URL, y encima de ella se aplica
+  // el ajuste local, que solo vale mientras la URL siga siendo la misma. Al
+  // navegar a otra dirección el ajuste deja de coincidir y los filtros
+  // vuelven solos a lo que dice la URL, con la paginación en 1.
+  const claveUrl = searchParams.toString();
+
+  const desdeUrl = useMemo(() => {
     const raw = Number(searchParams.get("category_id"));
-    setCategoryFilter(Number.isInteger(raw) && raw > 0 ? raw : null);
-    setSearch(searchParams.get("q") || "");
-    setPage(1);
+    return {
+      categoria: Number.isInteger(raw) && raw > 0 ? raw : null,
+      busqueda: searchParams.get("q") || "",
+    };
   }, [searchParams]);
+
+  const [ajuste, setAjuste] = useState<{
+    clave: string;
+    categoria: number | null;
+    busqueda: string;
+    pagina: number;
+  } | null>(null);
+
+  const vigente = ajuste && ajuste.clave === claveUrl ? ajuste : null;
+  const categoryFilter = vigente ? vigente.categoria : desdeUrl.categoria;
+  const search = vigente ? vigente.busqueda : desdeUrl.busqueda;
+  const page = vigente ? vigente.pagina : 1;
+
+  const ajustarFiltros = (cambios: Partial<Omit<NonNullable<typeof ajuste>, "clave">>) =>
+    setAjuste({
+      clave: claveUrl,
+      categoria: categoryFilter,
+      busqueda: search,
+      pagina: page,
+      ...cambios,
+    });
+
+  const setPage = (valor: number) => ajustarFiltros({ pagina: valor });
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -101,79 +207,14 @@ function CatalogContent() {
   }, [search, categoryFilter, page]);
 
   const handleCategoryChange = (id: number | null) => {
-    setCategoryFilter(id);
-    setPage(1);
+    ajustarFiltros({ categoria: id, pagina: 1 });
     setMobileFilterOpen(false);
   };
 
   const handleSearch = (val: string) => {
-    setSearch(val);
-    setPage(1);
+    ajustarFiltros({ busqueda: val, pagina: 1 });
   };
 
-  const FilterPanel = () => (
-    <Box>
-      {/* Search (mobile) */}
-      {isMobile && (
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Buscar productos..."
-          value={search}
-          onChange={(e) => handleSearch(e.target.value)}
-          sx={{ mb: 3 }}
-          slotProps={{
-            input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18 }} /></InputAdornment> }
-          }}
-        />
-      )}
-
-      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, textTransform: "uppercase", letterSpacing: 1, fontSize: "0.72rem", color: "text.secondary" }}>
-        Categorías
-      </Typography>
-      <List dense disablePadding>
-        <ListItemButton
-          selected={categoryFilter === null}
-          onClick={() => handleCategoryChange(null)}
-          sx={{
-            borderRadius: 2,
-            mb: 0.5,
-            "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52", fontWeight: 800 },
-            "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
-          }}
-        >
-          <ListItemText
-            primary={<Typography sx={{ fontWeight: categoryFilter === null ? 800 : 500, fontSize: "0.875rem" }}>Todas las categorías</Typography>}
-          />
-          {categoryFilter === null && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
-        </ListItemButton>
-
-        {categories.map((cat) => (
-          <ListItemButton
-            key={cat.id}
-            selected={categoryFilter === cat.id}
-            onClick={() => handleCategoryChange(cat.id)}
-            sx={{
-              borderRadius: 2,
-              mb: 0.5,
-              "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52" },
-              "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
-            }}
-          >
-            <ListItemText
-              primary={<Typography sx={{ fontWeight: categoryFilter === cat.id ? 800 : 500, fontSize: "0.875rem" }}>{cat.name}</Typography>}
-            />
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              {cat.is_high_risk && (
-                <Chip label="⚠" size="small" color="error" variant="outlined" sx={{ fontSize: "0.6rem", height: 18, "& .MuiChip-label": { px: 0.5 } }} />
-              )}
-              {categoryFilter === cat.id && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
-            </Box>
-          </ListItemButton>
-        ))}
-      </List>
-    </Box>
-  );
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
@@ -196,7 +237,14 @@ function CatalogContent() {
                 <FilterListIcon sx={{ color: "#0C3A6E", fontSize: 20 }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Filtros</Typography>
               </Box>
-              <FilterPanel />
+              <FilterPanel
+                isMobile={isMobile}
+                search={search}
+                categories={categories}
+                categoryFilter={categoryFilter}
+                onSearch={handleSearch}
+                onCategoryChange={handleCategoryChange}
+              />
             </Box>
           </Grid>
         )}
@@ -291,7 +339,7 @@ function CatalogContent() {
               </Typography>
               <Button
                 variant="contained"
-                onClick={() => { setSearch(""); handleCategoryChange(null); }}
+                onClick={() => ajustarFiltros({ busqueda: "", categoria: null, pagina: 1 })}
                 sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#0C3A6E", borderRadius: 2 }}
               >
                 Ver todos los productos
@@ -339,7 +387,14 @@ function CatalogContent() {
           </IconButton>
         </Box>
         <Divider sx={{ mb: 3 }} />
-        <FilterPanel />
+        <FilterPanel
+          isMobile={isMobile}
+          search={search}
+          categories={categories}
+          categoryFilter={categoryFilter}
+          onSearch={handleSearch}
+          onCategoryChange={handleCategoryChange}
+        />
       </Drawer>
     </Container>
   );

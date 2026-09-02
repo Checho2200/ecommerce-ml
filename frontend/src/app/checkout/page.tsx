@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useCartStore } from '@/lib/stores/cart'
@@ -11,7 +11,7 @@ import Header from '@/components/ui/Header'
 import {
   Container, Box, Typography, Button, TextField, Card, CardContent,
   Alert, CircularProgress, Divider, Select, MenuItem, FormControl,
-  InputLabel, Stack,
+  InputLabel,
 } from '@mui/material'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
@@ -33,7 +33,15 @@ export default function CheckoutPage() {
   const [success, setSuccess] = useState(false)
   const [orderId, setOrderId] = useState('')
   const [orderStatus, setOrderStatus] = useState('')
-  const [mountTime] = useState(Date.now())
+  // Cuanto tarda la persona en completar el checkout es una de las cuatro
+  // variables que mira el modelo de fraude. El instante de entrada se anota en
+  // una ref dentro de un efecto: leer el reloj durante el render hace que dos
+  // renders del mismo estado den resultados distintos.
+  const mountTime = useRef(0)
+
+  useEffect(() => {
+    mountTime.current = Date.now()
+  }, [])
 
   // ── Not authenticated ────────────────────────────────────
   if (!isAuthenticated) {
@@ -77,7 +85,7 @@ export default function CheckoutPage() {
         items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity, unit_price: i.product.price })),
         shipping_address: address,
         shipping_city: city,
-        checkout_duration_seconds: (Date.now() - mountTime) / 1000,
+        checkout_duration_seconds: (Date.now() - mountTime.current) / 1000,
       })
       if (order.payment_url) {
         // El carrito NO se vacia aqui: si el pago falla o el cliente lo

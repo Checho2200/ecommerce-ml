@@ -17,11 +17,20 @@ import PersonIcon from '@mui/icons-material/Person'
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
 
 export default function ProfilePage() {
-  const { user, loading: authLoading, isAuthenticated } = useAuth()
+  const { user, loading: authLoading, isAuthenticated, refresh } = useAuth()
   const router = useRouter()
 
-  const [form, setForm] = useState({ full_name: '', phone: '' })
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  // El formulario no copia los datos del usuario con un efecto: guarda solo lo
+  // que la persona escribio (`borrador`) y, mientras no haya escrito nada,
+  // muestra lo que dice el contexto. Asi no hay dos copias del mismo dato que
+  // puedan quedar desincronizadas, ni un render encadenado al montar.
+  const [borrador, setBorrador] = useState<{ full_name: string; phone: string } | null>(null)
+  const form = borrador ?? { full_name: user?.full_name ?? '', phone: user?.phone ?? '' }
+  const setForm = (valores: { full_name: string; phone: string }) => setBorrador(valores)
+
+  const [avatarSubido, setAvatarSubido] = useState<string | null>(null)
+  const avatarUrl = avatarSubido ?? user?.avatar_url ?? null
+  const setAvatarUrl = setAvatarSubido
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [saving, setSaving] = useState(false)
   const [snackbar, setSnackbar] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
@@ -33,25 +42,16 @@ export default function ProfilePage() {
     }
   }, [authLoading, isAuthenticated, router])
 
-  useEffect(() => {
-    if (user) {
-      setForm({ full_name: user.full_name, phone: user.phone || '' })
-      setAvatarUrl(user.avatar_url || null)
-    }
-  }, [user])
-
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploadingAvatar(true)
     try {
       const { url } = await api.upload.image(file)
-      // Try to save via updateProfile; if endpoint not ready, just show locally
-      try {
-        await api.auth.updateProfile({ avatar_url: url })
-      } catch {
-        // Backend endpoint may not exist yet — show locally anyway
-      }
+      // El usuario todavia no tiene columna para la foto en la base de datos,
+      // asi que el backend acepta la peticion y la ignora: la imagen ya quedo
+      // subida y aqui se muestra, pero no sobrevive a un cierre de sesion.
+      await api.auth.updateProfile({ avatar_url: url })
       setAvatarUrl(url)
       setSnackbar({ msg: 'Foto de perfil actualizada', severity: 'success' })
     } catch {
@@ -66,9 +66,13 @@ export default function ProfilePage() {
     setSaving(true)
     try {
       await api.auth.updateProfile({ full_name: form.full_name, phone: form.phone })
+      // Se relee el perfil para que el nombre nuevo aparezca tambien en la
+      // cabecera, y el borrador local deja de hacer falta.
+      await refresh()
+      setBorrador(null)
       setSnackbar({ msg: 'Perfil actualizado correctamente', severity: 'success' })
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'No se pudo actualizar el perfil. El backend puede no soportar aún este endpoint.'
+      const msg = err instanceof ApiError ? err.message : 'No se pudo actualizar el perfil. Intentalo de nuevo.'
       setSnackbar({ msg, severity: 'error' })
     } finally {
       setSaving(false)

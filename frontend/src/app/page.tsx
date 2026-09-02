@@ -70,11 +70,20 @@ export default function HomePage() {
   const [snackbar, setSnackbar] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
 
-  useEffect(() => {
-    let cancelled = false
+  // Reintento manual: nace de un clic, así que puede tocar el estado sin
+  // encadenar renders, y deja los tres indicadores como al montar.
+  const reintentarCarga = () => {
     setLoading(true)
     setFailed(false)
     setSlow(false)
+    setReloadKey((k) => k + 1)
+  }
+
+  // Los tres estados arrancan ya en el valor que necesita una carga en curso,
+  // y el botón de reintentar los devuelve a ese punto antes de subir reloadKey.
+  // Ponerlos aquí dentro obligaría a un render encadenado en cada montaje.
+  useEffect(() => {
+    let cancelled = false
 
     // Render duerme el backend tras ~15 min sin tráfico; si tarda, lo avisamos
     // en vez de dejar los esqueletos girando sin explicación.
@@ -335,7 +344,7 @@ export default function HomePage() {
             <Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>
               El servidor puede estar despertando. Vuelve a intentarlo en unos segundos.
             </Typography>
-            <Button variant="contained" startIcon={<RefreshIcon />} onClick={() => setReloadKey((k) => k + 1)}>
+            <Button variant="contained" startIcon={<RefreshIcon />} onClick={reintentarCarga}>
               Reintentar
             </Button>
           </Box>

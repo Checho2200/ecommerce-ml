@@ -30,56 +30,72 @@ interface AuthContextType {
     phone?: string;
   }) => Promise<void>;
   logout: () => void;
+  /** Vuelve a leer el perfil del backend, p. ej. tras editarlo. */
+  refresh: () => Promise<void>;
   isAdmin: boolean;
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+/**
+ * Consulta quien es el usuario del token guardado.
+ *
+ * No toca el estado de React: devuelve el usuario, `null` si no hay sesion
+ * valida, o `undefined` cuando no se pudo averiguar. Esa tercera respuesta
+ * importa: el backend vive en el plan gratuito de Render y se suspende por
+ * inactividad, asi que al volver de MercadoPago la primera peticion puede
+ * tardar casi un minuto o fallar. Antes cualquier error cerraba la sesion y el
+ * cliente regresaba del pago aparentemente deslogueado aunque su token
+ * siguiera siendo valido. Solo un 401 significa credencial invalida; lo demas
+ * se reintenta, y si aun asi no hay respuesta se deja el estado como estaba.
+ */
+async function obtenerUsuario(): Promise<User | null | undefined> {
+  if (!api.auth.isAuthenticated()) return null;
+
+  const esperas = [0, 2000, 5000, 10000];
+
+  for (const espera of esperas) {
+    if (espera > 0) {
+      await new Promise((resolve) => setTimeout(resolve, espera));
+    }
+
+    try {
+      return await api.auth.me();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) return null;
+      // Fallo transitorio: se reintenta sin descartar el token.
+    }
+  }
+
+  return undefined;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUser = useCallback(async () => {
-    if (!api.auth.isAuthenticated()) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
-    // El backend vive en el plan gratuito de Render y se suspende por
-    // inactividad: al volver de MercadoPago, la primera peticion puede tardar
-    // casi un minuto o fallar directamente. Antes cualquier error cerraba la
-    // sesion, asi que el cliente regresaba del pago aparentemente
-    // deslogueado aunque su token siguiera siendo valido. Solo un 401
-    // significa credencial invalida; lo demas se reintenta.
-    const esperas = [0, 2000, 5000, 10000];
-
-    for (const espera of esperas) {
-      if (espera > 0) {
-        await new Promise((resolve) => setTimeout(resolve, espera));
-      }
-
-      try {
-        setUser(await api.auth.me());
-        setLoading(false);
-        return;
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-        // Fallo transitorio: se reintenta sin descartar el token.
-      }
-    }
-
+  const aplicarUsuario = useCallback((resultado: User | null | undefined) => {
+    if (resultado !== undefined) setUser(resultado);
     setLoading(false);
   }, []);
 
+  // Lo usan login y register, que nacen de un clic del usuario.
+  const fetchUser = useCallback(async () => {
+    aplicarUsuario(await obtenerUsuario());
+  }, [aplicarUsuario]);
+
+  // La sesion se comprueba al montar. El resultado se guarda dentro del
+  // callback de la promesa, no en el cuerpo del efecto, para no encadenar un
+  // render de mas; `vigente` descarta la respuesta si el provider ya se
+  // desmonto durante la espera.
   useEffect(() => {
-    fetchUser();
-  }, [fetchUser]);
+    let vigente = true;
+    obtenerUsuario()
+      .then((resultado) => { if (vigente) aplicarUsuario(resultado); })
+      .catch(() => { if (vigente) setLoading(false); });
+    return () => { vigente = false; };
+  }, [aplicarUsuario]);
 
   const login = async (email: string, password: string) => {
     await api.auth.login(email, password);
@@ -110,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        refresh: fetchUser,
         isAdmin: user?.role === "ADMIN",
         isAuthenticated: !!user,
       }}

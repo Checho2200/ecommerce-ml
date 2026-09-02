@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useThemeStore } from '@/lib/stores/theme'
 import { api } from '@/lib/api'
 
 import {
   Box, Typography, Card, CardContent, Divider,
-  Switch, FormControlLabel, Chip, Button, CircularProgress,
+  Switch, FormControlLabel, Chip, Button, CircularProgress, Alert,
 } from '@mui/material'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LightModeIcon from '@mui/icons-material/LightMode'
@@ -15,24 +15,81 @@ import ErrorIcon from '@mui/icons-material/Error'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PaletteIcon from '@mui/icons-material/Palette'
 import ApiIcon from '@mui/icons-material/Api'
+import PsychologyIcon from '@mui/icons-material/Psychology'
+
+type Salud = Awaited<ReturnType<typeof api.system.health>>
 
 export default function AdminSettingsPage() {
   const { mode, toggleTheme } = useThemeStore()
-  const [apiStatus, setApiStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
 
-  const pingApi = async () => {
-    setApiStatus('loading')
+  // El estado del sistema sale de /health, no de valores escritos a mano: el
+  // panel decía "SQLite" y "reglas heurísticas" cuando en producción corre
+  // PostgreSQL con el modelo LightGBM cargado.
+  const [salud, setSalud] = useState<Salud | null>(null)
+  const [consultando, setConsultando] = useState(true)
+
+  const consultarSalud = useCallback(() => {
+    setConsultando(true)
+    return api.system
+      .health()
+      .then((datos) => setSalud(datos))
+      .catch(() => setSalud(null))
+      .finally(() => setConsultando(false))
+  }, [])
+
+  useEffect(() => {
+    let vigente = true
+    api.system
+      .health()
+      .then((datos) => { if (vigente) setSalud(datos) })
+      .catch(() => { if (vigente) setSalud(null) })
+      .finally(() => { if (vigente) setConsultando(false) })
+    return () => { vigente = false }
+  }, [])
+
+  // --- Reentrenamiento del modelo ---
+  const [reentrenando, setReentrenando] = useState(false)
+  const [avisoModelo, setAvisoModelo] = useState<{ tipo: 'success' | 'error'; texto: string } | null>(null)
+
+  const reentrenar = async () => {
+    setReentrenando(true)
+    setAvisoModelo(null)
     try {
-      await api.categories.list()
-      setApiStatus('ok')
-    } catch {
-      setApiStatus('error')
+      const respuesta = await api.fraud.retrain()
+      setAvisoModelo({ tipo: 'success', texto: respuesta.message })
+    } catch (error: unknown) {
+      setAvisoModelo({
+        tipo: 'error',
+        texto: error instanceof Error ? error.message : 'No se pudo iniciar el reentrenamiento.',
+      })
+    } finally {
+      setReentrenando(false)
     }
   }
 
-  useEffect(() => {
-    pingApi()
-  }, [])
+  const componentes = [
+    { label: 'Frontend (Next.js)', note: 'v16.3.2', estado: 'ok' as const },
+    {
+      label: 'Backend API',
+      note: salud?.status === 'healthy' ? 'Respondiendo' : 'Sin respuesta',
+      estado: consultando ? 'cargando' as const : salud ? 'ok' as const : 'error' as const,
+    },
+    {
+      label: 'Base de datos',
+      note: salud?.database === 'connected' ? 'Conectada' : 'No disponible',
+      estado: consultando ? 'cargando' as const : salud?.database === 'connected' ? 'ok' as const : 'error' as const,
+    },
+    {
+      label: 'Motor antifraude',
+      note: salud?.ml_model === 'loaded' ? 'Modelo LightGBM cargado' : 'Modelo no cargado',
+      estado: consultando ? 'cargando' as const : salud?.ml_model === 'loaded' ? 'ok' as const : 'parcial' as const,
+    },
+    {
+      label: 'Pasarela de pagos',
+      note: salud?.payments === 'configured' ? 'MercadoPago configurado' : 'Sin credenciales',
+      estado: consultando ? 'cargando' as const : salud?.payments === 'configured' ? 'ok' as const : 'parcial' as const,
+    },
+  ]
 
   return (
     <>
@@ -90,6 +147,54 @@ export default function AdminSettingsPage() {
         </CardContent>
       </Card>
 
+      {/* ── Modelo de detección de fraude ───────────────── */}
+      <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3, mb: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+            <PsychologyIcon color="primary" />
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Modelo antifraude</Typography>
+          </Box>
+          <Divider sx={{ mb: 3 }} />
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            El modelo aprende de los pedidos que se marcaron como fraude real en
+            la pantalla de órdenes. Reentrenar lo vuelve a ajustar con todo ese
+            historial y recarga la versión nueva sin reiniciar el servidor.
+          </Typography>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>Estado actual</Typography>
+            {consultando ? (
+              <CircularProgress size={18} />
+            ) : salud?.ml_model === 'loaded' ? (
+              <Chip icon={<CheckCircleIcon />} label="Cargado" size="small" color="success" variant="outlined" sx={{ fontWeight: 700 }} />
+            ) : (
+              <Chip label="No cargado" size="small" color="warning" variant="outlined" sx={{ fontWeight: 700 }} />
+            )}
+          </Box>
+
+          {avisoModelo && (
+            <Alert severity={avisoModelo.tipo} sx={{ mb: 2 }}>
+              {avisoModelo.texto}
+            </Alert>
+          )}
+
+          <Button
+            variant="contained"
+            size="small"
+            onClick={reentrenar}
+            disabled={reentrenando}
+            sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
+          >
+            {reentrenando ? 'Iniciando...' : 'Reentrenar modelo'}
+          </Button>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+            El entrenamiento corre en segundo plano y puede tardar varios
+            minutos. Puedes seguir usando el panel mientras tanto.
+          </Typography>
+        </CardContent>
+      </Card>
+
       {/* ── API y Sistema ───────────────────────────────── */}
       <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3, mb: 3 }}>
         <CardContent sx={{ p: 3 }}>
@@ -99,12 +204,7 @@ export default function AdminSettingsPage() {
           </Box>
           <Divider sx={{ mb: 3 }} />
 
-          {[
-            { label: 'Frontend (Next.js)', version: '16.3.2', status: 'ok' as const },
-            { label: 'Backend API', status: apiStatus === 'ok' ? 'ok' as const : apiStatus === 'error' ? 'error' as const : 'loading' as const },
-            { label: 'Base de Datos', status: 'ok' as const, note: 'SQLite' },
-            { label: 'Motor Antifraude', status: 'warning' as const, note: 'Reglas heurísticas activas' },
-          ].map((item) => (
+          {componentes.map((item) => (
             <Box
               key={item.label}
               sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5, borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 'none' } }}
@@ -112,13 +212,12 @@ export default function AdminSettingsPage() {
               <Box>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>{item.label}</Typography>
                 {item.note && <Typography variant="caption" color="text.secondary">{item.note}</Typography>}
-                {item.version && <Typography variant="caption" color="text.secondary"> v{item.version}</Typography>}
               </Box>
-              {item.status === 'loading' ? (
+              {item.estado === 'cargando' ? (
                 <CircularProgress size={18} />
-              ) : item.status === 'ok' ? (
+              ) : item.estado === 'ok' ? (
                 <Chip icon={<CheckCircleIcon />} label="Activo" size="small" color="success" variant="outlined" sx={{ fontWeight: 700 }} />
-              ) : item.status === 'error' ? (
+              ) : item.estado === 'error' ? (
                 <Chip icon={<ErrorIcon />} label="Error" size="small" color="error" variant="outlined" sx={{ fontWeight: 700 }} />
               ) : (
                 <Chip label="Parcial" size="small" color="warning" variant="outlined" sx={{ fontWeight: 700 }} />
@@ -129,11 +228,11 @@ export default function AdminSettingsPage() {
           <Button
             variant="outlined"
             size="small"
-            onClick={pingApi}
-            disabled={apiStatus === 'loading'}
+            onClick={consultarSalud}
+            disabled={consultando}
             sx={{ mt: 2, textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
           >
-            {apiStatus === 'loading' ? 'Verificando...' : 'Verificar conexión'}
+            {consultando ? 'Verificando...' : 'Verificar conexión'}
           </Button>
         </CardContent>
       </Card>

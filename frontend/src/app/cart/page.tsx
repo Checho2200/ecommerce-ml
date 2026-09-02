@@ -12,7 +12,6 @@ import {
   Button,
   IconButton,
   Card,
-  CardContent,
   Divider,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -103,6 +102,7 @@ export default function CartPage() {
                         }}
                       >
                         {item.product.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- la foto la sube el administrador y la sirve el backend: pasarla por next/image obligaría a declarar ese dominio y a optimizar en Vercel imágenes que ya vienen recortadas.
                           <img
                             src={item.product.image_url}
                             alt={item.product.name}

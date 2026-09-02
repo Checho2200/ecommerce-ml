@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, ReactNode } from "react";
+import { useMemo, useSyncExternalStore, ReactNode } from "react";
 import { ThemeProvider as MuiThemeProvider, createTheme, CssBaseline } from "@mui/material";
 import { useThemeStore } from "@/lib/stores/theme";
 
@@ -29,11 +29,16 @@ export const DISPLAY_FONT = "var(--font-display), 'Archivo Black', system-ui, sa
 
 export default function AppThemeProvider({ children }: { children: ReactNode }) {
   const { mode } = useThemeStore();
-  const [hydrated, setHydrated] = useState(false);
 
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
+  // "¿Ya hidrató?" se pregunta sin efecto ni estado: useSyncExternalStore
+  // devuelve false en el render del servidor y true en el del navegador, que
+  // es justo la distinción que hace falta. Antes esto era un setState dentro
+  // de un efecto, que provoca un render encadenado en cada montaje.
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   // Antes de hidratar, el store todavía no leyó localStorage, así que `mode`
   // vale siempre "light". Renderizamos igual (ocultar la página entera se veía

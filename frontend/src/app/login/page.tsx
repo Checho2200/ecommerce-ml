@@ -162,7 +162,17 @@ export default function LoginPage() {
             </Stack>
           </Box>
 
-          <Typography variant="body2" sx={{ textAlign: "center", mt: 3, color: "text.secondary" }}>
+          <Typography variant="body2" sx={{ textAlign: "center", mt: 2.5 }}>
+            <Box
+              component={Link}
+              href="/forgot-password"
+              sx={{ color: "text.secondary", textDecoration: "none" }}
+            >
+              ¿Olvidaste tu contraseña?
+            </Box>
+          </Typography>
+
+          <Typography variant="body2" sx={{ textAlign: "center", mt: 1.5, color: "text.secondary" }}>
             ¿No tienes cuenta?{" "}
             <Box
               component={Link}

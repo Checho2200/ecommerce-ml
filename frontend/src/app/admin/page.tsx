@@ -14,7 +14,6 @@ import {
   Chip,
   Skeleton,
   alpha,
-  CircularProgress
 } from "@mui/material";
 import { keyframes } from "@mui/system";
 
@@ -25,14 +24,58 @@ import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import BuildIcon from "@mui/icons-material/Build";
 import PsychologyIcon from "@mui/icons-material/Psychology";
 import SettingsIcon from "@mui/icons-material/Settings";
-import BugReportIcon from "@mui/icons-material/BugReport";
 import TimerIcon from "@mui/icons-material/Timer";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
+import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
+import RuleIcon from "@mui/icons-material/Rule";
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 `;
+
+/** Una cifra del panel, con su icono y su pie explicativo. */
+function TarjetaMetrica({
+  titulo,
+  valor,
+  pie,
+  icono,
+  color,
+  cargando,
+}: {
+  titulo: string;
+  valor: string;
+  pie: string;
+  icono: React.ReactNode;
+  color: string;
+  cargando: boolean;
+}) {
+  return (
+    <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", height: "100%" }}>
+      <CardContent sx={{ p: 3 }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+          <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem" }}>
+            {titulo}
+          </Typography>
+          {icono}
+        </Box>
+        {cargando ? (
+          <Skeleton width={80} height={40} />
+        ) : (
+          <Typography variant="h4" sx={{ fontWeight: 900, color }}>
+            {valor}
+          </Typography>
+        )}
+        <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 1 }}>
+          {pie}
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
+
+const soles = (monto: number) =>
+  `S/ ${monto.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 interface DashboardStats {
   totalProducts: number;
@@ -185,77 +228,108 @@ export default function AdminDashboard() {
 
       {/* Fraud Metrics Grid */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5, display: "flex", alignItems: "center", gap: 1 }}>
           <PsychologyIcon color="primary" /> Métricas del Modelo de Fraude (LightGBM)
         </Typography>
+        <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 2 }}>
+          Calculadas sobre los {fraudMetrics?.reviewed_count ?? 0} pedidos ya
+          revisados y etiquetados, de {fraudMetrics?.total_evaluations ?? 0}{" "}
+          evaluados. Un pedido bloqueado nunca llega a cobrarse, así que nunca
+          tendrá un contracargo que lo confirme: los aciertos más valiosos del
+          modelo son también los más difíciles de etiquetar.
+        </Typography>
+
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <TarjetaMetrica
+              titulo="Precisión"
+              valor={`${fraudMetrics?.precision ?? 0}%`}
+              pie="De cada alerta, cuántas eran fraude de verdad"
+              icono={<DoneAllIcon color="success" />}
+              color="success.main"
+              cargando={loading}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <TarjetaMetrica
+              titulo="Exhaustividad (recall)"
+              valor={`${fraudMetrics?.recall ?? 0}%`}
+              pie="De los fraudes reales, cuántos alcanzó a detectar"
+              icono={<RuleIcon color="primary" />}
+              color="primary.main"
+              cargando={loading}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <TarjetaMetrica
+              titulo="F1"
+              valor={`${fraudMetrics?.f1_score ?? 0}%`}
+              pie="El equilibrio entre las dos anteriores"
+              icono={<PsychologyIcon color="secondary" />}
+              color="text.primary"
+              cargando={loading}
+            />
+          </Grid>
+        </Grid>
+
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 4 }}>
-            <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
+            <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", height: "100%" }}>
               <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem" }}>
-                    Fraudes Detectados (True Positives)
-                  </Typography>
-                  <DoneAllIcon color="success" />
-                </Box>
-                {loading ? (
-                  <Skeleton width={80} height={40} />
-                ) : (
-                  <Typography variant="h4" sx={{ fontWeight: 900, color: "success.main" }}>
-                    {fraudMetrics?.detected_fraud_rate ?? 0}%
-                  </Typography>
-                )}
-                <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 1 }}>
-                  Porcentaje de fraudes reales bloqueados
+                <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem", mb: 2 }}>
+                  Matriz de confusión
                 </Typography>
+                {[
+                  { etiqueta: "Fraudes detectados", valor: fraudMetrics?.true_positives ?? 0, color: "success.main" },
+                  { etiqueta: "Fraudes que se escaparon", valor: fraudMetrics?.false_negatives ?? 0, color: "error.main" },
+                  { etiqueta: "Falsas alarmas", valor: fraudMetrics?.false_positives ?? 0, color: "warning.main" },
+                  { etiqueta: "Compras buenas bien aprobadas", valor: fraudMetrics?.true_negatives ?? 0, color: "text.primary" },
+                ].map((fila) => (
+                  <Box key={fila.etiqueta} sx={{ display: "flex", justifyContent: "space-between", py: 0.75 }}>
+                    <Typography variant="body2" sx={{ color: "text.secondary" }}>{fila.etiqueta}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 800, color: fila.color }}>{fila.valor}</Typography>
+                  </Box>
+                ))}
               </CardContent>
             </Card>
           </Grid>
-          
+
           <Grid size={{ xs: 12, md: 4 }}>
-            <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
+            <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", height: "100%" }}>
               <CardContent sx={{ p: 3 }}>
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                   <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem" }}>
-                    No Detectados (False Negatives)
+                    Impacto en dinero
                   </Typography>
-                  <BugReportIcon color="error" />
+                  <PaidOutlinedIcon color="success" />
                 </Box>
-                {loading ? (
-                  <Skeleton width={80} height={40} />
-                ) : (
-                  <Typography variant="h4" sx={{ fontWeight: 900, color: "error.main" }}>
-                    {fraudMetrics?.undetected_fraud_rate ?? 0}%
-                  </Typography>
-                )}
+                {[
+                  { etiqueta: "Pérdida evitada", valor: soles(fraudMetrics?.loss_prevented ?? 0), color: "success.main" },
+                  { etiqueta: "Pérdida asumida", valor: soles(fraudMetrics?.loss_absorbed ?? 0), color: "error.main" },
+                  { etiqueta: "Ganancia no realizada", valor: soles(fraudMetrics?.revenue_lost ?? 0), color: "warning.main" },
+                ].map((fila) => (
+                  <Box key={fila.etiqueta} sx={{ display: "flex", justifyContent: "space-between", py: 0.75 }}>
+                    <Typography variant="body2" sx={{ color: "text.secondary" }}>{fila.etiqueta}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 800, color: fila.color }}>{fila.valor}</Typography>
+                  </Box>
+                ))}
                 <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 1 }}>
-                  Fraudes aprobados por error (Contracargos)
+                  Frenar una compra buena no cuesta el pedido entero: cuesta el
+                  margen de esa venta.
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
 
           <Grid size={{ xs: 12, md: 4 }}>
-            <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
-              <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem" }}>
-                    Tiempo de Detección Promedio
-                  </Typography>
-                  <TimerIcon color="info" />
-                </Box>
-                {loading ? (
-                  <Skeleton width={80} height={40} />
-                ) : (
-                  <Typography variant="h4" sx={{ fontWeight: 900, color: "info.main" }}>
-                    {fraudMetrics?.average_detection_time_ms.toFixed(1) ?? 0} ms
-                  </Typography>
-                )}
-                <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 1 }}>
-                  Evaluaciones: {fraudMetrics?.total_evaluations ?? 0}
-                </Typography>
-              </CardContent>
-            </Card>
+            <TarjetaMetrica
+              titulo="Tiempo de evaluación"
+              valor={`${fraudMetrics?.average_detection_time_ms.toFixed(1) ?? 0} ms`}
+              pie={`Promedio sobre ${fraudMetrics?.total_evaluations ?? 0} evaluaciones`}
+              icono={<TimerIcon color="info" />}
+              color="info.main"
+              cargando={loading}
+            />
           </Grid>
         </Grid>
       </Box>

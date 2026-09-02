@@ -15,10 +15,10 @@ import Link from "next/link";
 
 import Header from "@/components/ui/Header";
 import ProductCard, { ProductCardSkeleton } from "@/components/ui/ProductCard";
+import SeccionDeResenas from "@/components/producto/SeccionDeResenas";
 import SafeImage from "@/components/ui/SafeImage";
 import { api, ProductResponse, ProductReviewResponse, ApiError } from "@/lib/api";
 import { useCart } from "@/lib/cart";
-import { useAuth } from "@/lib/auth";
 
 import {
   Box,
@@ -31,9 +31,6 @@ import {
   Chip,
   Rating,
   Divider,
-  TextField,
-  Alert,
-  Avatar,
   Stack,
   Skeleton,
   Breadcrumbs,
@@ -47,7 +44,6 @@ import VerifiedUserOutlinedIcon from "@mui/icons-material/VerifiedUserOutlined";
 import LocalShippingOutlinedIcon from "@mui/icons-material/LocalShippingOutlined";
 import AutorenewOutlinedIcon from "@mui/icons-material/AutorenewOutlined";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutlined";
-import StarBorderIcon from "@mui/icons-material/StarBorder";
 
 const TRUST = [
   { icon: VerifiedUserOutlinedIcon, title: "Garantía", desc: "12 meses", color: "#16a34a" },
@@ -84,7 +80,6 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const { id } = params;
 
-  const { isAuthenticated } = useAuth();
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState<ProductResponse | null>(null);
@@ -100,11 +95,6 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
-  const [rating, setRating] = useState<number | null>(5);
-  const [comment, setComment] = useState("");
-  const [reviewLoading, setReviewLoading] = useState(false);
-  const [reviewError, setReviewError] = useState("");
-  const [reviewSuccess, setReviewSuccess] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -122,6 +112,11 @@ export default function ProductDetailPage() {
         if (cancelled) return;
         setProduct(prodRes);
         setReviews(reviewsRes);
+        // Al saltar de un producto a otro por los relacionados, la lista de
+        // abajo todavia es la del producto anterior: se vacia aqui para que
+        // vuelvan a verse los esqueletos mientras llega la nueva.
+        setRelated([]);
+        setRelatedLoading(true);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) setNotFound(true);
@@ -138,10 +133,12 @@ export default function ProductDetailPage() {
   }, [id]);
 
   // Productos relacionados de la misma categoría
+  // `relatedLoading` ya arranca en true y solo vuelve a false cuando llega la
+  // respuesta, asi que no hace falta marcarlo al entrar: hacerlo aqui dentro
+  // encadena un render extra en el mismo commit.
   useEffect(() => {
     if (!product) return;
     let cancelled = false;
-    setRelatedLoading(true);
 
     api.products
       .list({ category_id: product.category_id, per_page: 5, active_only: true })
@@ -168,29 +165,6 @@ export default function ProductDetailPage() {
     setTimeout(() => setAdded(false), 2000);
   };
 
-  const handleSubmitReview = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setReviewError("");
-    setReviewSuccess("");
-    setReviewLoading(true);
-    try {
-      const newReview = await api.reviews.create({
-        product_id: id as string,
-        rating: rating ?? 5,
-        comment: comment.trim() || undefined,
-      });
-      setReviews([newReview, ...reviews]);
-      setReviewSuccess("¡Tu reseña ha sido publicada!");
-      setComment("");
-      setRating(5);
-    } catch (err) {
-      // El backend rechaza reseñas de quien no compró el producto; ese mensaje
-      // es útil para el cliente, así que se muestra tal cual.
-      setReviewError(err instanceof ApiError ? err.message : "Error al publicar la reseña");
-    } finally {
-      setReviewLoading(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -448,140 +422,12 @@ export default function ProductDetailPage() {
           </Grid>
         </Paper>
 
-        {/* ── Reseñas ──────────────────────────────────────── */}
-        <Paper
-          elevation={0}
-          sx={{ borderRadius: 4, border: "1px solid", borderColor: "divider", p: { xs: 3, md: 5 }, mb: 6 }}
-        >
-          <Typography variant="h5" sx={{ fontWeight: 900, mb: 4 }}>
-            Opiniones de clientes
-          </Typography>
-
-          <Grid container spacing={{ xs: 4, md: 6 }}>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <Box
-                sx={{
-                  p: 3, borderRadius: 3, bgcolor: "action.hover", textAlign: "center", mb: 3,
-                }}
-              >
-                <Typography variant="h2" sx={{ fontWeight: 900, lineHeight: 1 }}>
-                  {averageRating.toFixed(1)}
-                </Typography>
-                <Rating value={averageRating} precision={0.5} readOnly sx={{ my: 1.5 }} />
-                <Typography variant="body2" color="text.secondary">
-                  Basado en {reviews.length} {reviews.length === 1 ? "reseña" : "reseñas"}
-                </Typography>
-              </Box>
-
-              <Divider sx={{ mb: 3 }} />
-
-              <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 2 }}>
-                ¿Compraste este producto?
-              </Typography>
-
-              {isAuthenticated ? (
-                <Box component="form" onSubmit={handleSubmitReview}>
-                  {reviewError && (
-                    <Alert severity="error" sx={{ mb: 2 }}>
-                      {reviewError}
-                    </Alert>
-                  )}
-                  {reviewSuccess && (
-                    <Alert severity="success" sx={{ mb: 2 }}>
-                      {reviewSuccess}
-                    </Alert>
-                  )}
-
-                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                    Tu calificación
-                  </Typography>
-                  <Rating
-                    value={rating}
-                    onChange={(_, v) => setRating(v)}
-                    size="large"
-                    sx={{ mb: 2.5 }}
-                  />
-
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={3}
-                    label="Comentario (opcional)"
-                    placeholder="Cuéntanos qué te pareció…"
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    sx={{ mb: 2.5 }}
-                  />
-
-                  <Button
-                    type="submit"
-                    fullWidth
-                    variant="contained"
-                    disabled={reviewLoading}
-                    sx={{ py: 1.2, fontWeight: 700 }}
-                  >
-                    {reviewLoading ? "Publicando…" : "Publicar reseña"}
-                  </Button>
-                </Box>
-              ) : (
-                <Box sx={{ p: 3, borderRadius: 3, bgcolor: "action.hover", textAlign: "center" }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Inicia sesión para compartir tu experiencia con otros clientes.
-                  </Typography>
-                  <Button component={Link} href="/login" variant="contained" size="small">
-                    Iniciar sesión
-                  </Button>
-                </Box>
-              )}
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 8 }}>
-              {reviews.length === 0 ? (
-                <Box sx={{ py: 8, textAlign: "center", color: "text.secondary" }}>
-                  <StarBorderIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1.5 }} />
-                  <Typography sx={{ fontWeight: 700 }}>Aún no hay reseñas</Typography>
-                  <Typography variant="body2">
-                    Sé el primero en opinar sobre este producto.
-                  </Typography>
-                </Box>
-              ) : (
-                <Stack spacing={2.5}>
-                  {reviews.map((review) => (
-                    <Box key={review.id} sx={{ p: 3, borderRadius: 3, bgcolor: "action.hover" }}>
-                      <Stack
-                        direction="row"
-                        sx={{ justifyContent: "space-between", alignItems: "flex-start", mb: 1.5 }}
-                      >
-                        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-                          <Avatar sx={{ bgcolor: "primary.main", width: 40, height: 40, fontWeight: 800 }}>
-                            {review.user_name?.charAt(0).toUpperCase()}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                              {review.user_name}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              Comprador verificado
-                            </Typography>
-                          </Box>
-                        </Stack>
-                        <Typography variant="caption" color="text.secondary">
-                          {new Date(review.created_at).toLocaleDateString("es-PE")}
-                        </Typography>
-                      </Stack>
-                      <Rating value={review.rating} readOnly size="small" sx={{ mb: 1.5 }} />
-                      {review.comment && (
-                        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.75 }}>
-                          {review.comment}
-                        </Typography>
-                      )}
-                    </Box>
-                  ))}
-                </Stack>
-              )}
-            </Grid>
-          </Grid>
-        </Paper>
+        <SeccionDeResenas
+          productoId={id as string}
+          resenas={reviews}
+          promedio={averageRating}
+          onNuevaResena={(resena) => setReviews((previas) => [resena, ...previas])}
+        />
 
         {/* ── Relacionados ─────────────────────────────────── */}
         {(relatedLoading || related.length > 0) && (

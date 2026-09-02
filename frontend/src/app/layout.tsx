@@ -6,6 +6,7 @@ import AppThemeProvider from '@/components/ThemeProvider'
 import AuthProvider from '@/lib/auth'
 import Footer from '@/components/ui/Footer'
 import BackendWarmup from '@/components/system/BackendWarmup'
+import { THEME_INIT_SCRIPT } from '@/lib/theme-init'
 
 // Se cargan con next/font en vez de un @import en el CSS: aquel bloqueaba el
 // primer render mientras Google respondía.
@@ -58,8 +59,8 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning className={`${display.variable} ${body.variable}`}>
       <head>
-        {/* Debe ejecutarse antes de pintar el body: ver public/theme-init.js */}
-        <script src="/theme-init.js" />
+        {/* Debe ejecutarse antes de pintar el body: ver src/lib/theme-init.ts */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="antialiased">
         <AppThemeProvider>

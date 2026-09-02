@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
+import ServiceModal from "@/components/admin/ServicioModal";
+import { ESTADOS_DE_SERVICIO, type EstadoDeServicio } from "@/lib/estados";
+import { useRecurso } from "@/hooks/useRecurso";
 import { api, type ServiceOrderResponse } from "@/lib/api";
 
 // MUI
 import {
   Box,
   Typography,
-  Button,
   Chip,
   Table,
   TableBody,
@@ -17,16 +19,6 @@ import {
   Paper,
   Skeleton,
   Pagination,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   IconButton,
   Tooltip,
   Snackbar,
@@ -37,46 +29,33 @@ import {
 // MUI Icons
 import EditIcon from "@mui/icons-material/Edit";
 
-type ServiceStatusKey = "RECEIVED" | "DIAGNOSING" | "IN_PROGRESS" | "COMPLETED" | "DELIVERED";
-
-const STATUS_CONFIG: Record<ServiceStatusKey, { label: string; color: "info" | "warning" | "success" }> = {
-  RECEIVED: { label: "Recibido", color: "info" },
-  DIAGNOSING: { label: "Diagnosticando", color: "warning" },
-  IN_PROGRESS: { label: "En Proceso", color: "warning" },
-  COMPLETED: { label: "Completado", color: "success" },
-  DELIVERED: { label: "Entregado", color: "success" },
-};
 
 export default function ServicesPage() {
-  const [services, setServices] = useState<ServiceOrderResponse[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
-  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<ServiceOrderResponse | null>(null);
   const [snack, setSnack] = useState<{ msg: string; severity: "success" | "error" } | null>(null);
 
-  const fetchServices = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.serviceOrders.list({
+  const consultar = useCallback(
+    () =>
+      api.serviceOrders.list({
         page,
         status: statusFilter || undefined,
-      });
-      setServices(data.items);
-      setTotal(data.total);
-      setPages(data.pages);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, statusFilter]);
+      }),
+    [page, statusFilter]
+  );
 
-  useEffect(() => {
-    fetchServices();
-  }, [fetchServices]);
+
+  // La carga, el estado de «cargando» y la recarga manual salen del hook
+  // compartido: ver src/hooks/useRecurso.ts.
+  const { datos, cargando: loading, recargar: recargarServicios } =
+    useRecurso(consultar);
+
+  const services = datos?.items ?? [];
+  const total = datos?.total ?? 0;
+  const pages = datos?.pages ?? 1;
+
+
 
   const showSnack = (msg: string, severity: "success" | "error" = "success") =>
     setSnack({ msg, severity });
@@ -85,7 +64,7 @@ export default function ServicesPage() {
     try {
       await api.serviceOrders.update(id, data);
       showSnack("Servicio actualizado");
-      fetchServices();
+      recargarServicios();
       setSelected(null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Error";
@@ -95,7 +74,7 @@ export default function ServicesPage() {
 
   const FILTER_OPTIONS = [
     { value: "", label: "Todos" },
-    ...Object.entries(STATUS_CONFIG).map(([key, val]) => ({ value: key, label: val.label })),
+    ...Object.entries(ESTADOS_DE_SERVICIO).map(([key, val]) => ({ value: key, label: val.label })),
   ];
 
   return (
@@ -166,7 +145,7 @@ export default function ServicesPage() {
               </TableRow>
             ) : (
               services.map((s) => {
-                const st = STATUS_CONFIG[s.status as ServiceStatusKey] || { label: s.status, color: "info" as const };
+                const st = ESTADOS_DE_SERVICIO[s.status as EstadoDeServicio] || { label: s.status, color: "info" as const };
                 return (
                   <TableRow key={s.id} hover sx={{ "&:last-child td": { borderBottom: 0 } }}>
                     <TableCell>
@@ -265,114 +244,5 @@ export default function ServicesPage() {
         </Alert>
       </Snackbar>
     </>
-  );
-}
-
-function ServiceModal({
-  service,
-  onUpdate,
-  onClose,
-}: {
-  service: ServiceOrderResponse;
-  onUpdate: (id: string, data: { diagnosis?: string; status?: string; estimated_cost?: number }) => void;
-  onClose: () => void;
-}) {
-  const [diagnosis, setDiagnosis] = useState(service.diagnosis || "");
-  const [status, setStatus] = useState(service.status);
-  const [cost, setCost] = useState(service.estimated_cost || 0);
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      sx={{ "& .MuiDialog-paper": { borderRadius: 3 } }}
-    >
-      <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>
-        Gestionar Servicio
-      </DialogTitle>
-      <DialogContent sx={{ pt: 1 }}>
-        {/* Device Info */}
-        <Box
-          sx={{
-            mb: 3,
-            p: 2,
-            bgcolor: "action.hover",
-            borderRadius: 2,
-            border: "1px solid",
-            borderColor: "divider",
-          }}
-        >
-          <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.68rem" }}>
-            Dispositivo
-          </Typography>
-          <Typography variant="body1" sx={{ fontWeight: 700 }}>
-            {service.device_type} {service.brand ? `(${service.brand})` : ""}
-          </Typography>
-
-          <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.68rem", display: "block", mt: 1.5 }}>
-            Problema reportado
-          </Typography>
-          <Typography variant="body2" sx={{ color: "text.secondary" }}>
-            {service.issue_description}
-          </Typography>
-        </Box>
-
-        <form
-          id="service-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            onUpdate(service.id, { diagnosis, status, estimated_cost: cost });
-          }}
-        >
-          <Grid container spacing={2}>
-            <Grid size={12}>
-              <TextField
-                label="Diagnóstico"
-                fullWidth
-                multiline
-                rows={3}
-                value={diagnosis}
-                onChange={(e) => setDiagnosis(e.target.value)}
-                placeholder="Resultado de la inspección..."
-              />
-            </Grid>
-            <Grid size={6}>
-              <FormControl fullWidth>
-                <InputLabel>Estado</InputLabel>
-                <Select
-                  label="Estado"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  {Object.entries(STATUS_CONFIG).map(([key, val]) => (
-                    <MenuItem key={key} value={key}>{val.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={6}>
-              <TextField
-                label="Costo Estimado (S/)"
-                type="number"
-                fullWidth
-                slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
-                value={cost}
-                onChange={(e) => setCost(Number(e.target.value))}
-              />
-            </Grid>
-          </Grid>
-        </form>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
-        <Button onClick={onClose} variant="outlined" sx={{ textTransform: "none" }}>
-          Cancelar
-        </Button>
-        <Button type="submit" form="service-form" variant="contained" sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#0C3A6E" }}>
-          Guardar Cambios
-        </Button>
-      </DialogActions>
-    </Dialog>
   );
 }

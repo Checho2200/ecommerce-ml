@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { ESTADOS_DE_PEDIDO, type EstadoDePedido } from "@/lib/estados";
+import { useRecurso } from "@/hooks/useRecurso";
 import { api, type OrderResponse } from "@/lib/api";
 
 // MUI
@@ -33,57 +35,70 @@ import {
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import PsychologyIcon from "@mui/icons-material/Psychology";
 
-type StatusKey = "PENDING" | "FRAUD_REVIEW" | "APPROVED" | "REJECTED" | "COMPLETED" | "CANCELLED";
-
-const STATUS_CONFIG: Record<StatusKey, { label: string; color: "warning" | "error" | "success" | "info" | "default" }> = {
-  PENDING: { label: "Pendiente", color: "warning" },
-  FRAUD_REVIEW: { label: "Revisión Fraude", color: "error" },
-  APPROVED: { label: "Aprobada", color: "success" },
-  REJECTED: { label: "Rechazada", color: "error" },
-  COMPLETED: { label: "Completada", color: "info" },
-  CANCELLED: { label: "Cancelada", color: "default" },
-};
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<OrderResponse[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
-  const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<OrderResponse | null>(null);
   const [snack, setSnack] = useState<{ msg: string; severity: "success" | "error" } | null>(null);
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.orders.list({
+  const consultar = useCallback(
+    () =>
+      api.orders.list({
         page,
         per_page: 10,
         status: statusFilter || undefined,
-      });
-      setOrders(data.items);
-      setTotal(data.total);
-      setPages(data.pages);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, statusFilter]);
+      }),
+    [page, statusFilter]
+  );
 
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+
+  // La carga, el estado de «cargando» y la recarga manual salen del hook
+  // compartido: ver src/hooks/useRecurso.ts.
+  const { datos, cargando: loading, recargar: recargarOrdenes } =
+    useRecurso(consultar);
+
+  const orders = datos?.items ?? [];
+  const total = datos?.total ?? 0;
+  const pages = datos?.pages ?? 1;
+
+
 
   const showSnack = (msg: string, severity: "success" | "error" = "success") =>
     setSnack({ msg, severity });
+
+  /**
+   * Registra lo que realmente pasó con un pedido evaluado.
+   *
+   * Marcar los fraudes reales mide cuántos se escapan; marcar las compras
+   * legítimas mide cuántas ventas buenas se están frenando. Con una sola de
+   * las dos, la precisión del modelo no se puede calcular.
+   */
+  const etiquetar = async (fraudLogId: string, fueFraude: boolean) => {
+    if (fueFraude && !window.confirm(
+      "¿Confirmas que este pedido terminó en un contracargo? " +
+      "Se usará para medir y reentrenar el modelo."
+    )) {
+      return;
+    }
+    try {
+      await api.fraud.label(fraudLogId, fueFraude);
+      showSnack(
+        fueFraude ? "Registrado como fraude real" : "Registrado como compra legítima"
+      );
+    } catch (err: unknown) {
+      showSnack(
+        err instanceof Error ? err.message : "No se pudo registrar la etiqueta",
+        "error"
+      );
+    }
+  };
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     try {
       await api.orders.updateStatus(orderId, newStatus);
       showSnack("Estado actualizado");
-      fetchOrders();
+      recargarOrdenes();
       setSelectedOrder(null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Error";
@@ -168,7 +183,7 @@ export default function OrdersPage() {
               </TableRow>
             ) : (
               orders.map((o) => {
-                const st = STATUS_CONFIG[o.status as StatusKey] || { label: o.status, color: "default" as const };
+                const st = ESTADOS_DE_PEDIDO[o.status as EstadoDePedido] || { label: o.status, color: "default" as const };
                 return (
                   <TableRow key={o.id} hover sx={{ "&:last-child td": { borderBottom: 0 } }}>
                     <TableCell>
@@ -340,26 +355,39 @@ export default function OrdersPage() {
                   Decisión: {selectedOrder.fraud_decision}
                 </Typography>
 
-                {selectedOrder.fraud_decision === "APPROVED" && selectedOrder.fraud_log_id && (
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    size="small"
-                    sx={{ mt: 2, display: "block", textTransform: "none", fontWeight: 700 }}
-                    onClick={async () => {
-                      if(window.confirm("¿Estás seguro de marcar esta orden como FRAUDE REAL (Contracargo)? Esto alimentará las métricas de error de la IA.")) {
-                        try {
-                          await api.fraud.markActualFraud(selectedOrder.fraud_log_id!);
-                          showSnack("Marcado como Fraude Real exitosamente");
-                          // Refrescar no es estrictamente necesario para la orden, pero sí para el dashboard
-                        } catch (err: any) {
-                          showSnack(err.message || "Error al marcar fraude", "error");
-                        }
-                      }
-                    }}
-                  >
-                    Reportar Contracargo (Fraude Real)
-                  </Button>
+                {selectedOrder.fraud_explanation && (
+                  <Typography variant="body2" sx={{ mt: 1.5, lineHeight: 1.5 }}>
+                    {selectedOrder.fraud_explanation}
+                  </Typography>
+                )}
+
+                {selectedOrder.fraud_log_id && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 1 }}>
+                      ¿Qué pasó de verdad con este pedido? Etiquetarlo es lo que
+                      permite medir al modelo y lo que alimenta su reentrenamiento.
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        sx={{ textTransform: "none", fontWeight: 700 }}
+                        onClick={() => etiquetar(selectedOrder.fraud_log_id!, true)}
+                      >
+                        Fue fraude (contracargo)
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color="success"
+                        size="small"
+                        sx={{ textTransform: "none", fontWeight: 700 }}
+                        onClick={() => etiquetar(selectedOrder.fraud_log_id!, false)}
+                      >
+                        Fue una compra legítima
+                      </Button>
+                    </Box>
+                  </Box>
                 )}
               </Box>
             )}
@@ -369,7 +397,7 @@ export default function OrdersPage() {
               Cambiar Estado
             </Typography>
             <Box sx={{ display: "flex", gap: 1, mt: 1, flexWrap: "wrap" }}>
-              {(Object.entries(STATUS_CONFIG) as [StatusKey, typeof STATUS_CONFIG[StatusKey]][]).map(([key, val]) => (
+              {(Object.entries(ESTADOS_DE_PEDIDO) as [EstadoDePedido, (typeof ESTADOS_DE_PEDIDO)[EstadoDePedido]][]).map(([key, val]) => (
                 <Chip
                   key={key}
                   label={val.label}

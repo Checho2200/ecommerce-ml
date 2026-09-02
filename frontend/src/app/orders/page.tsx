@@ -8,7 +8,7 @@ import { api, OrderResponse, ApiError } from '@/lib/api'
 import Header from '@/components/ui/Header'
 
 import {
-  Container, Box, Typography, Card, CardContent, Button, Chip,
+  Container, Box, Typography, Card, Button, Chip,
   Divider, Dialog, DialogTitle, DialogContent, DialogContentText,
   DialogActions, CircularProgress, Skeleton,
 } from '@mui/material'
@@ -35,19 +35,32 @@ export default function MyOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [cancelDialog, setCancelDialog] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
+  const [consultadoEn, setConsultadoEn] = useState(0)
 
+  // El listado se guarda dentro del callback de la promesa, no en el cuerpo del
+  // efecto, y junto a él se anota el instante en que llegó: de ahí sale el
+  // plazo de cancelación, que no puede calcularse durante el render porque
+  // leer el reloj haría que dos renders del mismo estado no coincidieran.
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) router.push('/login?redirect=/orders')
-    if (isAuthenticated) fetchOrders()
-  }, [isAuthenticated, authLoading])
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login?redirect=/orders')
+      return
+    }
+    if (!isAuthenticated) return
 
-  const fetchOrders = async () => {
-    setLoading(true)
-    try {
-      const res = await api.orders.listMyOrders({ per_page: 50 })
-      setOrders(res.items)
-    } catch { /* ignore */ } finally { setLoading(false) }
-  }
+    let vigente = true
+    api.orders
+      .listMyOrders({ per_page: 50 })
+      .then((res) => {
+        if (!vigente) return
+        setOrders(res.items)
+        setConsultadoEn(Date.now())
+        setLoading(false)
+      })
+      .catch(() => { if (vigente) setLoading(false) })
+
+    return () => { vigente = false }
+  }, [isAuthenticated, authLoading, router])
 
   const handleCancel = async () => {
     if (!cancelDialog) return
@@ -65,7 +78,7 @@ export default function MyOrdersPage() {
 
   const isCancellable = (order: OrderResponse) => {
     if (order.status !== 'PENDING') return false
-    const hoursElapsed = (Date.now() - new Date(order.created_at).getTime()) / 3600000
+    const hoursElapsed = (consultadoEn - new Date(order.created_at).getTime()) / 3600000
     return hoursElapsed <= 1
   }
 
