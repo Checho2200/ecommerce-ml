@@ -53,3 +53,20 @@ class UserUpdate(BaseModel):
     """Schema para actualizar perfil de usuario."""
     full_name: Optional[str] = Field(None, min_length=2, max_length=150)
     phone: Optional[str] = Field(None, max_length=20)
+
+
+# --- Recuperación de contraseña ---
+class ForgotPasswordRequest(BaseModel):
+    """Solicitud del enlace para restablecer la contraseña."""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Nueva contraseña, acompañada del token que llegó por correo."""
+    token: str
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
+class MensajeResponse(BaseModel):
+    """Respuesta simple para operaciones que no devuelven un recurso."""
+    message: str
