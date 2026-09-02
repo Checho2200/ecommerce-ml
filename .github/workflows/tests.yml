@@ -1,0 +1,75 @@
+# Comprueba el proyecto en cada cambio.
+#
+# Corre las dos mitades por separado y en paralelo, porque no dependen entre
+# sí: si el backend rompe, igual quieres saber si el frontend compila.
+#
+# Nada de esto toca la base de datos ni las credenciales reales: las pruebas
+# del backend levantan un SQLite temporal por cada prueba, y el build del
+# frontend no necesita hablar con la API.
+
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Ejecutar las pruebas
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend (lint y build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Revisar el código
+        run: npm run lint
+
+      - name: Comprobar los tipos
+        run: npx tsc --noEmit
+
+      - name: Compilar
+        run: npm run build

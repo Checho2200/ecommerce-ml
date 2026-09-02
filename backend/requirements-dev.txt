@@ -2,3 +2,9 @@
 # No van en requirements.txt para no instalarlas en el servidor de Render.
 -r requirements.txt
 pytest==8.3.4
+pytest-asyncio==1.4.0
+httpx==0.28.1
+
+# Solo para las figuras del informe de entrenamiento. No va en produccion: el
+# servidor reentrena el modelo sin ella y se salta las figuras.
+matplotlib==3.9.2
