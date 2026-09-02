@@ -6,7 +6,7 @@ en silencio las notificaciones actuales, con lo que un pedido pagado se quedaba
 en PENDING para siempre.
 """
 
-from app.api.v1.orders import _leer_notificacion
+from app.services.payment_service import leer_notificacion as _leer_notificacion
 
 
 def test_acepta_el_webhook_actual_con_type_en_la_query():

@@ -9,6 +9,29 @@ from typing import List, Dict, Any
 MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "")
 
 
+def leer_notificacion(query: dict, body: dict) -> tuple:
+    """
+    Saca (payment_id, es_de_pago) de una notificacion de MercadoPago.
+
+    Hay dos formatos vivos: los webhooks actuales mandan "type" en la query y
+    {"action", "data": {"id"}} en el cuerpo JSON, y el IPN antiguo manda solo
+    "topic" e "id" en la query. Se aceptan los dos.
+
+    Vive aqui, junto al resto de la integracion con la pasarela, y no en el
+    router: es conocimiento sobre MercadoPago, no sobre HTTP.
+    """
+    topic = query.get("type") or query.get("topic") or body.get("type") or ""
+    action = query.get("action") or body.get("action") or ""
+    payment_id = (
+        query.get("data.id")
+        or query.get("id")
+        or (body.get("data") or {}).get("id")
+    )
+
+    es_de_pago = topic == "payment" or str(action).startswith("payment.")
+    return payment_id, es_de_pago
+
+
 class PaymentService:
     def __init__(self):
         self.sdk = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN) if MERCADOPAGO_ACCESS_TOKEN else None

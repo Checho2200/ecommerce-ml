@@ -1,286 +1,131 @@
 """
-Gestión de órdenes de compra.
-- Clientes: crear órdenes y ver sus propias órdenes.
-- Admin: listar todas, ver detalle, cambiar estado.
+Endpoints de órdenes de compra.
+
+Esta capa solo hace tres cosas: recibir la petición, delegar en
+`app/services/order_service.py` y presentar el resultado. Las reglas del negocio
+—reservar inventario, evaluar el fraude, decidir el estado, devolver stock,
+plazos de cancelación— viven en el servicio, no aquí.
+
+Los errores de negocio llegan como excepciones de `app/services/errors.py` y los
+traduce a HTTP el manejador registrado en `app/main.py`, así que en este archivo
+no hay `HTTPException` salvo para lo que sí es un asunto de la capa web: la
+autorización de una petición y el rechazo de un webhook mal firmado.
 """
 
 import math
 from typing import Optional
 
-from datetime import datetime, timedelta, timezone
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func, inspect as sa_inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
+from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
-from app.models.fraud_log import FraudLog
-from app.models.order import Order, OrderItem, OrderStatus
-from app.models.product import Product
+from app.models.order import Order, OrderItem
 from app.models.user import User
 from app.schemas.order import (
     OrderCreate,
-    OrderStatusUpdate,
-    OrderResponse,
-    OrderListResponse,
     OrderItemResponse,
+    OrderListResponse,
+    OrderResponse,
+    OrderStatusUpdate,
 )
-from app.api.deps import get_current_user, require_admin
-from sqlalchemy.orm import selectinload
-from app.services.fraud_service import fraud_service
-from app.services.payment_service import payment_service
-from fastapi import Request
+from app.services import email_service, order_service, webhook_security
+from app.services.payment_service import leer_notificacion, payment_service
 
 router = APIRouter(prefix="/orders", tags=["Órdenes"])
 
-# El stock se descuenta al crear la orden y se devuelve al pasar a uno de estos
-# estados. Tenerlos en un conjunto evita el fallo de devolverlo dos veces: una
-# orden creada como REJECTED por el modelo de fraude ya recupero su inventario.
-STOCK_LIBERADO = {OrderStatus.CANCELLED, OrderStatus.REJECTED}
 
-# Cuanto aguanta una orden sin pagar antes de soltar su inventario. Se aplica
-# de forma perezosa, cuando el propio cliente vuelve a comprar, porque el plan
-# gratuito de Render no tiene donde ejecutar una tarea programada.
-PENDIENTE_CADUCA_EN = timedelta(hours=2)
-
-
-def _leer_notificacion(query: dict, body: dict) -> tuple:
+# ─────────────────────────────────────────────────────────────────────────────
+# Presentación: del modelo de datos a la respuesta de la API
+# ─────────────────────────────────────────────────────────────────────────────
+def _nombre_del_producto(item: OrderItem, nombres: Optional[dict] = None) -> Optional[str]:
     """
-    Saca (payment_id, es_de_pago) de una notificacion de MercadoPago.
+    Nombre del producto de una línea, SIN provocar una consulta.
 
-    Hay dos formatos vivos: los webhooks actuales mandan "type" en la query y
-    {"action", "data": {"id"}} en el cuerpo JSON, y el IPN antiguo manda solo
-    "topic" e "id" en la query. Se aceptan los dos.
+    Aquí estaba el fallo que dejaba el checkout en error 500: leer
+    `item.product.name` sobre una línea recién creada dispara una carga
+    perezosa, y una carga perezosa dentro de una función síncrona llamada desde
+    código async revienta con MissingGreenlet. Al crear la orden los nombres ya
+    se conocen —se consultaron para armar el pedido—, así que se pasan; y cuando
+    la orden viene de una consulta, la relación ya está cargada. Si no se da
+    ninguno de los dos casos se devuelve None en vez de ir a la base.
     """
-    topic = query.get("type") or query.get("topic") or body.get("type") or ""
-    action = query.get("action") or body.get("action") or ""
-    payment_id = (
-        query.get("data.id")
-        or query.get("id")
-        or (body.get("data") or {}).get("id")
-    )
+    if nombres and item.product_id in nombres:
+        return nombres[item.product_id]
 
-    es_de_pago = topic == "payment" or str(action).startswith("payment.")
-    return payment_id, es_de_pago
+    if "product" in sa_inspect(item).unloaded:
+        return None
+
+    return item.product.name if item.product else None
 
 
-async def _restore_stock(db: AsyncSession, order: Order) -> None:
-    """Devuelve al inventario las unidades que la orden tenia reservadas."""
-    for item in order.items:
-        result = await db.execute(select(Product).where(Product.id == item.product_id))
-        product = result.scalar_one_or_none()
-        if product:
-            product.stock += item.quantity
-
-
-async def _caducar_pendientes(db: AsyncSession, user_id: str) -> None:
-    """
-    Cierra las ordenes que este cliente dejo a medias y devuelve su stock.
-
-    Quien abandona el checkout de MercadoPago deja una orden en PENDING que
-    retiene unidades. Como el carrito ya no se vacia hasta que el pago se
-    confirma, al reintentar la compra se reservaria dos veces el mismo
-    producto; esto lo evita.
-    """
-    limite = datetime.now(timezone.utc) - PENDIENTE_CADUCA_EN
-    result = await db.execute(
-        select(Order).where(
-            Order.user_id == user_id,
-            Order.status == OrderStatus.PENDING,
-            Order.created_at < limite,
-        )
-    )
-
-    for orden in result.scalars().all():
-        await _restore_stock(db, orden)
-        orden.status = OrderStatus.CANCELLED
-        print(f"Order {orden.id} caducada por falta de pago; stock devuelto.")
-
-    await db.flush()
-
-
-def _build_order_response(order: Order) -> OrderResponse:
-    """Construye la respuesta de una orden con items y datos de fraude."""
-    items = []
-    for item in order.items:
-        items.append(OrderItemResponse(
-            id=item.id,
-            product_id=item.product_id,
-            product_name=item.product.name if item.product else None,
-            quantity=item.quantity,
-            unit_price=item.unit_price,
-        ))
-
+def _a_respuesta(
+    orden: Order,
+    nombres_de_productos: Optional[dict] = None,
+    url_de_pago: Optional[str] = None,
+) -> OrderResponse:
+    """Convierte una orden y su evaluación de fraude en la respuesta pública."""
     return OrderResponse(
-        id=order.id,
-        user_id=order.user_id,
-        total_amount=order.total_amount,
-        status=order.status,
-        shipping_address=order.shipping_address,
-        shipping_city=order.shipping_city,
-        items=items,
-        fraud_score=order.fraud_log.fraud_score if order.fraud_log else None,
-        fraud_decision=order.fraud_log.decision if order.fraud_log else None,
-        fraud_explanation=order.fraud_log.explanation if order.fraud_log else None,
-        fraud_log_id=order.fraud_log.id if order.fraud_log else None,
-        payment_url=getattr(order, "payment_url", None),
-        created_at=order.created_at,
+        id=orden.id,
+        user_id=orden.user_id,
+        total_amount=orden.total_amount,
+        status=orden.status,
+        shipping_address=orden.shipping_address,
+        shipping_city=orden.shipping_city,
+        items=[
+            OrderItemResponse(
+                id=linea.id,
+                product_id=linea.product_id,
+                product_name=_nombre_del_producto(linea, nombres_de_productos),
+                quantity=linea.quantity,
+                unit_price=linea.unit_price,
+            )
+            for linea in orden.items
+        ],
+        fraud_score=orden.fraud_log.fraud_score if orden.fraud_log else None,
+        fraud_decision=orden.fraud_log.decision if orden.fraud_log else None,
+        fraud_explanation=orden.fraud_log.explanation if orden.fraud_log else None,
+        fraud_log_id=orden.fraud_log.id if orden.fraud_log else None,
+        payment_url=url_de_pago,
+        created_at=orden.created_at,
     )
 
 
+async def _pagina(
+    db: AsyncSession, consulta, page: int, per_page: int
+) -> OrderListResponse:
+    """Pagina una consulta de órdenes. Lo comparten el listado del panel y el del cliente."""
+    total = (
+        await db.execute(select(func.count()).select_from(consulta.subquery()))
+    ).scalar() or 0
+
+    resultado = await db.execute(
+        consulta.order_by(Order.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    )
+
+    return OrderListResponse(
+        items=[_a_respuesta(orden) for orden in resultado.scalars().all()],
+        total=total,
+        page=page,
+        pages=math.ceil(total / per_page) if total > 0 else 1,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     data: OrderCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Crear una nueva orden de compra.
-    Calcula el total basado en precios actuales y valida stock.
-    """
-    await _caducar_pendientes(db, current_user.id)
-
-    total_amount = 0.0
-    order_items = []
-    # El checkout de MercadoPago muestra el titulo de cada item, asi que hace
-    # falta el nombre del producto y no su UUID.
-    product_names: dict = {}
-
-    # Fraud Evaluation Variables
-    high_risk_items_count = 0
-    
-    for item_data in data.items:
-        # Obtener producto con su categoría
-        result = await db.execute(
-            select(Product).options(selectinload(Product.category)).where(Product.id == item_data.product_id)
-        )
-        product = result.scalar_one_or_none()
-
-        if not product or not product.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Producto {item_data.product_id} no encontrado o no disponible",
-            )
-
-        if product.stock < item_data.quantity:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Stock insuficiente para {product.name}. Disponible: {product.stock}",
-            )
-
-        # Contar items de alto riesgo
-        if product.category and getattr(product.category, "is_high_risk", False):
-            high_risk_items_count += item_data.quantity
-
-        # Reservar stock
-        product.stock -= item_data.quantity
-        subtotal = product.price * item_data.quantity
-        total_amount += subtotal
-
-        product_names[product.id] = product.name
-        order_items.append(OrderItem(
-            product_id=product.id,
-            quantity=item_data.quantity,
-            unit_price=product.price,
-        ))
-
-    # Determinar si la dirección es nueva
-    past_order_result = await db.execute(
-        select(Order).where(
-            Order.user_id == current_user.id,
-            Order.shipping_address == data.shipping_address
-        ).limit(1)
-    )
-    is_new_shipping_address = 0 if past_order_result.scalar_one_or_none() else 1
-    
-    # Obtener duración del checkout
-    checkout_duration = data.checkout_duration_seconds or 120.0
-    
-    # Evaluar fraude con LightGBM
-    fraud_score, decision, risk_level, explanation, detection_time_ms = fraud_service.evaluate_transaction(
-        total_amount=float(total_amount),
-        high_risk_items_count=high_risk_items_count,
-        checkout_duration_seconds=checkout_duration,
-        is_new_shipping_address=is_new_shipping_address
-    )
-    
-    # Asignar estado según decisión
-    if decision == "BLOCKED":
-        order_status = OrderStatus.REJECTED
-        # Devolver el stock reservado ya que se bloqueó
-        for item in order_items:
-            result = await db.execute(select(Product).where(Product.id == item.product_id))
-            p = result.scalar_one_or_none()
-            if p:
-                p.stock += item.quantity
-    elif decision == "REVIEW":
-        order_status = OrderStatus.FRAUD_REVIEW
-    else:
-        order_status = OrderStatus.PENDING
-
-    # Crear orden
-    order = Order(
-        user_id=current_user.id,
-        total_amount=round(total_amount, 2),
-        status=order_status,
-        shipping_address=data.shipping_address,
-        shipping_city=data.shipping_city,
-    )
-    db.add(order)
-    await db.flush()
-    
-    # Crear log de fraude
-    fraud_log = FraudLog(
-        order_id=order.id,
-        fraud_score=fraud_score,
-        decision=decision,
-        risk_level=risk_level,
-        explanation=explanation,
-        detection_time_ms=detection_time_ms,
-        # Sin esto el reentrenamiento con datos reales no tendría variables que
-        # leer: ml/train.py saca las features de esta columna.
-        feature_vector={
-            "total_amount": float(total_amount),
-            "high_risk_items_count": int(high_risk_items_count),
-            "checkout_duration_seconds": float(checkout_duration),
-            "is_new_shipping_address": int(is_new_shipping_address),
-        },
-    )
-    db.add(fraud_log)
-
-    # Asociar items
-    for item in order_items:
-        item.order_id = order.id
-        db.add(item)
-
-    await db.flush()
-    await db.refresh(order)
-
-    # Generate Payment URL if PENDING
-    payment_url = None
-    if order.status == OrderStatus.PENDING:
-        mp_items = []
-        for item in order_items:
-            mp_items.append({
-                "title": product_names.get(item.product_id, "Producto"),
-                "quantity": item.quantity,
-                "unit_price": item.unit_price
-            })
-            
-        try:
-            payment_url = payment_service.create_preference(
-                order_id=order.id,
-                items=mp_items,
-                payer_email=current_user.email
-            )
-            # Temporarily attach to order object for the response builder
-            order.payment_url = payment_url
-        except Exception as e:
-            print(f"Error creating MP preference: {e}")
-            # If MP fails, we still return the order, but without payment_url
-            pass
-
-    return _build_order_response(order)
+    """Crea una orden de compra: reserva inventario, la evalúa y genera el cobro."""
+    creado = await order_service.crear_pedido(db, current_user, data)
+    return _a_respuesta(creado.orden, creado.nombres_de_productos, creado.url_de_pago)
 
 
 @router.get("", response_model=OrderListResponse)
@@ -292,29 +137,10 @@ async def list_orders(
     admin: User = Depends(require_admin),
 ):
     """Lista todas las órdenes con filtros (solo admin)."""
-    query = select(Order)
-
+    consulta = select(Order)
     if status_filter:
-        query = query.where(Order.status == status_filter)
-
-    # Contar total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
-
-    # Paginar
-    query = query.offset((page - 1) * per_page).limit(per_page)
-    query = query.order_by(Order.created_at.desc())
-
-    result = await db.execute(query)
-    orders = result.scalars().all()
-
-    return OrderListResponse(
-        items=[_build_order_response(o) for o in orders],
-        total=total,
-        page=page,
-        pages=math.ceil(total / per_page) if total > 0 else 1,
-    )
+        consulta = consulta.where(Order.status == status_filter)
+    return await _pagina(db, consulta, page, per_page)
 
 
 @router.get("/my-orders", response_model=OrderListResponse)
@@ -325,24 +151,8 @@ async def list_my_orders(
     current_user: User = Depends(get_current_user),
 ):
     """Lista las órdenes del usuario autenticado."""
-    query = select(Order).where(Order.user_id == current_user.id)
-
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
-
-    query = query.offset((page - 1) * per_page).limit(per_page)
-    query = query.order_by(Order.created_at.desc())
-
-    result = await db.execute(query)
-    orders = result.scalars().all()
-
-    return OrderListResponse(
-        items=[_build_order_response(o) for o in orders],
-        total=total,
-        page=page,
-        pages=math.ceil(total / per_page) if total > 0 else 1,
-    )
+    consulta = select(Order).where(Order.user_id == current_user.id)
+    return await _pagina(db, consulta, page, per_page)
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
@@ -351,87 +161,84 @@ async def get_order(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Obtener detalle de una orden. Admin ve todas, cliente solo las suyas."""
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
+    """Detalle de una orden. El admin ve todas; el cliente, solo las suyas."""
+    orden = await order_service.obtener_pedido(db, order_id)
 
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Orden no encontrada",
-        )
-
-    if not current_user.role == "ADMIN" and order.user_id != current_user.id:
+    if current_user.role != "ADMIN" and orden.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permiso para ver esta orden",
         )
 
-    return _build_order_response(order)
+    return _a_respuesta(orden)
 
 
 @router.post("/webhook/mercadopago")
 async def mercadopago_webhook(
     request: Request,
-    db: AsyncSession = Depends(get_db)
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Recibe notificaciones de MercadoPago cuando un pago es creado o actualizado.
-    """
-    # MercadoPago avisa de dos formas segun la version de la integracion: los
-    # webhooks actuales mandan "type" en la query y {"action", "data": {"id"}}
-    # en el cuerpo JSON, mientras que el IPN antiguo solo manda "topic" e "id".
-    # Antes solo se miraban "action" y "topic" de la query, asi que una
-    # notificacion moderna (type=payment, action=payment.updated) se descartaba
-    # y el pedido se quedaba en PENDING aunque el pago estuviera aprobado.
-    try:
-        body = await request.json()
-    except Exception:  # noqa: BLE001 - la notificacion puede venir sin cuerpo
-        body = {}
+    Recibe las notificaciones de pago de MercadoPago.
 
-    payment_id, es_de_pago = _leer_notificacion(dict(request.query_params), body)
+    Siempre responde 200 salvo cuando la firma no cuadra: si devolviera error
+    ante cualquier problema propio, MercadoPago reintentaría la notificación
+    indefinidamente.
+    """
+    try:
+        cuerpo = await request.json()
+    except Exception:  # noqa: BLE001 - la notificación puede venir sin cuerpo
+        cuerpo = {}
+
+    payment_id, es_de_pago = leer_notificacion(dict(request.query_params), cuerpo)
 
     if not payment_id or not es_de_pago:
         return {"status": "ignored"}
 
-    try:
-        # Verificar el estado real en MercadoPago
-        payment_info = payment_service.verify_payment(payment_id)
-        
-        status_mp = payment_info.get("status")
-        external_reference = payment_info.get("external_reference") # This is our order_id
+    # Este endpoint es público: su URL viaja en cada preferencia de pago. La
+    # firma es lo único que distingue un aviso de MercadoPago de uno inventado.
+    if not webhook_security.firma_valida(
+        request.headers.get("x-signature"),
+        request.headers.get("x-request-id"),
+        payment_id,
+    ):
+        print("Webhook rechazado: la firma no coincide.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Firma invalida"
+        )
 
-        if not external_reference:
+    try:
+        pago = payment_service.verify_payment(payment_id)
+        referencia = pago.get("external_reference")
+
+        if not referencia:
             return {"status": "no order reference"}
 
-        # Find the order
-        result = await db.execute(select(Order).where(Order.id == external_reference))
-        order = result.scalar_one_or_none()
+        resultado = await order_service.registrar_resultado_del_pago(
+            db, referencia, pago.get("status")
+        )
 
-        if not order:
+        if resultado.estado == "orden no encontrada":
             return {"status": "order not found"}
 
-        if order.status == OrderStatus.PENDING:
-            if status_mp == "approved":
-                order.status = OrderStatus.COMPLETED
-                await db.commit()
-                print(f"Order {order.id} marcada como COMPLETED por el webhook.")
-            elif status_mp in ("rejected", "cancelled"):
-                # Sin esto un pago rechazado dejaba la orden en PENDING para
-                # siempre, con su stock reservado y sin forma de cobrarla.
-                order.status = OrderStatus.CANCELLED
-                await _restore_stock(db, order)
-                await db.commit()
-                print(f"Order {order.id} cancelada: MercadoPago devolvio '{status_mp}'.")
-            
+        # El aviso al cliente va en segundo plano y sin poder fallar: el cobro
+        # ya está hecho y la orden guardada, así que un problema del servidor de
+        # correo no puede afectar a la respuesta que espera MercadoPago.
+        if resultado.estado == "completada" and resultado.orden.user is not None:
+            background_tasks.add_task(
+                email_service.enviar_confirmacion_de_pedido,
+                resultado.orden.user.email,
+                resultado.orden.user.full_name,
+                resultado.orden.id,
+                resultado.orden.total_amount,
+            )
+
         return {"status": "success"}
 
-    except Exception as e:
-        print(f"Webhook error: {e}")
-        # Return 200 anyway so MP doesn't keep retrying forever if it's a structural error
-        # In a real app we might return 500 so they retry.
-        return {"status": "error", "message": str(e)}
-
+    except Exception as exc:  # noqa: BLE001 - ver la nota del docstring
+        print(f"Webhook error: {exc}")
+        return {"status": "error", "message": str(exc)}
 
 
 @router.patch("/{order_id}/status", response_model=OrderResponse)
@@ -441,36 +248,9 @@ async def update_order_status(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Cambiar el estado de una orden (solo admin)."""
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Orden no encontrada",
-        )
-
-    # Validar que el nuevo estado es válido
-    try:
-        new_status = OrderStatus(data.status)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Estado inválido. Valores válidos: {[s.value for s in OrderStatus]}",
-        )
-
-    # Antes esto solo cambiaba la etiqueta: cancelar o rechazar un pedido desde
-    # el panel dejaba el stock reservado para siempre, al reves que la
-    # cancelacion del cliente, que si lo devolvia.
-    if new_status in STOCK_LIBERADO and order.status not in STOCK_LIBERADO:
-        await _restore_stock(db, order)
-
-    order.status = new_status
-    await db.flush()
-    await db.refresh(order)
-
-    return _build_order_response(order)
+    """Cambia el estado de una orden (solo admin)."""
+    orden = await order_service.cambiar_estado(db, order_id, data.status)
+    return _a_respuesta(orden)
 
 
 @router.patch("/my-orders/{order_id}/cancel", response_model=OrderResponse)
@@ -479,36 +259,6 @@ async def cancel_my_order(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Cancelar una orden propia, permitido solo dentro de 1 hora y si está PENDING."""
-    result = await db.execute(
-        select(Order).where(Order.id == order_id, Order.user_id == current_user.id)
-    )
-    order = result.scalar_one_or_none()
-
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Orden no encontrada",
-        )
-
-    if order.status != OrderStatus.PENDING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Solo se pueden cancelar órdenes en estado PENDING",
-        )
-
-    # Validar 1 hora de límite
-    time_elapsed = datetime.now(timezone.utc) - order.created_at
-    if time_elapsed > timedelta(hours=1):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El periodo de cancelación (1 hora) ha expirado. Por favor, comunícate con soporte.",
-        )
-
-    order.status = OrderStatus.CANCELLED
-    await _restore_stock(db, order)
-
-    await db.flush()
-    await db.refresh(order)
-
-    return _build_order_response(order)
+    """Cancela una orden propia, si sigue pendiente y dentro del plazo."""
+    orden = await order_service.cancelar_pedido_del_cliente(db, current_user, order_id)
+    return _a_respuesta(orden)

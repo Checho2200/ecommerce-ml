@@ -9,9 +9,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from starlette.requests import Request
 
 from app.core.config import get_settings
 from app.core.database import create_tables
+from app.core.rate_limit import limiter
+from app.services.errors import ErrorDeNegocio
 
 # Importar modelos para que SQLAlchemy los registre
 import app.models  # noqa: F401
@@ -35,15 +41,22 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """
     Ciclo de vida de la aplicación.
-    - Startup: crea tablas (dev) y cargará modelo ML (Fase 4).
+    - Startup: prepara el esquema en desarrollo y carga el modelo ML.
     - Shutdown: libera recursos.
     """
     # === STARTUP ===
     print(f"🚀 Iniciando {settings.APP_NAME}...")
 
-    # Crear tablas si no existen (SQLite en desarrollo, PostgreSQL en producción)
-    await create_tables()
-    print("📦 Tablas creadas/verificadas")
+    # El esquema se crea al vuelo solo en SQLite, que es la base de desarrollo
+    # y la de las pruebas. En PostgreSQL manda Alembic: el despliegue ejecuta
+    # `python -m app.scripts.apply_migrations` antes de arrancar. Crear las
+    # tablas también aquí dejaría dos fuentes de verdad para el esquema y las
+    # migraciones se volverían decorativas.
+    if settings.DATABASE_URL.startswith("sqlite"):
+        await create_tables()
+        print("📦 Tablas creadas/verificadas (SQLite)")
+    else:
+        print("📦 Esquema gestionado por Alembic")
 
     # Cargar modelo LightGBM de detección de fraude (Fase 4 completada)
     fraud_service.load_model()
@@ -64,6 +77,23 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Límite de peticiones por IP (ver app/core/rate_limit.py)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(ErrorDeNegocio)
+async def manejar_error_de_negocio(request: Request, error: ErrorDeNegocio):
+    """
+    Traduce a HTTP las reglas del negocio que no se cumplieron.
+
+    Los servicios lanzan errores de dominio —"no hay stock", "esa orden no
+    existe"— sin saber nada de códigos de estado. La traducción ocurre aquí, en
+    un único sitio, de modo que la capa de negocio no dependa de FastAPI y se
+    pueda usar igual desde un script o una tarea en segundo plano.
+    """
+    return JSONResponse(status_code=error.codigo_http, content={"detail": error.mensaje})
 
 # CORS
 app.add_middleware(
