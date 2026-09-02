@@ -1,0 +1,110 @@
+{
+  "datos": {
+    "origen": "sintetico",
+    "detalle": "10000 transacciones generadas (829 fraudulentas, 8.3%)"
+  },
+  "particion_de_prueba": 2000,
+  "costos_usados": {
+    "margen_bruto": 0.15,
+    "cargo_por_contracargo": 30.0,
+    "revision_manual": 4.0,
+    "acierto_de_la_revision": 0.9,
+    "capacidad_de_revision": 0.15
+  },
+  "umbrales_de_referencia": [
+    0.3,
+    0.7
+  ],
+  "resultados": [
+    {
+      "modelo": "LightGBM",
+      "average_precision": 0.697,
+      "roc_auc": 0.9023,
+      "precision": 0.75,
+      "recall": 0.5964,
+      "f1": 0.6644,
+      "umbrales": [
+        0.2,
+        0.85
+      ],
+      "fraudes_aprobados": 27,
+      "legitimos_bloqueados": 33,
+      "perdida_total": 45712.35
+    },
+    {
+      "modelo": "Bosque aleatorio",
+      "average_precision": 0.6725,
+      "roc_auc": 0.8949,
+      "precision": 0.7698,
+      "recall": 0.5843,
+      "f1": 0.6644,
+      "umbrales": [
+        0.15,
+        0.45
+      ],
+      "fraudes_aprobados": 46,
+      "legitimos_bloqueados": 29,
+      "perdida_total": 81638.95
+    },
+    {
+      "modelo": "Árbol de decisión",
+      "average_precision": 0.6275,
+      "roc_auc": 0.8979,
+      "precision": 0.6985,
+      "recall": 0.5723,
+      "f1": 0.6291,
+      "umbrales": [
+        0.3,
+        0.9
+      ],
+      "fraudes_aprobados": 28,
+      "legitimos_bloqueados": 41,
+      "perdida_total": 49517.13
+    },
+    {
+      "modelo": "Regresión logística",
+      "average_precision": 0.5976,
+      "roc_auc": 0.8871,
+      "precision": 0.7679,
+      "recall": 0.259,
+      "f1": 0.3874,
+      "umbrales": [
+        0.5,
+        0.95
+      ],
+      "fraudes_aprobados": 35,
+      "legitimos_bloqueados": 13,
+      "perdida_total": 65991.41
+    },
+    {
+      "modelo": "Reglas heurísticas",
+      "average_precision": 0.5309,
+      "roc_auc": 0.8581,
+      "precision": 0.8481,
+      "recall": 0.4036,
+      "f1": 0.5469,
+      "umbrales": [
+        0.3,
+        0.55
+      ],
+      "fraudes_aprobados": 49,
+      "legitimos_bloqueados": 12,
+      "perdida_total": 91805.03
+    },
+    {
+      "modelo": "Clasificador trivial",
+      "average_precision": 0.082,
+      "roc_auc": 0.4925,
+      "precision": 0.0698,
+      "recall": 0.0723,
+      "f1": 0.071,
+      "umbrales": [
+        0.05,
+        0.05
+      ],
+      "fraudes_aprobados": 154,
+      "legitimos_bloqueados": 160,
+      "perdida_total": 395420.8
+    }
+  ]
+}

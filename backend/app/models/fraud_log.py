@@ -39,8 +39,19 @@ class FraudLog(Base):
     risk_level: Mapped[str] = mapped_column(String(10), nullable=True)
     explanation: Mapped[str] = mapped_column(Text, nullable=True)
     admin_notes: Mapped[str] = mapped_column(Text, nullable=True)
+    # Aporte de cada variable al puntaje, calculado con los valores SHAP que
+    # LightGBM produce de forma nativa. Es lo que permite decirle al
+    # administrador POR QUE se tomo la decision, en vez de una frase generica.
+    contributions: Mapped[dict] = mapped_column(JSON, nullable=True)
     is_actual_fraud: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
+    )
+    # Cuando un administrador reviso el pedido y lo etiqueto. Sin esta marca no
+    # se puede distinguir "legitimo confirmado" de "todavia nadie lo miro", y
+    # esa diferencia es justo la que hace falta para calcular la precision del
+    # modelo: is_actual_fraud=False significaba las dos cosas a la vez.
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     detection_time_ms: Mapped[float] = mapped_column(
         Float, nullable=True

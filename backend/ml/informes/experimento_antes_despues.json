@@ -1,0 +1,136 @@
+{
+  "compras_simuladas": {
+    "validacion": 4000,
+    "prueba": 4000,
+    "tasa_de_fraude": 0.0813,
+    "semillas": {
+      "validacion": 777,
+      "prueba": 999
+    },
+    "nota": "Generadas con semillas distintas de la del entrenamiento: ninguno de los dos modelos vio estas transacciones."
+  },
+  "costos_usados": {
+    "margen_bruto": 0.15,
+    "cargo_por_contracargo": 30.0,
+    "revision_manual": 4.0,
+    "acierto_de_la_revision": 0.9,
+    "capacidad_de_revision": 0.15
+  },
+  "resultados": [
+    {
+      "configuracion": "A. Sistema original",
+      "umbrales": [
+        0.3,
+        0.7
+      ],
+      "average_precision": 0.769,
+      "roc_auc": 0.9066,
+      "precision": 0.6453,
+      "recall": 0.7446,
+      "f1": 0.6914,
+      "matriz_de_confusion": {
+        "verdaderos_negativos": 3542,
+        "falsos_positivos": 133,
+        "falsos_negativos": 83,
+        "verdaderos_positivos": 242
+      },
+      "fraudes_aprobados": 47,
+      "legitimos_bloqueados": 133,
+      "pedidos_revisados": 577,
+      "proporcion_revisada": 0.1442,
+      "perdida_total": 121024.98,
+      "perdida_por_fraude_aprobado": 57620.7,
+      "perdida_por_venta_bloqueada": 44676.59,
+      "costo_de_revisiones": 18727.7
+    },
+    {
+      "configuracion": "B. Modelo anterior + umbrales por costo",
+      "umbrales": [
+        0.35,
+        0.9
+      ],
+      "average_precision": 0.769,
+      "roc_auc": 0.9066,
+      "precision": 0.8696,
+      "recall": 0.6154,
+      "f1": 0.7207,
+      "matriz_de_confusion": {
+        "verdaderos_negativos": 3645,
+        "falsos_positivos": 30,
+        "falsos_negativos": 125,
+        "verdaderos_positivos": 200
+      },
+      "fraudes_aprobados": 51,
+      "legitimos_bloqueados": 30,
+      "pedidos_revisados": 579,
+      "proporcion_revisada": 0.1447,
+      "perdida_total": 105086.03,
+      "perdida_por_fraude_aprobado": 59497.84,
+      "perdida_por_venta_bloqueada": 17036.0,
+      "costo_de_revisiones": 28552.19
+    },
+    {
+      "configuracion": "C. Sistema actual",
+      "umbrales": [
+        0.4,
+        0.85
+      ],
+      "average_precision": 0.7688,
+      "roc_auc": 0.9054,
+      "precision": 0.797,
+      "recall": 0.6523,
+      "f1": 0.7174,
+      "matriz_de_confusion": {
+        "verdaderos_negativos": 3621,
+        "falsos_positivos": 54,
+        "falsos_negativos": 113,
+        "verdaderos_positivos": 212
+      },
+      "fraudes_aprobados": 53,
+      "legitimos_bloqueados": 54,
+      "pedidos_revisados": 463,
+      "proporcion_revisada": 0.1158,
+      "perdida_total": 95657.4,
+      "perdida_por_fraude_aprobado": 46594.38,
+      "perdida_por_venta_bloqueada": 22779.35,
+      "costo_de_revisiones": 26283.66
+    }
+  ],
+  "sistema_desplegado": {
+    "configuracion": "Sistema desplegado hoy",
+    "umbrales": [
+      0.35,
+      0.8
+    ],
+    "average_precision": 0.7688,
+    "roc_auc": 0.9054,
+    "precision": 0.7305,
+    "recall": 0.6923,
+    "f1": 0.7109,
+    "matriz_de_confusion": {
+      "verdaderos_negativos": 3592,
+      "falsos_positivos": 83,
+      "falsos_negativos": 100,
+      "verdaderos_positivos": 225
+    },
+    "fraudes_aprobados": 47,
+    "legitimos_bloqueados": 83,
+    "pedidos_revisados": 539,
+    "proporcion_revisada": 0.1348,
+    "perdida_total": 88039.3,
+    "perdida_por_fraude_aprobado": 33609.43,
+    "perdida_por_venta_bloqueada": 29624.44,
+    "costo_de_revisiones": 24805.42
+  },
+  "mejora": {
+    "perdida_evitada": 25367.58,
+    "porcentaje": 20.96,
+    "aporte_de_elegir_los_umbrales_por_costo": 15938.95,
+    "aporte_de_reentrenar_el_modelo": 9428.63,
+    "diferencia_en_fraudes_aprobados": 6,
+    "diferencia_en_legitimas_bloqueadas": -79,
+    "average_precision_antes": 0.769,
+    "average_precision_despues": 0.7688,
+    "el_modelo_discrimina_mejor": false
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "origen": "sintetico",
+  "detalle": "10000 transacciones generadas (829 fraudulentas, 8.3%)",
+  "filas": 10000,
+  "tasa_de_fraude": 0.0829,
+  "archivo": "dataset_sintetico.csv",
+  "por_variable": {
+    "total_amount": {
+      "legitimas": {
+        "n": 9171,
+        "media": 742.7,
+        "desviacion": 992.38,
+        "minimo": 40.0,
+        "p25": 228.57,
+        "mediana": 446.32,
+        "p75": 866.31,
+        "maximo": 25211.91
+      },
+      "fraudulentas": {
+        "n": 829,
+        "media": 2616.82,
+        "desviacion": 2947.42,
+        "minimo": 52.29,
+        "p25": 837.2,
+        "mediana": 1694.14,
+        "p75": 3363.7,
+        "maximo": 24257.27
+      },
+      "solapamiento_con_el_fraude": 0.2387
+    },
+    "high_risk_items_count": {
+      "legitimas": {
+        "n": 9171,
+        "media": 0.52,
+        "desviacion": 0.7,
+        "minimo": 0.0,
+        "p25": 0.0,
+        "mediana": 0.0,
+        "p75": 1.0,
+        "maximo": 4.0
+      },
+      "fraudulentas": {
+        "n": 829,
+        "media": 1.73,
+        "desviacion": 1.4,
+        "minimo": 0.0,
+        "p25": 1.0,
+        "mediana": 2.0,
+        "p75": 3.0,
+        "maximo": 6.0
+      },
+      "solapamiento_con_el_fraude": 0.4098
+    },
+    "checkout_duration_seconds": {
+      "legitimas": {
+        "n": 9171,
+        "media": 292.86,
+        "desviacion": 301.18,
+        "minimo": 5.36,
+        "p25": 113.48,
+        "mediana": 204.27,
+        "p75": 359.71,
+        "maximo": 3600.0
+      },
+      "fraudulentas": {
+        "n": 829,
+        "media": 114.8,
+        "desviacion": 182.56,
+        "minimo": 4.0,
+        "p25": 32.22,
+        "mediana": 62.3,
+        "p75": 123.0,
+        "maximo": 2138.45
+      },
+      "solapamiento_con_el_fraude": 0.2643
+    },
+    "is_new_shipping_address": {
+      "legitimas": {
+        "n": 9171,
+        "media": 0.2,
+        "desviacion": 0.4,
+        "minimo": 0.0,
+        "p25": 0.0,
+        "mediana": 0.0,
+        "p75": 0.0,
+        "maximo": 1.0
+      },
+      "fraudulentas": {
+        "n": 829,
+        "media": 0.61,
+        "desviacion": 0.49,
+        "minimo": 0.0,
+        "p25": 0.0,
+        "mediana": 1.0,
+        "p75": 1.0,
+        "maximo": 1.0
+      },
+      "solapamiento_con_el_fraude": null
+    }
+  },
+  "correlacion_spearman": {
+    "total_amount": {
+      "total_amount": 1.0,
+      "high_risk_items_count": 0.106,
+      "checkout_duration_seconds": -0.118,
+      "is_new_shipping_address": 0.11,
+      "is_fraud": 0.297
+    },
+    "high_risk_items_count": {
+      "total_amount": 0.106,
+      "high_risk_items_count": 1.0,
+      "checkout_duration_seconds": -0.096,
+      "is_new_shipping_address": 0.075,
+      "is_fraud": 0.285
+    },
+    "checkout_duration_seconds": {
+      "total_amount": -0.118,
+      "high_risk_items_count": -0.096,
+      "checkout_duration_seconds": 1.0,
+      "is_new_shipping_address": -0.105,
+      "is_fraud": -0.295
+    },
+    "is_new_shipping_address": {
+      "total_amount": 0.11,
+      "high_risk_items_count": 0.075,
+      "checkout_duration_seconds": -0.105,
+      "is_new_shipping_address": 1.0,
+      "is_fraud": 0.262
+    },
+    "is_fraud": {
+      "total_amount": 0.297,
+      "high_risk_items_count": 0.285,
+      "checkout_duration_seconds": -0.295,
+      "is_new_shipping_address": 0.262,
+      "is_fraud": 1.0
+    }
+  }
+}

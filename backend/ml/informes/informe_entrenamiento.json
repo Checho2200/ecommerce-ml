@@ -1,0 +1,152 @@
+{
+  "generado_en": "2026-09-01T20:01:59+00:00",
+  "datos": {
+    "origen": "sintetico",
+    "detalle": "10000 transacciones generadas (829 fraudulentas, 8.3%)",
+    "total": 10000,
+    "tasa_de_fraude": 0.0829,
+    "particiones": {
+      "entrenamiento": 6000,
+      "validacion": 2000,
+      "prueba": 2000,
+      "ajuste_final": 8000
+    }
+  },
+  "modelo": {
+    "algoritmo": "LightGBM (LGBMClassifier)",
+    "hiperparametros": {
+      "learning_rate": 0.05,
+      "max_depth": 3,
+      "n_estimators": 100,
+      "num_leaves": 15
+    },
+    "variables": [
+      "total_amount",
+      "high_risk_items_count",
+      "checkout_duration_seconds",
+      "is_new_shipping_address"
+    ],
+    "importancias": {
+      "total_amount": 232,
+      "checkout_duration_seconds": 210,
+      "high_risk_items_count": 159,
+      "is_new_shipping_address": 82
+    }
+  },
+  "validacion_cruzada": {
+    "average_precision": {
+      "media": 0.7307,
+      "desviacion": 0.0307
+    },
+    "roc_auc": {
+      "media": 0.9001,
+      "desviacion": 0.0191
+    },
+    "f1": {
+      "media": 0.5707,
+      "desviacion": 0.0289
+    }
+  },
+  "umbrales": {
+    "aprobar_por_debajo_de": 0.35,
+    "bloquear_por_encima_de": 0.8,
+    "de_referencia": [
+      0.3,
+      0.7
+    ],
+    "costos_usados": {
+      "margen_bruto": 0.15,
+      "cargo_por_contracargo": 30.0,
+      "revision_manual": 4.0,
+      "acierto_de_la_revision": 0.9,
+      "capacidad_de_revision": 0.15
+    },
+    "en_validacion": {
+      "t_bajo": 0.35,
+      "t_alto": 0.8,
+      "costo_total": 41373.56,
+      "perdida_por_fraude_aprobado": 15909.8,
+      "perdida_por_venta_bloqueada": 14674.37,
+      "costo_de_revisiones": 10789.39,
+      "pedidos_aprobados": 1596,
+      "pedidos_revisados": 268,
+      "pedidos_bloqueados": 136,
+      "fraudes_aprobados": 32,
+      "legitimos_bloqueados": 36,
+      "proporcion_revisada": 0.134,
+      "dentro_de_capacidad": true
+    },
+    "comparacion_con_referencia": {
+      "costo_con_umbrales_elegidos": 41373.56,
+      "costo_con_umbrales_de_referencia": 45720.69,
+      "ahorro": 4347.13,
+      "ahorro_porcentual": 9.51,
+      "proporcion_revisada_con_los_elegidos": 0.134,
+      "proporcion_revisada_con_la_referencia": 0.163,
+      "la_referencia_cabe_en_la_capacidad": false
+    }
+  },
+  "prueba": {
+    "al_umbral_elegido": {
+      "umbral": 0.8,
+      "accuracy": 0.9545,
+      "precision": 0.7517,
+      "recall": 0.6747,
+      "f1": 0.7111,
+      "roc_auc": 0.9055,
+      "average_precision": 0.7294,
+      "matriz_de_confusion": {
+        "verdaderos_negativos": 1797,
+        "falsos_positivos": 37,
+        "falsos_negativos": 54,
+        "verdaderos_positivos": 112
+      },
+      "positivos_reales": 166,
+      "total": 2000
+    },
+    "al_umbral_neutro_0_5": {
+      "umbral": 0.5,
+      "accuracy": 0.914,
+      "precision": 0.4891,
+      "recall": 0.8072,
+      "f1": 0.6091,
+      "roc_auc": 0.9055,
+      "average_precision": 0.7294,
+      "matriz_de_confusion": {
+        "verdaderos_negativos": 1694,
+        "falsos_positivos": 140,
+        "falsos_negativos": 32,
+        "verdaderos_positivos": 134
+      },
+      "positivos_reales": 166,
+      "total": 2000
+    },
+    "costo": {
+      "t_bajo": 0.35,
+      "t_alto": 0.8,
+      "costo_total": 49622.89,
+      "perdida_por_fraude_aprobado": 22727.18,
+      "perdida_por_venta_bloqueada": 14155.24,
+      "costo_de_revisiones": 12740.47,
+      "pedidos_aprobados": 1586,
+      "pedidos_revisados": 265,
+      "pedidos_bloqueados": 149,
+      "fraudes_aprobados": 30,
+      "legitimos_bloqueados": 37
+    }
+  },
+  "reemplazo_del_modelo": {
+    "reemplaza": true,
+    "resultado_sospechoso": false,
+    "motivo": "AUC-PR 0.7294 contra 0.2605 del modelo actual",
+    "average_precision_candidato": 0.7294,
+    "average_precision_anterior": 0.2605
+  },
+  "figuras": [
+    "curva_roc.png",
+    "curva_precision_exhaustividad.png",
+    "distribucion_de_puntajes.png",
+    "costo_por_umbrales.png",
+    "matriz_de_confusion.png"
+  ]
+}

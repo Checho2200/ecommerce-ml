@@ -1,0 +1,14 @@
+{
+  "entrenado_en": "2026-09-01T20:01:59+00:00",
+  "origen_de_los_datos": "sintetico",
+  "variables": [
+    "total_amount",
+    "high_risk_items_count",
+    "checkout_duration_seconds",
+    "is_new_shipping_address"
+  ],
+  "umbral_aprobacion": 0.35,
+  "umbral_bloqueo": 0.8,
+  "average_precision": 0.7294,
+  "roc_auc": 0.9055
+}
