@@ -68,7 +68,15 @@ async def list_products(
     if active_only:
         query = query.where(Product.is_active == True)
     if category_id:
-        query = query.where(Product.category_id == category_id)
+        # Filtrar por una categoría raíz incluye lo de sus subcategorías: quien
+        # entra a "Memorias RAM" espera ver también las DDR4 y DDR5, no una
+        # lista vacía porque los productos cuelgan de las hijas. Filtrar por una
+        # subcategoría (que no tiene hijas) devuelve solo lo suyo.
+        hijas = await db.execute(
+            select(Category.id).where(Category.parent_id == category_id)
+        )
+        ids = [category_id, *hijas.scalars().all()]
+        query = query.where(Product.category_id.in_(ids))
     if search:
         query = query.where(Product.name.ilike(f"%{search}%"))
 

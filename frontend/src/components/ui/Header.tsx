@@ -9,7 +9,7 @@
  * lista fija en el código).
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
@@ -73,6 +73,13 @@ export default function Header() {
   useEffect(() => {
     api.categories.list().then(setCategories).catch(() => setCategories([]));
   }, []);
+
+  // El menú muestra solo las categorías raíz; las subcategorías (DDR4, Intel
+  // Core i7…) se ven al entrar a la categoría, no en la barra de navegación.
+  const categoriasRaiz = useMemo(
+    () => categories.filter((c) => c.parent_id === null),
+    [categories]
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,11 +281,11 @@ export default function Header() {
         </Container>
 
         {/* ── Menú de categorías (escritorio) ───────────── */}
-        {!isMobile && categories.length > 0 && (
+        {!isMobile && categoriasRaiz.length > 0 && (
           <Box sx={{ borderTop: "1px solid", borderColor: "divider" }}>
             <Container maxWidth="lg">
               <Stack direction="row" spacing={3.5} sx={{ alignItems: "center" }}>
-                {categories.slice(0, 7).map((c) => (
+                {categoriasRaiz.slice(0, 7).map((c) => (
                   <Typography
                     key={c.id}
                     component={Link}
@@ -399,7 +406,7 @@ export default function Header() {
             Categorías
           </Typography>
           <List dense>
-            {categories.map((c) => (
+            {categoriasRaiz.map((c) => (
               <ListItem disablePadding key={c.id}>
                 <ListItemButton onClick={() => go(`/catalog?category_id=${c.id}`)}>
                   <ListItemText primary={c.name} />

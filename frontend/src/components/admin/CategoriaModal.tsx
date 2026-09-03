@@ -7,7 +7,7 @@
  * pantalla con el formulario. Separado, cada archivo hace una sola cosa.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { type CategoryResponse } from "@/lib/api";
 import ImageUploadField from "@/components/ui/ImageUploadField";
 import {
@@ -16,25 +16,50 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  FormControl,
   Grid,
+  InputLabel,
+  MenuItem,
+  Select,
   TextField,
 } from "@mui/material";
 
+export type CategoryFormData = {
+  name: string;
+  slug: string;
+  is_high_risk: boolean;
+  image_url: string;
+  parent_id: number | null;
+};
+
 export default function CategoryModal({
   category,
+  categories,
   onSave,
   onClose,
 }: {
   category: CategoryResponse | null;
-  onSave: (data: { name: string; slug: string; is_high_risk: boolean; image_url: string }) => void;
+  categories: CategoryResponse[];
+  onSave: (data: CategoryFormData) => void;
   onClose: () => void;
 }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<CategoryFormData>({
     name: category?.name || "",
     slug: category?.slug || "",
     is_high_risk: category?.is_high_risk ?? false,
     image_url: category?.image_url || "",
+    parent_id: category?.parent_id ?? null,
   });
+
+  // Solo las raíces pueden ser padre (el árbol es de dos niveles). Y una
+  // categoría no puede ser su propia madre.
+  const posiblesPadres = useMemo(
+    () =>
+      categories.filter(
+        (c) => c.parent_id === null && c.id !== category?.id
+      ),
+    [categories, category]
+  );
 
   const autoSlug = (name: string) =>
     name.toLowerCase()
@@ -73,6 +98,30 @@ export default function CategoryModal({
                 slotProps={{ htmlInput: { pattern: "^[a-z0-9\\-]+$" } }}
                 helperText="Solo minúsculas, números y guiones"
               />
+            </Grid>
+            <Grid size={12}>
+              <FormControl fullWidth>
+                <InputLabel>Categoría padre</InputLabel>
+                <Select
+                  label="Categoría padre"
+                  value={form.parent_id === null ? "" : String(form.parent_id)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      parent_id: e.target.value === "" ? null : Number(e.target.value),
+                    })
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Ninguna (es una categoría principal)</em>
+                  </MenuItem>
+                  {posiblesPadres.map((c) => (
+                    <MenuItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid size={12}>
               <ImageUploadField

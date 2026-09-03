@@ -72,7 +72,7 @@ export default function CategoriesPage() {
   const showSnack = (msg: string, severity: "success" | "error" = "success") =>
     setSnack({ msg, severity });
 
-  const handleSave = async (data: { name: string; slug: string; is_high_risk: boolean; image_url: string }) => {
+  const handleSave = async (data: { name: string; slug: string; is_high_risk: boolean; image_url: string; parent_id: number | null }) => {
     try {
       if (editCat) {
         await api.categories.update(editCat.id, data);
@@ -188,6 +188,14 @@ export default function CategoriesPage() {
                         {cat.name}
                       </Typography>
                     </Box>
+                    {cat.parent_id !== null && (
+                      <Typography variant="caption" sx={{ display: "block", color: "text.secondary", mb: 1 }}>
+                        Subcategoría de{" "}
+                        <strong>
+                          {categories.find((p) => p.id === cat.parent_id)?.name ?? "—"}
+                        </strong>
+                      </Typography>
+                    )}
                     <Box
                       sx={{
                         display: "inline-block",
@@ -236,6 +244,7 @@ export default function CategoriesPage() {
       {showModal && (
         <CategoryModal
           category={editCat}
+          categories={categories}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditCat(null); }}
         />

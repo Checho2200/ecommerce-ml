@@ -8,7 +8,13 @@ export const categories = {
     return request<CategoryResponse[]>("/categories");
   },
 
-  async create(data: { name: string; slug: string; is_high_risk: boolean }) {
+  async create(data: {
+    name: string;
+    slug: string;
+    is_high_risk: boolean;
+    image_url?: string | null;
+    parent_id?: number | null;
+  }) {
     return request<CategoryResponse>("/categories", {
       method: "POST",
       body: JSON.stringify(data),
@@ -17,7 +23,13 @@ export const categories = {
 
   async update(
     id: number,
-    data: { name?: string; slug?: string; is_high_risk?: boolean }
+    data: {
+      name?: string;
+      slug?: string;
+      is_high_risk?: boolean;
+      image_url?: string | null;
+      parent_id?: number | null;
+    }
   ) {
     return request<CategoryResponse>(`/categories/${id}`, {
       method: "PUT",

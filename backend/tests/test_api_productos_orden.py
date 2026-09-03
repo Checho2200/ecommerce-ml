@@ -69,3 +69,43 @@ async def test_un_orden_desconocido_no_rompe_el_catalogo(cliente, sesion):
     respuesta = await cliente.get("/api/v1/products?sort=lo-que-sea")
     assert respuesta.status_code == 200
     assert len(respuesta.json()["items"]) == 4
+
+
+async def _tienda_con_subcategorias(sesion):
+    """Una raíz 'Memorias RAM' con hijas DDR4/DDR5 y un producto en cada una."""
+    ram = Category(name="Memorias RAM", slug="memorias-ram")
+    sesion.add(ram)
+    await sesion.flush()
+    ddr4 = Category(name="DDR4", slug="ram-ddr4", parent_id=ram.id)
+    ddr5 = Category(name="DDR5", slug="ram-ddr5", parent_id=ram.id)
+    sesion.add_all([ddr4, ddr5])
+    await sesion.flush()
+    sesion.add_all([
+        Product(name="Kit DDR4 16GB", description="x", price=189.0, stock=5, category_id=ddr4.id),
+        Product(name="Kit DDR5 32GB", description="x", price=449.0, stock=5, category_id=ddr5.id),
+    ])
+    await sesion.commit()
+    return ram, ddr4, ddr5
+
+
+async def test_filtrar_por_raiz_incluye_las_subcategorias(cliente, sesion):
+    ram, ddr4, _ddr5 = await _tienda_con_subcategorias(sesion)
+
+    # La raíz trae lo de todas sus hijas.
+    raiz = await cliente.get(f"/api/v1/products?category_id={ram.id}")
+    assert raiz.status_code == 200
+    nombres = {p["name"] for p in raiz.json()["items"]}
+    assert nombres == {"Kit DDR4 16GB", "Kit DDR5 32GB"}
+
+    # Una subcategoría trae solo lo suyo.
+    solo_ddr4 = await cliente.get(f"/api/v1/products?category_id={ddr4.id}")
+    assert {p["name"] for p in solo_ddr4.json()["items"]} == {"Kit DDR4 16GB"}
+
+
+async def test_la_categoria_expone_su_parent_id(cliente, sesion):
+    _ram, ddr4, _ddr5 = await _tienda_con_subcategorias(sesion)
+    respuesta = await cliente.get("/api/v1/categories")
+    assert respuesta.status_code == 200
+    porslug = {c["slug"]: c for c in respuesta.json()}
+    assert porslug["memorias-ram"]["parent_id"] is None
+    assert porslug["ram-ddr4"]["parent_id"] == ddr4.parent_id

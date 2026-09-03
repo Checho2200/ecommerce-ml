@@ -19,6 +19,7 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  Collapse,
   Divider,
   TextField,
   InputAdornment,
@@ -31,6 +32,8 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import SortIcon from "@mui/icons-material/SwapVert";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import CloseIcon from "@mui/icons-material/Close";
@@ -90,48 +93,153 @@ function FilterPanel({
       <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, textTransform: "uppercase", letterSpacing: 1, fontSize: "0.72rem", color: "text.secondary" }}>
         Categorías
       </Typography>
-      <List dense disablePadding>
-        <ListItemButton
-          selected={categoryFilter === null}
-          onClick={() => onCategoryChange(null)}
-          sx={{
-            borderRadius: 2,
-            mb: 0.5,
-            "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52", fontWeight: 800 },
-            "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
-          }}
-        >
-          <ListItemText
-            primary={<Typography sx={{ fontWeight: categoryFilter === null ? 800 : 500, fontSize: "0.875rem" }}>Todas las categorías</Typography>}
-          />
-          {categoryFilter === null && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
-        </ListItemButton>
-
-        {categories.map((cat) => (
-          <ListItemButton
-            key={cat.id}
-            selected={categoryFilter === cat.id}
-            onClick={() => onCategoryChange(cat.id)}
-            sx={{
-              borderRadius: 2,
-              mb: 0.5,
-              "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52" },
-              "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
-            }}
-          >
-            <ListItemText
-              primary={<Typography sx={{ fontWeight: categoryFilter === cat.id ? 800 : 500, fontSize: "0.875rem" }}>{cat.name}</Typography>}
-            />
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              {cat.is_high_risk && (
-                <Chip label="⚠" size="small" color="error" variant="outlined" sx={{ fontSize: "0.6rem", height: 18, "& .MuiChip-label": { px: 0.5 } }} />
-              )}
-              {categoryFilter === cat.id && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
-            </Box>
-          </ListItemButton>
-        ))}
-      </List>
+      <CategoryTree
+        categories={categories}
+        categoryFilter={categoryFilter}
+        onCategoryChange={onCategoryChange}
+      />
     </Box>
+  );
+}
+
+/**
+ * Árbol de categorías del filtro: cada raíz agrupa sus subcategorías, que se
+ * despliegan al tocar la flecha. Elegir una raíz filtra por todo lo que cuelga
+ * de ella; elegir una subcategoría, solo por esa. La raíz que contiene la
+ * selección actual arranca abierta.
+ */
+function CategoryTree({
+  categories,
+  categoryFilter,
+  onCategoryChange,
+}: {
+  categories: CategoryResponse[];
+  categoryFilter: number | null;
+  onCategoryChange: (id: number | null) => void;
+}) {
+  const raices = useMemo(
+    () => categories.filter((c) => c.parent_id === null),
+    [categories]
+  );
+  const hijasDe = useMemo(() => {
+    const mapa = new Map<number, CategoryResponse[]>();
+    for (const c of categories) {
+      if (c.parent_id !== null) {
+        const lista = mapa.get(c.parent_id) ?? [];
+        lista.push(c);
+        mapa.set(c.parent_id, lista);
+      }
+    }
+    return mapa;
+  }, [categories]);
+
+  // Raíz que contiene la selección actual, para abrirla de entrada.
+  const raizSeleccionada = useMemo(() => {
+    if (categoryFilter === null) return null;
+    const sel = categories.find((c) => c.id === categoryFilter);
+    return sel?.parent_id ?? sel?.id ?? null;
+  }, [categoryFilter, categories]);
+
+  // La raíz que contiene la selección arranca abierta; el resto, cerradas. Se
+  // guardan solo las decisiones explícitas del usuario (abrir/cerrar), y sobre
+  // ellas se calcula el estado real. Así no hace falta un efecto que sincronice
+  // —y con él, un setState dentro de un efecto que React desaconseja—.
+  const [decisiones, setDecisiones] = useState<Map<number, boolean>>(new Map());
+  const estaAbierta = (id: number) =>
+    decisiones.has(id) ? decisiones.get(id)! : id === raizSeleccionada;
+  const alternar = (id: number) =>
+    setDecisiones((prev) => {
+      const siguiente = new Map(prev);
+      siguiente.set(id, !estaAbierta(id));
+      return siguiente;
+    });
+
+  return (
+    <List dense disablePadding>
+      <ListItemButton
+        selected={categoryFilter === null}
+        onClick={() => onCategoryChange(null)}
+        sx={{
+          borderRadius: 2,
+          mb: 0.5,
+          "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52", fontWeight: 800 },
+          "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
+        }}
+      >
+        <ListItemText
+          primary={<Typography sx={{ fontWeight: categoryFilter === null ? 800 : 500, fontSize: "0.875rem" }}>Todas las categorías</Typography>}
+        />
+        {categoryFilter === null && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
+      </ListItemButton>
+
+      {raices.map((cat) => {
+        const hijas = hijasDe.get(cat.id) ?? [];
+        const tieneHijas = hijas.length > 0;
+        const abierta = estaAbierta(cat.id);
+        return (
+          <Box key={cat.id}>
+            <ListItemButton
+              selected={categoryFilter === cat.id}
+              onClick={() => onCategoryChange(cat.id)}
+              sx={{
+                borderRadius: 2,
+                mb: 0.5,
+                "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52" },
+                "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
+              }}
+            >
+              <ListItemText
+                primary={<Typography sx={{ fontWeight: categoryFilter === cat.id ? 800 : 600, fontSize: "0.875rem" }}>{cat.name}</Typography>}
+              />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                {cat.is_high_risk && (
+                  <Chip label="⚠" size="small" color="error" variant="outlined" sx={{ fontSize: "0.6rem", height: 18, "& .MuiChip-label": { px: 0.5 } }} />
+                )}
+                {categoryFilter === cat.id && <CheckCircleIcon sx={{ fontSize: 16, color: "#0C3A6E" }} />}
+                {tieneHijas && (
+                  <IconButton
+                    size="small"
+                    edge="end"
+                    aria-label={abierta ? "Contraer" : "Expandir"}
+                    onClick={(e) => { e.stopPropagation(); alternar(cat.id); }}
+                    sx={{ p: 0.25 }}
+                  >
+                    {abierta ? <ExpandLessIcon sx={{ fontSize: 18 }} /> : <ExpandMoreIcon sx={{ fontSize: 18 }} />}
+                  </IconButton>
+                )}
+              </Box>
+            </ListItemButton>
+
+            {tieneHijas && (
+              <Collapse in={abierta} timeout="auto" unmountOnExit>
+                <List dense disablePadding sx={{ pl: 1.5 }}>
+                  {hijas.map((hija) => (
+                    <ListItemButton
+                      key={hija.id}
+                      selected={categoryFilter === hija.id}
+                      onClick={() => onCategoryChange(hija.id)}
+                      sx={{
+                        borderRadius: 2,
+                        mb: 0.25,
+                        borderLeft: "2px solid",
+                        borderColor: categoryFilter === hija.id ? "#0C3A6E" : "divider",
+                        "&.Mui-selected": { bgcolor: alpha("#0C3A6E", 0.08), color: "#082A52" },
+                        "&.Mui-selected:hover": { bgcolor: alpha("#0C3A6E", 0.12) },
+                      }}
+                    >
+                      <ListItemText
+                        primary={<Typography sx={{ fontWeight: categoryFilter === hija.id ? 800 : 500, fontSize: "0.82rem" }}>{hija.name}</Typography>}
+                      />
+                      {categoryFilter === hija.id && <CheckCircleIcon sx={{ fontSize: 15, color: "#0C3A6E" }} />}
+                    </ListItemButton>
+                  ))}
+                </List>
+              </Collapse>
+            )}
+          </Box>
+        );
+      })}
+    </List>
   );
 }
 

@@ -14,6 +14,8 @@ class CategoryCreate(BaseModel):
     slug: str = Field(..., min_length=2, max_length=100, pattern=r"^[a-z0-9\-]+$")
     is_high_risk: bool = False
     image_url: Optional[str] = Field(None, max_length=500)
+    # Si viene, la categoría es una subcategoría de esta otra.
+    parent_id: Optional[int] = None
 
 
 class CategoryUpdate(BaseModel):
@@ -22,6 +24,7 @@ class CategoryUpdate(BaseModel):
     slug: Optional[str] = Field(None, min_length=2, max_length=100, pattern=r"^[a-z0-9\-]+$")
     is_high_risk: Optional[bool] = None
     image_url: Optional[str] = Field(None, max_length=500)
+    parent_id: Optional[int] = None
 
 
 class CategoryResponse(BaseModel):
@@ -31,6 +34,9 @@ class CategoryResponse(BaseModel):
     slug: str
     is_high_risk: bool
     image_url: Optional[str] = None
+    # Nulo en las categorías raíz; el id del padre en las subcategorías. El
+    # frontend arma el árbol del filtro con este dato.
+    parent_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

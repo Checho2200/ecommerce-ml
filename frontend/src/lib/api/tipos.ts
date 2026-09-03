@@ -37,6 +37,8 @@ export interface CategoryResponse {
   slug: string;
   is_high_risk: boolean;
   image_url: string | null;
+  // Nulo en las categorías raíz; el id del padre en las subcategorías.
+  parent_id: number | null;
 }
 
 export interface OrderResponse {

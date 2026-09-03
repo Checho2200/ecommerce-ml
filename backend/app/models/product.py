@@ -22,8 +22,23 @@ class Category(Base):
     is_high_risk: Mapped[bool] = mapped_column(Boolean, default=False)
     image_url: Mapped[str] = mapped_column(String(500), nullable=True)
 
+    # Jerarquía de dos niveles: una categoría raíz (parent_id nulo) agrupa
+    # subcategorías. Así "Memorias RAM" contiene "DDR3", "DDR4" y "DDR5", y
+    # "Procesadores" contiene las líneas de Intel y AMD. Es la estructura
+    # habitual de una tienda de cómputo y la que permite filtrar fino.
+    parent_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("categories.id"), nullable=True, index=True
+    )
+
     # Relationships
     products = relationship("Product", back_populates="category", lazy="selectin")
+    # remote_side apunta al lado "uno" de la auto-referencia: el padre.
+    parent = relationship(
+        "Category", remote_side=[id], back_populates="children", lazy="selectin"
+    )
+    children = relationship(
+        "Category", back_populates="parent", lazy="selectin", order_by="Category.name"
+    )
 
     def __repr__(self) -> str:
         return f"<Category {self.name} (high_risk={self.is_high_risk})>"

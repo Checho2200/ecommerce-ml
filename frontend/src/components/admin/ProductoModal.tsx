@@ -7,7 +7,7 @@
  * pantalla con el formulario. Separado, cada archivo hace una sola cosa.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { type ProductResponse, type CategoryResponse, type ProductCreate } from "@/lib/api";
 import ImageUploadField from "@/components/ui/ImageUploadField";
 import {
@@ -50,6 +50,27 @@ export default function ProductModal({
 
   const set = (field: keyof ProductCreate, value: unknown) =>
     setForm((f) => ({ ...f, [field]: value }));
+
+  // Opciones del selector, en orden de árbol: cada raíz seguida de sus
+  // subcategorías (con sangría). El admin puede asignar a la raíz o a una hija.
+  const opcionesCategoria = useMemo(() => {
+    const raices = categories.filter((c) => c.parent_id === null);
+    const hijasDe = (id: number) => categories.filter((c) => c.parent_id === id);
+    const filas: { id: number; etiqueta: string; hija: boolean }[] = [];
+    for (const raiz of raices) {
+      filas.push({ id: raiz.id, etiqueta: raiz.name, hija: false });
+      for (const hija of hijasDe(raiz.id)) {
+        filas.push({ id: hija.id, etiqueta: `— ${hija.name}`, hija: true });
+      }
+    }
+    // Si alguna categoría no cuelga de ninguna raíz visible, no perderla.
+    for (const c of categories) {
+      if (!filas.some((f) => f.id === c.id)) {
+        filas.push({ id: c.id, etiqueta: c.name, hija: false });
+      }
+    }
+    return filas;
+  }, [categories]);
 
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: 3 } }}>
@@ -119,9 +140,13 @@ export default function ProductModal({
                   value={form.category_id}
                   onChange={(e) => set("category_id", Number(e.target.value))}
                 >
-                  {categories.map((c) => (
-                    <MenuItem key={c.id} value={c.id}>
-                      {c.name}
+                  {opcionesCategoria.map((o) => (
+                    <MenuItem
+                      key={o.id}
+                      value={o.id}
+                      sx={o.hija ? { pl: 3, fontSize: "0.9rem" } : { fontWeight: 700 }}
+                    >
+                      {o.etiqueta}
                     </MenuItem>
                   ))}
                 </Select>
