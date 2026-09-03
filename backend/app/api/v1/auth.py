@@ -2,7 +2,7 @@
 Endpoints de autenticación: registro, login, perfil y recuperación de contraseña.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -48,6 +48,13 @@ RESPUESTA_RECUPERACION = (
 @limiter.limit("10/hour")
 async def register(
     request: Request,
+    # `response` no se usa en el cuerpo, pero tiene que estar: con
+    # headers_enabled, slowapi escribe las cabeceras de límite (X-RateLimit-*)
+    # sobre este objeto tras un retorno correcto. Sin el parámetro, intentaba
+    # inyectarlas sobre el modelo Pydantic devuelto y reventaba con un 500 en
+    # cada registro o login que sí funcionaba —solo en producción, porque las
+    # pruebas corren con el limitador apagado—.
+    response: Response,
     data: UserRegister,
     db: AsyncSession = Depends(get_db),
 ):
@@ -82,6 +89,7 @@ async def register(
 @limiter.limit("10/minute")
 async def login(
     request: Request,
+    response: Response,  # requerido por slowapi con headers_enabled; ver register()
     data: UserLogin,
     db: AsyncSession = Depends(get_db),
 ):
@@ -160,6 +168,7 @@ async def update_me(
 @limiter.limit("5/hour")
 async def forgot_password(
     request: Request,
+    response: Response,  # requerido por slowapi con headers_enabled; ver register()
     data: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -190,6 +199,7 @@ async def forgot_password(
 @limiter.limit("10/hour")
 async def reset_password(
     request: Request,
+    response: Response,  # requerido por slowapi con headers_enabled; ver register()
     data: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):

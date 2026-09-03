@@ -28,8 +28,16 @@ router = APIRouter(prefix="/fraud", tags=["Detección de Fraude"])
 async def evaluate_fraud(
     data: FraudEvaluationRequest,
     db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
 ):
-    """Evalúa el riesgo de fraude de una transacción con el modelo LightGBM."""
+    """
+    Evalúa el riesgo de fraude de una transacción con el modelo LightGBM.
+
+    Solo para administradores: es una herramienta de prueba del modelo. La
+    evaluación que decide de verdad una compra ocurre dentro de `crear_pedido`,
+    no aquí. Antes este endpoint era público, y sin autenticación cualquiera
+    podía sondear el modelo —probar entradas y leer su respuesta— sin coste.
+    """
     checkout_duration = (
         data.checkout_duration_seconds if data.checkout_duration_seconds is not None else 120.0
     )

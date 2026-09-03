@@ -141,3 +141,42 @@ async def test_el_perfil_no_deja_cambiarse_el_rol(cliente, sesion):
 
     respuesta = await cliente.get("/api/v1/auth/me", headers=cabeceras)
     assert respuesta.json()["role"] == "CLIENTE"
+
+
+async def test_los_endpoints_con_tope_responden_bien_con_el_limitador_encendido(cliente, sesion):
+    """
+    Regresión de un 500 que solo salía en producción. slowapi, con
+    headers_enabled, escribe las cabeceras de límite sobre el objeto Response
+    del endpoint tras un retorno correcto; sin ese parámetro intentaba
+    inyectarlas sobre el modelo Pydantic devuelto y reventaba.
+
+    El resto de la suite corre con el limitador apagado, así que este camino
+    —endpoint con tope + respuesta correcta— no se ejercía en ninguna parte.
+    Aquí se enciende a propósito para cubrirlo.
+    """
+    await crear_usuario(sesion, email="ya-existe@ejemplo.com")
+    limiter.reset()
+    limiter.enabled = True
+    try:
+        registro = await cliente.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "flamante@ejemplo.com",
+                "password": "clave-larga-1",
+                "full_name": "Cuenta Flamante",
+            },
+        )
+        assert registro.status_code == 201, registro.text
+
+        login = await cliente.post(
+            "/api/v1/auth/login",
+            json={"email": "ya-existe@ejemplo.com", "password": CONTRASENA},
+        )
+        assert login.status_code == 200, login.text
+        assert login.json()["access_token"]
+
+        # Y las cabeceras informativas del límite llegan al cliente.
+        assert "x-ratelimit-limit" in {k.lower() for k in login.headers}
+    finally:
+        limiter.enabled = False
+        limiter.reset()

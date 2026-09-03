@@ -36,9 +36,17 @@ class User(Base):
     )
 
     # Relationships
-    orders = relationship("Order", back_populates="user", lazy="selectin")
-    service_orders = relationship("ServiceOrder", back_populates="user", lazy="selectin")
-    reviews = relationship("ProductReview", back_populates="user", lazy="selectin")
+    #
+    # Se cargan bajo demanda (lazy="select"), no de forma anticipada. El usuario
+    # se lee en CADA petición autenticada para validar el token; con selectin,
+    # ese único SELECT arrastraba otros tres —pedidos, órdenes de servicio y
+    # reseñas del usuario— que ningún endpoint llega a usar. Contra PostgreSQL
+    # en Neon, donde cada viaje a la base cuesta cientos de milisegundos, eran
+    # cuatro consultas por petición en lugar de una. Quien de verdad necesite
+    # estas colecciones puede pedirlas con selectinload() en su propia consulta.
+    orders = relationship("Order", back_populates="user")
+    service_orders = relationship("ServiceOrder", back_populates="user")
+    reviews = relationship("ProductReview", back_populates="user")
 
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"

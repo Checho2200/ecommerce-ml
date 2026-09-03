@@ -270,3 +270,29 @@ async def test_cada_orden_guarda_el_aporte_de_cada_variable(cliente, sesion):
     }
     # Y la explicación menciona algo concreto del pedido, no una frase fija.
     assert "S/" in logs[0]["explanation"] or "checkout" in logs[0]["explanation"]
+
+
+async def test_evaluar_una_transaccion_exige_ser_administrador(cliente, sesion):
+    """
+    /fraud/evaluate es una herramienta de prueba del modelo, no parte del
+    checkout: la evaluación que decide una compra ocurre dentro de crear_pedido.
+    Antes era pública, y sin autenticación cualquiera podía sondear el modelo.
+    """
+    cuerpo = {
+        "total_amount": 5000.0,
+        "high_risk_items_count": 3,
+        "checkout_duration_seconds": 20.0,
+        "is_new_shipping_address": True,
+    }
+
+    # Sin token: 401/403, nunca una evaluación.
+    anonima = await cliente.post("/api/v1/fraud/evaluate", json=cuerpo)
+    assert anonima.status_code in (401, 403)
+
+    # Con un cliente normal: prohibido.
+    await crear_usuario(sesion, email="curioso@ejemplo.com")
+    cabeceras = await cabeceras_de(cliente, "curioso@ejemplo.com")
+    de_cliente = await cliente.post(
+        "/api/v1/fraud/evaluate", json=cuerpo, headers=cabeceras
+    )
+    assert de_cliente.status_code == 403
