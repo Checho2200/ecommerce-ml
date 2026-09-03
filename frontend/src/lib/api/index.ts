@@ -29,5 +29,6 @@ export const api = {
 };
 
 export { ApiError, getToken, setToken, removeToken } from "./cliente";
+export type { ProductSort } from "./products";
 export * from "./tipos";
 export default api;

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { api, ProductResponse, CategoryResponse } from "@/lib/api";
+import { api, ProductResponse, CategoryResponse, ProductSort } from "@/lib/api";
 import Header from "@/components/ui/Header";
 import ProductCard, { ProductCardSkeleton } from "@/components/ui/ProductCard";
 
@@ -23,16 +23,29 @@ import {
   TextField,
   InputAdornment,
   Pagination,
+  MenuItem,
+  Select,
   alpha,
   useTheme,
   useMediaQuery,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
+import SortIcon from "@mui/icons-material/SwapVert";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import CloseIcon from "@mui/icons-material/Close";
 import TuneIcon from "@mui/icons-material/Tune";
 import PackageIcon from "@mui/icons-material/Inventory2Outlined";
+
+// Opciones del selector de orden. El valor viaja tal cual al backend (?sort=…).
+const ORDENES: { valor: ProductSort; etiqueta: string }[] = [
+  { valor: "recientes", etiqueta: "Más recientes" },
+  { valor: "precio_asc", etiqueta: "Precio: menor a mayor" },
+  { valor: "precio_desc", etiqueta: "Precio: mayor a menor" },
+  { valor: "nombre_asc", etiqueta: "Nombre: A → Z" },
+  { valor: "nombre_desc", etiqueta: "Nombre: Z → A" },
+];
+const ORDENES_VALIDOS = ORDENES.map((o) => o.valor);
 
 /**
  * Panel de filtros del catálogo.
@@ -153,9 +166,11 @@ function CatalogContent() {
 
   const desdeUrl = useMemo(() => {
     const raw = Number(searchParams.get("category_id"));
+    const s = searchParams.get("sort") as ProductSort | null;
     return {
       categoria: Number.isInteger(raw) && raw > 0 ? raw : null,
       busqueda: searchParams.get("q") || "",
+      orden: s && ORDENES_VALIDOS.includes(s) ? s : ("recientes" as ProductSort),
     };
   }, [searchParams]);
 
@@ -163,12 +178,14 @@ function CatalogContent() {
     clave: string;
     categoria: number | null;
     busqueda: string;
+    orden: ProductSort;
     pagina: number;
   } | null>(null);
 
   const vigente = ajuste && ajuste.clave === claveUrl ? ajuste : null;
   const categoryFilter = vigente ? vigente.categoria : desdeUrl.categoria;
   const search = vigente ? vigente.busqueda : desdeUrl.busqueda;
+  const orden = vigente ? vigente.orden : desdeUrl.orden;
   const page = vigente ? vigente.pagina : 1;
 
   const ajustarFiltros = (cambios: Partial<Omit<NonNullable<typeof ajuste>, "clave">>) =>
@@ -176,6 +193,7 @@ function CatalogContent() {
       clave: claveUrl,
       categoria: categoryFilter,
       busqueda: search,
+      orden,
       pagina: page,
       ...cambios,
     });
@@ -191,6 +209,7 @@ function CatalogContent() {
           per_page: 12,
           search: search || undefined,
           category_id: categoryFilter || undefined,
+          sort: orden,
           active_only: true,
         });
         setProducts(res.items);
@@ -204,7 +223,7 @@ function CatalogContent() {
     };
     const t = setTimeout(fetchProducts, 300);
     return () => clearTimeout(t);
-  }, [search, categoryFilter, page]);
+  }, [search, categoryFilter, orden, page]);
 
   const handleCategoryChange = (id: number | null) => {
     ajustarFiltros({ categoria: id, pagina: 1 });
@@ -214,6 +233,29 @@ function CatalogContent() {
   const handleSearch = (val: string) => {
     ajustarFiltros({ busqueda: val, pagina: 1 });
   };
+
+  // Cambiar el orden vuelve a la primera página: la que se veía ya no
+  // corresponde a la nueva secuencia.
+  const handleSortChange = (valor: ProductSort) => {
+    ajustarFiltros({ orden: valor, pagina: 1 });
+  };
+
+  const selectorDeOrden = (
+    <Select
+      size="small"
+      value={orden}
+      onChange={(e) => handleSortChange(e.target.value as ProductSort)}
+      startAdornment={<SortIcon sx={{ fontSize: 18, mr: 0.5, color: "text.secondary" }} />}
+      sx={{ minWidth: 210, bgcolor: "background.paper", fontWeight: 600, fontSize: "0.875rem" }}
+      aria-label="Ordenar productos"
+    >
+      {ORDENES.map((o) => (
+        <MenuItem key={o.valor} value={o.valor} sx={{ fontSize: "0.875rem" }}>
+          {o.etiqueta}
+        </MenuItem>
+      ))}
+    </Select>
+  );
 
 
   return (
@@ -268,7 +310,7 @@ function CatalogContent() {
               )}
             </Box>
 
-            <Box sx={{ display: "flex", gap: 2 }}>
+            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
               {/* Search — desktop */}
               {!isMobile && (
                 <TextField
@@ -282,6 +324,8 @@ function CatalogContent() {
                   }}
                 />
               )}
+              {/* Orden — visible en escritorio y móvil */}
+              {selectorDeOrden}
               {/* Filter button — mobile */}
               {isMobile && (
                 <Button

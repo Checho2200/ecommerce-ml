@@ -12,6 +12,27 @@ from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.models.product import Product, Category
+
+# Ordenamientos que admite el listado público. La clave llega en ?sort=… y se
+# traduce a una cláusula ORDER BY controlada: nunca se arma con texto del
+# cliente, así que no hay forma de inyectar SQL por aquí.
+#
+# El precio con el que se ordena es el que el cliente paga —el de oferta cuando
+# lo hay, el normal si no—, no siempre el de lista. Ordenar por `price` a secas
+# colocaría mal un producto rebajado. El nombre se ordena en minúsculas para que
+# el orden alfabético no separe "ASUS" de "asus".
+_PRECIO_EFECTIVO = func.coalesce(Product.discount_price, Product.price)
+_NOMBRE = func.lower(Product.name)
+
+ORDENAMIENTOS = {
+    "recientes": (Product.created_at.desc(),),
+    # El desempate por fecha deja el orden estable cuando varios comparten precio.
+    "precio_asc": (_PRECIO_EFECTIVO.asc(), Product.created_at.desc()),
+    "precio_desc": (_PRECIO_EFECTIVO.desc(), Product.created_at.desc()),
+    "nombre_asc": (_NOMBRE.asc(),),
+    "nombre_desc": (_NOMBRE.desc(),),
+}
+ORDEN_POR_DEFECTO = "recientes"
 from app.models.user import User
 from app.schemas.product import (
     ProductCreate,
@@ -31,11 +52,16 @@ async def list_products(
     category_id: Optional[int] = None,
     search: Optional[str] = None,
     active_only: bool = True,
+    sort: str = Query(ORDEN_POR_DEFECTO),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Lista productos con paginación y filtros.
+    Lista productos con paginación, filtros y ordenamiento.
     Endpoint público (no requiere autenticación).
+
+    `sort` acepta: recientes (por defecto), precio_asc, precio_desc,
+    nombre_asc, nombre_desc. Un valor desconocido cae en el orden por defecto
+    en lugar de dar error, para no romper el catálogo por un parámetro suelto.
     """
     query = select(Product)
 
@@ -51,9 +77,11 @@ async def list_products(
     total_result = await db.execute(count_query)
     total = total_result.scalar()
 
-    # Paginar
+    # Ordenar y paginar. El ORDER BY va antes del LIMIT para que la página
+    # devuelta sea la correcta dentro del orden pedido, no un recorte de otro.
+    clausulas = ORDENAMIENTOS.get(sort, ORDENAMIENTOS[ORDEN_POR_DEFECTO])
+    query = query.order_by(*clausulas)
     query = query.offset((page - 1) * per_page).limit(per_page)
-    query = query.order_by(Product.created_at.desc())
 
     result = await db.execute(query)
     products = result.scalars().all()
