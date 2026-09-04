@@ -6,10 +6,10 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.database import get_db
-from app.models.product import Category
+from app.models.product import Category, Product
 from app.models.user import User
 from app.schemas.product import CategoryCreate, CategoryUpdate, CategoryResponse
 from app.api.deps import require_admin
@@ -21,9 +21,28 @@ router = APIRouter(prefix="/categories", tags=["Categorías"])
 async def list_categories(
     db: AsyncSession = Depends(get_db),
 ):
-    """Lista todas las categorías (público)."""
+    """
+    Lista todas las categorías (público).
+
+    Cada una viaja con `product_count`: cuántos productos activos cuelgan
+    directamente de ella. El catálogo lo usa para no mostrar subcategorías
+    vacías —una "Intel Core i9" sin nada dentro sobra en la tienda—. Se cuenta
+    en una sola consulta agrupada, no una por categoría.
+    """
     result = await db.execute(select(Category).order_by(Category.name))
     categories = result.scalars().all()
+
+    conteos = await db.execute(
+        select(Product.category_id, func.count(Product.id))
+        .where(Product.is_active == True)
+        .group_by(Product.category_id)
+    )
+    por_categoria = dict(conteos.all())
+
+    for categoria in categories:
+        # Atributo dinámico que Pydantic lee al serializar; no es una columna.
+        categoria.product_count = por_categoria.get(categoria.id, 0)
+
     return categories
 
 

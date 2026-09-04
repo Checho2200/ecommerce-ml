@@ -74,12 +74,21 @@ export default function Header() {
     api.categories.list().then(setCategories).catch(() => setCategories([]));
   }, []);
 
-  // El menú muestra solo las categorías raíz; las subcategorías (DDR4, Intel
-  // Core i7…) se ven al entrar a la categoría, no en la barra de navegación.
-  const categoriasRaiz = useMemo(
-    () => categories.filter((c) => c.parent_id === null),
-    [categories]
-  );
+  // El menú muestra solo las categorías raíz que tengan algo que ofrecer
+  // —productos propios o en alguna subcategoría—; las subcategorías (DDR4,
+  // Intel Core i7…) se ven al entrar, no en la barra de navegación.
+  const categoriasRaiz = useMemo(() => {
+    const raizConProductos = new Set(
+      categories
+        .filter((c) => c.parent_id !== null && c.product_count > 0)
+        .map((c) => c.parent_id)
+    );
+    return categories.filter(
+      (c) =>
+        c.parent_id === null &&
+        (c.product_count > 0 || raizConProductos.has(c.id))
+    );
+  }, [categories]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

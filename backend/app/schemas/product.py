@@ -37,6 +37,9 @@ class CategoryResponse(BaseModel):
     # Nulo en las categorías raíz; el id del padre en las subcategorías. El
     # frontend arma el árbol del filtro con este dato.
     parent_id: Optional[int] = None
+    # Productos activos que cuelgan directamente de esta categoría. El catálogo
+    # oculta las subcategorías con cero. Por defecto 0 cuando no se calcula.
+    product_count: int = 0
 
     model_config = {"from_attributes": True}
 

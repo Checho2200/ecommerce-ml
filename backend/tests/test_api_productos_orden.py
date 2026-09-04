@@ -109,3 +109,24 @@ async def test_la_categoria_expone_su_parent_id(cliente, sesion):
     porslug = {c["slug"]: c for c in respuesta.json()}
     assert porslug["memorias-ram"]["parent_id"] is None
     assert porslug["ram-ddr4"]["parent_id"] == ddr4.parent_id
+
+
+async def test_las_categorias_reportan_cuantos_productos_tienen(cliente, sesion):
+    """
+    product_count cuenta los productos activos que cuelgan directamente de la
+    categoría. El catálogo lo usa para ocultar las subcategorías vacías.
+    """
+    ram, ddr4, ddr5 = await _tienda_con_subcategorias(sesion)
+    # Una subcategoría más, a propósito sin productos.
+    ddr3 = Category(name="DDR3", slug="ram-ddr3", parent_id=ram.id)
+    sesion.add(ddr3)
+    await sesion.commit()
+
+    respuesta = await cliente.get("/api/v1/categories")
+    porslug = {c["slug"]: c for c in respuesta.json()}
+
+    assert porslug["ram-ddr4"]["product_count"] == 1
+    assert porslug["ram-ddr5"]["product_count"] == 1
+    assert porslug["ram-ddr3"]["product_count"] == 0   # vacía -> se ocultará
+    # La raíz no tiene productos propios; los suyos cuelgan de las hijas.
+    assert porslug["memorias-ram"]["product_count"] == 0

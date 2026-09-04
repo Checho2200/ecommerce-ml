@@ -117,14 +117,12 @@ function CategoryTree({
   categoryFilter: number | null;
   onCategoryChange: (id: number | null) => void;
 }) {
-  const raices = useMemo(
-    () => categories.filter((c) => c.parent_id === null),
-    [categories]
-  );
+  // Solo subcategorías con productos: una "Intel Core i9" sin nada dentro no
+  // aporta al comprador. Se agrupan por su raíz.
   const hijasDe = useMemo(() => {
     const mapa = new Map<number, CategoryResponse[]>();
     for (const c of categories) {
-      if (c.parent_id !== null) {
+      if (c.parent_id !== null && c.product_count > 0) {
         const lista = mapa.get(c.parent_id) ?? [];
         lista.push(c);
         mapa.set(c.parent_id, lista);
@@ -132,6 +130,18 @@ function CategoryTree({
     }
     return mapa;
   }, [categories]);
+
+  // Una raíz se muestra si tiene productos propios o alguna subcategoría con
+  // productos; si no, no hay nada que ver bajo ella.
+  const raices = useMemo(
+    () =>
+      categories.filter(
+        (c) =>
+          c.parent_id === null &&
+          (c.product_count > 0 || (hijasDe.get(c.id)?.length ?? 0) > 0)
+      ),
+    [categories, hijasDe]
+  );
 
   // Raíz que contiene la selección actual, para abrirla de entrada.
   const raizSeleccionada = useMemo(() => {

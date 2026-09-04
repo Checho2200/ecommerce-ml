@@ -39,6 +39,8 @@ export interface CategoryResponse {
   image_url: string | null;
   // Nulo en las categorías raíz; el id del padre en las subcategorías.
   parent_id: number | null;
+  // Productos activos que cuelgan directamente de la categoría.
+  product_count: number;
 }
 
 export interface OrderResponse {
