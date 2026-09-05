@@ -123,7 +123,11 @@ export default function OrdersPage() {
           border: "1px solid",
           borderColor: "divider",
           borderRadius: 2,
-          overflow: "hidden",
+          // La tabla es más ancha que un teléfono. Con `overflow: hidden`
+          // —que estaba solo para redondear las esquinas— las últimas columnas
+          // quedaban cortadas y sin forma de alcanzarlas; así se deslizan.
+          overflowX: "auto",
+          overflowY: "hidden",
           bgcolor: "background.paper",
         }}
       >

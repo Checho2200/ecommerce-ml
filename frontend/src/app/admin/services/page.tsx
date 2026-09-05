@@ -110,8 +110,11 @@ export default function ServicesPage() {
           border: "1px solid",
           borderColor: "divider",
           borderRadius: 2,
-          overflow: "hidden",
           bgcolor: "background.paper",
+          // Ver la nota en admin/orders: la tabla no cabe en un teléfono y
+          // recortarla dejaba columnas inalcanzables.
+          overflowX: "auto",
+          overflowY: "hidden",
         }}
       >
         <Table>

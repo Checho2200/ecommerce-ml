@@ -200,7 +200,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </Box>
 
       {/* Main Content */}
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, md: 4 }, mt: { xs: 8, md: 0 }, width: { md: `calc(100% - ${drawerWidth}px)` } }}>
+      {/* `minWidth: 0` no es decorativo. Un hijo de flex arranca con
+          `min-width: auto`, así que una tabla ancha ensancha esta caja en lugar
+          de desbordarla, y con eso se lleva por delante el `overflow-x` de
+          cualquier contenedor de dentro: el panel entero se estiraba y en un
+          teléfono las columnas de la derecha quedaban recortadas sin forma de
+          alcanzarlas. */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          minWidth: 0,
+          p: { xs: 2, md: 4 },
+          mt: { xs: 8, md: 0 },
+          width: { md: `calc(100% - ${drawerWidth}px)` },
+        }}
+      >
         {children}
       </Box>
     </Box>

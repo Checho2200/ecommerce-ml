@@ -153,7 +153,19 @@ export default function ProductsPage() {
         </Box>
 
         {/* Table */}
-        <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, overflow: "hidden", bgcolor: "background.paper" }}>
+        <Paper
+          elevation={0}
+          sx={{
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 2,
+            bgcolor: "background.paper",
+            // Ver la nota en admin/orders: la tabla no cabe en un teléfono y
+            // recortarla dejaba columnas inalcanzables.
+            overflowX: "auto",
+            overflowY: "hidden",
+          }}
+        >
           <Table>
             <TableHead sx={{ bgcolor: "background.default" }}>
               <TableRow>
