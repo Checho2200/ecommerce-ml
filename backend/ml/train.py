@@ -27,6 +27,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 
 import joblib
 import numpy as np
@@ -59,6 +60,20 @@ UMBRALES_DE_REFERENCIA = (0.30, 0.70)
 # de casos de prueba, la medición no dice gran cosa.
 UMBRAL_DE_SOSPECHA = 0.99
 MINIMO_EN_PRUEBA = 40
+
+# Cuánto puede bajar la tasa de fraudes detectados respecto del modelo que ya
+# está sirviendo antes de rechazar al candidato. No es cero porque la partición
+# de prueba es pequeña y un solo caso mueve el indicador varios puntos; pasada
+# esta franja, el cambio ya no es ruido y publicarlo empeoraría justo lo que la
+# tesis mide.
+CAIDA_TOLERADA_DE_DETECCION = 0.05
+
+# Presupuesto de tiempo por evaluación. El modelo decide dentro de la petición
+# que crea el pedido, así que su latencia se le suma al cliente que está
+# esperando en el checkout. LightGBM con cuatro variables tarda unos pocos
+# milisegundos; este tope está para que un candidato mucho más pesado se note
+# en el informe en vez de pasar desapercibido.
+PRESUPUESTO_MS_POR_EVALUACION = 50.0
 
 
 def _particiones(X, y, semilla=RANDOM_SEED):
@@ -124,23 +139,31 @@ def decidir_reemplazo(
     ap_anterior: float | None,
     casos_de_prueba: int,
     forzar: bool = False,
+    deteccion_candidato: float | None = None,
+    deteccion_anterior: float | None = None,
 ) -> tuple[bool, str, bool]:
     """
     Decide si el modelo recién entrenado debe sustituir al que está sirviendo.
 
-    Devuelve (reemplaza, motivo, sospechoso). Dos reglas:
+    Devuelve (reemplaza, motivo, sospechoso). Tres reglas:
 
-    1. **No empeorar.** Solo se publica un candidato que iguale o mejore al
-       modelo actual sobre la misma partición de prueba. Sin esto, un
-       reentrenamiento con pocos casos reales degradaría el sistema en silencio.
-
-    2. **Desconfiar de lo perfecto.** Un AUC-PR cercano a 1, o una partición de
+    1. **Desconfiar de lo perfecto.** Un AUC-PR cercano a 1, o una partición de
        prueba diminuta, no son buenas noticias: con datos de verdad un
        clasificador de fraude no acierta el 100 %. Cuando ocurre, casi siempre
        es fuga de datos, clases sembradas separables o tan pocos casos que la
        medición no significa nada. Publicar ese modelo sería cambiar uno medido
-       por uno que nadie comprobó, así que se rechaza salvo que se pida
-       explícitamente con --forzar.
+       por uno que nadie comprobó.
+
+    2. **No empeorar el indicador que se mide.** La tasa de fraudes detectados
+       es lo que la tesis reporta, y un candidato puede tener mejor AUC-PR y aun
+       así dejar escapar más fraude a los umbrales que se van a usar de verdad.
+       Se tolera una caída pequeña —la partición de prueba es chica y un caso
+       mueve varios puntos—, pero no una real.
+
+    3. **No empeorar en general.** Solo se publica un candidato que iguale o
+       mejore el AUC-PR del modelo actual sobre la misma partición de prueba.
+       Sin esto, un reentrenamiento con pocos casos reales degradaría el
+       sistema en silencio.
     """
     sospechoso = ap_candidato >= UMBRAL_DE_SOSPECHA or casos_de_prueba < MINIMO_EN_PRUEBA
 
@@ -157,10 +180,30 @@ def decidir_reemplazo(
     if ap_anterior is None:
         return True, "no había un modelo previo con el que comparar", False
 
+    # La detección se comprueba antes que el AUC-PR: un candidato que detecta
+    # menos fraude no se publica aunque su AUC-PR sea mejor, porque el AUC-PR
+    # resume todos los umbrales posibles y el indicador mide el único que se
+    # va a usar.
+    if deteccion_candidato is not None and deteccion_anterior is not None:
+        caida = deteccion_anterior - deteccion_candidato
+        if caida > CAIDA_TOLERADA_DE_DETECCION:
+            motivo = (
+                f"el candidato detecta menos fraude: {deteccion_candidato:.1%} "
+                f"contra {deteccion_anterior:.1%} del modelo actual "
+                f"(caída de {caida:.1%}, tolerada hasta "
+                f"{CAIDA_TOLERADA_DE_DETECCION:.0%})"
+            )
+            if forzar:
+                return True, f"{motivo} — se publica igual porque se pidió --forzar", False
+            return False, motivo, False
+
     if ap_candidato >= ap_anterior:
+        detalle = ""
+        if deteccion_candidato is not None:
+            detalle = f"; detecta el {deteccion_candidato:.1%} del fraude"
         return (
             True,
-            f"AUC-PR {ap_candidato:.4f} contra {ap_anterior:.4f} del modelo actual",
+            f"AUC-PR {ap_candidato:.4f} contra {ap_anterior:.4f} del modelo actual{detalle}",
             False,
         )
 
@@ -171,6 +214,35 @@ def decidir_reemplazo(
     if forzar:
         return True, f"{motivo} — se publica igual porque se pidió --forzar", False
     return False, motivo, False
+
+
+def medir_tiempo_de_evaluacion(modelo, X, repeticiones: int = 200) -> float:
+    """
+    Cuánto tarda el modelo en evaluar UNA compra, en milisegundos.
+
+    Se mide fila por fila y no en lote a propósito: en producción el modelo
+    decide dentro de la petición que crea el pedido, con una transacción a la
+    vez. Predecir mil de golpe da un número por transacción mucho menor que el
+    real y haría parecer al sistema más rápido de lo que es.
+
+    Se devuelve la mediana y no el promedio, porque las primeras llamadas
+    arrastran el calentamiento de LightGBM y de NumPy, y una sola de ellas
+    arrastra la media entera.
+    """
+    if len(X) == 0:
+        return 0.0
+
+    muestras = X.iloc[: min(repeticiones, len(X))]
+    # Una pasada en vacío para que el calentamiento no entre en la medición.
+    modelo.predict_proba(muestras.iloc[[0]])
+
+    tiempos = []
+    for i in range(len(muestras)):
+        comienzo = perf_counter()
+        modelo.predict_proba(muestras.iloc[[i]])
+        tiempos.append((perf_counter() - comienzo) * 1000)
+
+    return round(float(np.median(tiempos)), 3)
 
 
 def _modelo_en_produccion():
@@ -298,8 +370,44 @@ def entrenar(preferir_reales: bool = True, forzar: bool = False) -> dict:
         except Exception as exc:  # noqa: BLE001 - un modelo incompatible se reemplaza
             print(f"El modelo actual no se pudo evaluar ({exc}); se reemplazará.")
 
+    # Los tres indicadores de la tesis, medidos sobre la partición de prueba y
+    # a los umbrales que se van a usar de verdad. `costo_prueba` ya trae las
+    # dos tasas; el tiempo se cronometra aparte.
+    tiempo_ms = medir_tiempo_de_evaluacion(modelo, X_prueba)
+    deteccion_candidato = costo_prueba["tasa_de_deteccion"]
+
+    deteccion_anterior = None
+    if anterior is not None and ap_anterior is not None:
+        try:
+            costo_anterior = evaluacion.costo_de_los_umbrales(
+                y_prueba,
+                anterior.predict_proba(X_prueba)[:, 1],
+                X_prueba["total_amount"],
+                t_bajo,
+                t_alto,
+                costos,
+            )
+            deteccion_anterior = costo_anterior["tasa_de_deteccion"]
+        except Exception as exc:  # noqa: BLE001 - se compara solo el AUC-PR
+            print(f"No se pudo medir la detección del modelo actual: {exc}")
+
+    print("\nIndicadores del sistema (partición de prueba):")
+    print(f"  Tasa de fraudes detectados:  {deteccion_candidato:.1%}  (debe subir)")
+    print(f"  Tasa de fraude no detectado: {costo_prueba['tasa_de_no_deteccion']:.1%}  (debe bajar)")
+    print(f"  Tiempo de detección:         {tiempo_ms:.2f} ms  (debe bajar)")
+    if tiempo_ms > PRESUPUESTO_MS_POR_EVALUACION:
+        print(
+            f"  ⚠️  Por encima del presupuesto de {PRESUPUESTO_MS_POR_EVALUACION:.0f} ms: "
+            "esta latencia se le suma al cliente que espera en el checkout."
+        )
+
     reemplaza, motivo, sospechoso = decidir_reemplazo(
-        ap_candidato, ap_anterior, len(X_prueba), forzar
+        ap_candidato,
+        ap_anterior,
+        len(X_prueba),
+        forzar,
+        deteccion_candidato=deteccion_candidato,
+        deteccion_anterior=deteccion_anterior,
     )
     if sospechoso:
         print(f"\n⚠️  {motivo}")
@@ -337,6 +445,30 @@ def entrenar(preferir_reales: bool = True, forzar: bool = False) -> dict:
             "al_umbral_elegido": metricas_prueba,
             "al_umbral_neutro_0_5": metricas_medio,
             "costo": costo_prueba,
+        },
+        # Los tres indicadores que reporta la tesis, con la dirección en la que
+        # conviene que se muevan. Van en su propio bloque, y no repartidos
+        # entre las métricas de clasificación, porque son los que se citan: un
+        # bloque que se puede copiar entero al documento.
+        "indicadores": {
+            "tasa_de_fraudes_detectados": {
+                "valor": deteccion_candidato,
+                "direccion_deseada": "subir",
+                "medido_en": "partición de prueba, a los umbrales elegidos",
+            },
+            "tasa_de_fraude_no_detectado": {
+                "valor": costo_prueba["tasa_de_no_deteccion"],
+                "direccion_deseada": "bajar",
+                "medido_en": "partición de prueba, a los umbrales elegidos",
+            },
+            "tiempo_de_deteccion_ms": {
+                "valor": tiempo_ms,
+                "direccion_deseada": "bajar",
+                "presupuesto": PRESUPUESTO_MS_POR_EVALUACION,
+                "dentro_del_presupuesto": tiempo_ms <= PRESUPUESTO_MS_POR_EVALUACION,
+                "medido_en": "mediana de evaluaciones de una sola transacción",
+            },
+            "deteccion_del_modelo_anterior": deteccion_anterior,
         },
         "reemplazo_del_modelo": {
             "reemplaza": reemplaza,
@@ -382,6 +514,10 @@ def entrenar(preferir_reales: bool = True, forzar: bool = False) -> dict:
                     "umbral_bloqueo": t_alto,
                     "average_precision": round(ap_candidato, 4),
                     "roc_auc": metricas_prueba["roc_auc"],
+                    # Para que el panel pueda decir con qué detección se
+                    # publicó el modelo que está sirviendo ahora mismo.
+                    "tasa_de_deteccion": deteccion_candidato,
+                    "tiempo_de_deteccion_ms": tiempo_ms,
                 },
                 indent=2,
                 ensure_ascii=False,

@@ -15,4 +15,8 @@ lightgbm==4.5.0
 scikit-learn==1.5.2
 joblib==1.4.2
 pandas==2.2.3
+# Escribe el .xlsx del reporte de indicadores. Estaba disponible en local
+# como extra de pandas, pero sin declararlo aquí Render no lo instala y la
+# descarga del reporte responde un 500.
+openpyxl==3.1.5
 mercadopago==3.5.0

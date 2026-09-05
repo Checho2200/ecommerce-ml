@@ -23,6 +23,7 @@ import {
 import CuandoActuaElModelo from "@/components/admin/CuandoActuaElModelo";
 import ColaDeRevision from "@/components/admin/ColaDeRevision";
 import MetricasDelModelo from "@/components/admin/MetricasDelModelo";
+import TarjetasDeIndicadores from "@/components/admin/TarjetasDeIndicadores";
 import HistorialAntifraude, { type Granularidad } from "@/components/admin/HistorialAntifraude";
 import {
   api,
@@ -37,6 +38,7 @@ export default function AdminFraudPage() {
   const [granularidad, setGranularidad] = useState<Granularidad>("day");
   const [cargando, setCargando] = useState(true);
   const [aviso, setAviso] = useState<{ texto: string; tipo: "success" | "error" } | null>(null);
+  const [exportando, setExportando] = useState(false);
 
   // El historial se guarda junto a la escala con la que se pidió. Así "está
   // cargando" es algo que se deduce —lo que hay en pantalla todavía no es de
@@ -99,6 +101,28 @@ export default function AdminFraudPage() {
       vigente = false;
     };
   }, [granularidad]);
+
+  /**
+   * Descarga el reporte de indicadores.
+   *
+   * Lo arma el backend a partir de los mismos números que se ven en pantalla,
+   * y en la escala que esté seleccionada: el archivo y el panel no pueden
+   * decir cosas distintas.
+   */
+  const exportar = async () => {
+    setExportando(true);
+    try {
+      await api.fraud.downloadReport({ granularity: granularidad });
+      avisar("Reporte descargado");
+    } catch (error: unknown) {
+      avisar(
+        error instanceof Error ? error.message : "No se pudo generar el reporte",
+        "error"
+      );
+    } finally {
+      setExportando(false);
+    }
+  };
 
   /**
    * Qué se hace con un pedido retenido.
@@ -173,6 +197,22 @@ export default function AdminFraudPage() {
           onEtiquetar={etiquetar}
         />
 
+        {/* Los tres indicadores de la tesis van arriba de todo lo demás: son
+            lo que el sistema promete mover, y el resto de la pantalla explica
+            cómo lo consigue. */}
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5 }}>
+            Indicadores del sistema
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 820 }}>
+            Medidos sobre el rango que está seleccionado abajo. El modelo se entrena
+            persiguiéndolos: al elegir sus umbrales descarta los que no detectan al
+            menos el 80 % del fraude, y un modelo reentrenado no se publica si detecta
+            menos que el que ya está sirviendo.
+          </Typography>
+          <TarjetasDeIndicadores datos={historial.datos} cargando={cargandoHistorial} />
+        </Box>
+
         <MetricasDelModelo metricas={metricas} cargando={cargando} />
 
         {historial.fallo && (
@@ -186,6 +226,8 @@ export default function AdminFraudPage() {
           cargando={cargandoHistorial}
           granularidad={granularidad}
           onGranularidad={setGranularidad}
+          onExportar={exportar}
+          exportando={exportando}
         />
       </Stack>
 

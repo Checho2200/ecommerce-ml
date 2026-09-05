@@ -18,6 +18,7 @@
 import { useState } from "react";
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Skeleton,
@@ -32,6 +33,7 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
+import DownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import type { FraudHistoryPeriod, FraudHistoryResponse } from "@/lib/api";
 
 export type Granularidad = "day" | "week" | "month" | "year";
@@ -266,11 +268,15 @@ export default function HistorialAntifraude({
   cargando,
   granularidad,
   onGranularidad,
+  onExportar,
+  exportando,
 }: {
   datos: FraudHistoryResponse | null;
   cargando: boolean;
   granularidad: Granularidad;
   onGranularidad: (g: Granularidad) => void;
+  onExportar: () => void;
+  exportando: boolean;
 }) {
   const tema = useTheme();
   const color = tema.palette.mode === "dark" ? COLORES.oscuro : COLORES.claro;
@@ -302,23 +308,38 @@ export default function HistorialAntifraude({
             </Typography>
           </Box>
 
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={granularidad}
-            onChange={(_, valor) => valor && onGranularidad(valor)}
-            aria-label="Escala del historial"
-          >
-            {OPCIONES.map((o) => (
-              <ToggleButton
-                key={o.valor}
-                value={o.valor}
-                sx={{ textTransform: "none", fontWeight: 700, px: 2 }}
-              >
-                {o.etiqueta}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={granularidad}
+              onChange={(_, valor) => valor && onGranularidad(valor)}
+              aria-label="Escala del historial"
+            >
+              {OPCIONES.map((o) => (
+                <ToggleButton
+                  key={o.valor}
+                  value={o.valor}
+                  sx={{ textTransform: "none", fontWeight: 700, px: 2 }}
+                >
+                  {o.etiqueta}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+
+            {/* El archivo lo arma el backend con los mismos números que se ven
+                en pantalla, así que no puede desviarse de ellos. */}
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DownloadOutlinedIcon />}
+              onClick={onExportar}
+              disabled={exportando || cargando}
+              sx={{ textTransform: "none", fontWeight: 700, borderRadius: 2, whiteSpace: "nowrap" }}
+            >
+              {exportando ? "Generando…" : "Exportar a Excel"}
+            </Button>
+          </Stack>
         </Stack>
 
         {/* Con dos series la leyenda va siempre: el color no puede ser lo único
@@ -380,6 +401,10 @@ export default function HistorialAntifraude({
                       "En revisión",
                       "Bloqueadas",
                       "% que pasó",
+                      "Fraudes conf.",
+                      "Detectados",
+                      "No detectado",
+                      "Tiempo",
                       "Monto cobrable",
                       "Monto retenido",
                     ].map((h, i) => (
@@ -414,6 +439,23 @@ export default function HistorialAntifraude({
                       <TableCell align="right">
                         {((p.approved / p.evaluations) * 100).toFixed(0)}%
                       </TableCell>
+                      <TableCell align="right">{p.actual_frauds}</TableCell>
+                      {/* Las dos tasas van en guion, y no en cero, cuando el
+                          período no tuvo ningún fraude confirmado: un cero
+                          diría "no se detectó nada". */}
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {p.detection_rate === null
+                          ? "—"
+                          : `${(p.detection_rate * 100).toFixed(0)}%`}
+                      </TableCell>
+                      <TableCell align="right">
+                        {p.undetected_rate === null
+                          ? "—"
+                          : `${(p.undetected_rate * 100).toFixed(0)}%`}
+                      </TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        {p.average_detection_time_ms.toFixed(1)} ms
+                      </TableCell>
                       <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                         {soles(p.approved_amount)}
                       </TableCell>
@@ -433,6 +475,18 @@ export default function HistorialAntifraude({
                       conDatos.reduce((n, p) => n + p.in_review, 0),
                       conDatos.reduce((n, p) => n + p.blocked, 0),
                       `${totalEvaluado ? ((totalPaso / totalEvaluado) * 100).toFixed(0) : 0}%`,
+                      datos?.total_actual_frauds ?? 0,
+                      // Los totales salen de sumar los casos y dividir una
+                      // sola vez, no de promediar las tasas de cada período:
+                      // ese promedio le daría el mismo peso a un mes con un
+                      // fraude que a uno con cien.
+                      datos?.detection_rate == null
+                        ? "—"
+                        : `${(datos.detection_rate * 100).toFixed(0)}%`,
+                      datos?.undetected_rate == null
+                        ? "—"
+                        : `${(datos.undetected_rate * 100).toFixed(0)}%`,
+                      `${(datos?.average_detection_time_ms ?? 0).toFixed(1)} ms`,
                       soles(conDatos.reduce((n, p) => n + p.approved_amount, 0)),
                       soles(conDatos.reduce((n, p) => n + p.held_amount, 0)),
                     ].map((valor, i) => (

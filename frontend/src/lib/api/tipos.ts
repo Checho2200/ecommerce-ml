@@ -147,6 +147,15 @@ export interface FraudHistoryPeriod {
   approved_amount: number;
   held_amount: number;
   average_score: number;
+
+  // Los tres indicadores de la tesis, en este período.
+  reviewed: number;
+  actual_frauds: number;
+  detected_frauds: number;
+  undetected_frauds: number;
+  detection_rate: number | null;
+  undetected_rate: number | null;
+  average_detection_time_ms: number;
 }
 
 export interface FraudHistoryResponse {
@@ -155,6 +164,28 @@ export interface FraudHistoryResponse {
   total_evaluations: number;
   total_approved: number;
   total_held: number;
+  total_reviewed: number;
+  total_actual_frauds: number;
+  total_detected_frauds: number;
+  total_undetected_frauds: number;
+  // Nulos mientras no haya ningún fraude confirmado en la ventana: un cero
+  // diría "no se detectó nada" y lo cierto es que no hay con qué medirlo.
+  detection_rate: number | null;
+  undetected_rate: number | null;
+  average_detection_time_ms: number;
+}
+
+/** Con qué se publicó el modelo que está decidiendo ahora mismo. */
+export interface FraudModelInfo {
+  loaded: boolean;
+  trained_at: string | null;
+  data_source: string | null;
+  approve_below: number;
+  block_above: number;
+  average_precision: number | null;
+  roc_auc: number | null;
+  detection_rate: number | null;
+  detection_time_ms: number | null;
 }
 
 /** Resumen de la tienda para el panel: pedidos por estado y lo cobrado. */

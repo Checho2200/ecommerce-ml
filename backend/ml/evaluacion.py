@@ -100,6 +100,14 @@ class Costos:
       pequeña no tiene a nadie mirando ocho de cada diez compras, por barato
       que salga en la hoja de cálculo. Los pares de umbrales que se pasan de
       esta capacidad se descartan aunque su costo sea menor.
+    - `deteccion_minima`: qué proporción de los fraudes tiene que frenar el
+      modelo. Tampoco es un costo, y por eso hace falta declararla: el
+      optimizador razona en soles, y en soles un fraude pequeño que se escapa
+      sale más barato que las revisiones que costaría atraparlo. La cuenta
+      sale bien y el indicador que mide la tesis —la tasa de fraudes
+      detectados— se hunde. Fijar un piso obliga a que el par elegido sea el
+      más barato *de los que detectan lo suficiente*, en vez del más barato a
+      secas.
     """
 
     margen_bruto: float = 0.15
@@ -107,6 +115,7 @@ class Costos:
     revision_manual: float = 4.0
     acierto_de_la_revision: float = 0.90
     capacidad_de_revision: float = 0.15
+    deteccion_minima: float = 0.80
 
 
 def costo_de_los_umbrales(y_true, y_prob, montos, t_bajo, t_alto, costos: Costos) -> dict:
@@ -147,6 +156,13 @@ def costo_de_los_umbrales(y_true, y_prob, montos, t_bajo, t_alto, costos: Costos
         + error * (montos[revisados & legitimo] * costos.margen_bruto).sum()
     )
 
+    # Los indicadores que mide la tesis, con la misma definición que usa el
+    # panel: un fraude está detectado si el modelo no lo dejó pasar, sea porque
+    # lo bloqueó o porque lo mandó a revisión.
+    fraudes_totales = int(fraude.sum())
+    fraudes_no_detectados = int((aprobados & fraude).sum())
+    fraudes_detectados = fraudes_totales - fraudes_no_detectados
+
     return {
         "t_bajo": round(float(t_bajo), 2),
         "t_alto": round(float(t_alto), 2),
@@ -159,8 +175,11 @@ def costo_de_los_umbrales(y_true, y_prob, montos, t_bajo, t_alto, costos: Costos
         "pedidos_aprobados": int(aprobados.sum()),
         "pedidos_revisados": int(revisados.sum()),
         "pedidos_bloqueados": int(bloqueados.sum()),
-        "fraudes_aprobados": int((aprobados & fraude).sum()),
+        "fraudes_aprobados": fraudes_no_detectados,
         "legitimos_bloqueados": int((bloqueados & legitimo).sum()),
+        "fraudes_detectados": fraudes_detectados,
+        "tasa_de_deteccion": round(fraudes_detectados / fraudes_totales, 4) if fraudes_totales else 0.0,
+        "tasa_de_no_deteccion": round(fraudes_no_detectados / fraudes_totales, 4) if fraudes_totales else 0.0,
     }
 
 
@@ -175,13 +194,24 @@ def buscar_umbrales(
     Prueba todos los pares de umbrales y devuelve (el mejor, la rejilla entera).
 
     "El mejor" es el más barato **entre los que caben en la capacidad de
-    revisión del negocio**. Sin esa restricción el óptimo matemático manda a
-    revisión manual la mayoría de los pedidos, que es la respuesta correcta
-    para la ecuación y absurda para la tienda.
+    revisión del negocio y detectan al menos la proporción de fraude que se
+    exige**. Las dos restricciones existen por el mismo motivo: el optimizador
+    razona en soles, y hay respuestas baratísimas que ninguna tienda aceptaría.
 
-    La rejilla completa se devuelve para dibujar la superficie de costo: en la
-    tesis esa figura muestra que el par elegido no fue una corazonada, y cuánto
-    margen hay alrededor del óptimo.
+    - Sin el tope de revisión, el óptimo manda a revisión manual la mayoría de
+      los pedidos.
+    - Sin el piso de detección, deja escapar los fraudes pequeños, porque
+      atraparlos cuesta más revisiones de lo que valen. La cuenta sale bien y
+      el indicador que mide la tesis se hunde.
+
+    Cuando ningún par cumple las dos cosas, se elige el que más fraude detecta
+    entre los que sí caben en la capacidad, y el resultado lo dice en
+    `regla_aplicada`: es información que la tesis tiene que poder citar, no un
+    detalle que convenga esconder.
+
+    La rejilla completa se devuelve para dibujar la superficie de costo: esa
+    figura muestra que el par elegido no fue una corazonada, y cuánto margen
+    hay alrededor del óptimo.
     """
     costos = costos or Costos()
     candidatos = np.round(np.arange(paso, 1.0, paso), 2)
@@ -199,9 +229,31 @@ def buscar_umbrales(
         fila["dentro_de_capacidad"] = (
             fila["proporcion_revisada"] <= costos.capacidad_de_revision
         )
+        fila["detecta_lo_suficiente"] = (
+            fila["tasa_de_deteccion"] >= costos.deteccion_minima
+        )
 
-    admisibles = [fila for fila in rejilla if fila["dentro_de_capacidad"]]
-    mejor = min(admisibles or rejilla, key=lambda fila: fila["costo_total"])
+    caben = [fila for fila in rejilla if fila["dentro_de_capacidad"]] or rejilla
+    detectan = [fila for fila in caben if fila["detecta_lo_suficiente"]]
+
+    if detectan:
+        mejor = min(detectan, key=lambda fila: fila["costo_total"])
+        regla = (
+            f"el más barato entre los que caben en la capacidad de revisión "
+            f"({costos.capacidad_de_revision:.0%}) y detectan al menos el "
+            f"{costos.deteccion_minima:.0%} del fraude"
+        )
+    else:
+        # Ningún par llega al piso. Antes que rebajar el objetivo en silencio,
+        # se elige el que más detecta —desempatando por costo— y se deja dicho.
+        mejor = min(caben, key=lambda fila: (-fila["tasa_de_deteccion"], fila["costo_total"]))
+        regla = (
+            f"ningún par alcanzó el piso de detección del "
+            f"{costos.deteccion_minima:.0%}; se eligió el que más fraude detecta "
+            f"({mejor['tasa_de_deteccion']:.0%}) dentro de la capacidad de revisión"
+        )
+
+    mejor = {**mejor, "regla_aplicada": regla}
     return mejor, rejilla
 
 

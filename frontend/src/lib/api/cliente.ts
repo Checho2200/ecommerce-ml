@@ -110,5 +110,46 @@ async function request<T>(
   return data as T;
 }
 
-export { API_BASE_URL, ApiError, getToken, setToken, removeToken, request };
+/**
+ * Descarga un archivo del backend y se lo entrega al navegador.
+ *
+ * No basta con un enlace: el endpoint exige la cabecera de autorización, y un
+ * `<a href>` no la manda. Se pide con fetch, se convierte en blob y se dispara
+ * la descarga con un enlace temporal.
+ */
+async function descargar(endpoint: string, nombrePorDefecto: string): Promise<void> {
+  const token = getToken();
+  const respuesta = await fetch(`${API_BASE_URL}${endpoint}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!respuesta.ok) {
+    let detalle: { detail?: unknown } = {};
+    try {
+      detalle = await respuesta.json();
+    } catch {
+      /* el error no venía en JSON */
+    }
+    throw new ApiError(mensajeDeError(detalle), respuesta.status, detalle);
+  }
+
+  // El nombre lo propone el servidor en Content-Disposition; si no viene, se
+  // usa el de respaldo para no descargar un archivo llamado "download".
+  const cabecera = respuesta.headers.get("Content-Disposition") ?? "";
+  const encontrado = /filename="?([^"]+)"?/.exec(cabecera);
+  const nombre = encontrado ? encontrado[1] : nombrePorDefecto;
+
+  const blob = await respuesta.blob();
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  // Sin esto el blob se queda en memoria hasta que se cierre la pestaña.
+  URL.revokeObjectURL(url);
+}
+
+export { API_BASE_URL, ApiError, getToken, setToken, removeToken, request, descargar };
 export type { FetchOptions };

@@ -1,5 +1,5 @@
 {
-  "entrenado_en": "2026-09-01T20:01:59+00:00",
+  "entrenado_en": "2026-09-05T04:08:19+00:00",
   "origen_de_los_datos": "sintetico",
   "variables": [
     "total_amount",
@@ -10,5 +10,7 @@
   "umbral_aprobacion": 0.35,
   "umbral_bloqueo": 0.8,
   "average_precision": 0.7294,
-  "roc_auc": 0.9055
+  "roc_auc": 0.9055,
+  "tasa_de_deteccion": 0.8193,
+  "tiempo_de_deteccion_ms": 1.317
 }

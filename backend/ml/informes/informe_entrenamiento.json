@@ -1,5 +1,5 @@
 {
-  "generado_en": "2026-09-01T20:01:59+00:00",
+  "generado_en": "2026-09-05T04:08:19+00:00",
   "datos": {
     "origen": "sintetico",
     "detalle": "10000 transacciones generadas (829 fraudulentas, 8.3%)",
@@ -59,7 +59,8 @@
       "cargo_por_contracargo": 30.0,
       "revision_manual": 4.0,
       "acierto_de_la_revision": 0.9,
-      "capacidad_de_revision": 0.15
+      "capacidad_de_revision": 0.15,
+      "deteccion_minima": 0.8
     },
     "en_validacion": {
       "t_bajo": 0.35,
@@ -73,8 +74,13 @@
       "pedidos_bloqueados": 136,
       "fraudes_aprobados": 32,
       "legitimos_bloqueados": 36,
+      "fraudes_detectados": 134,
+      "tasa_de_deteccion": 0.8072,
+      "tasa_de_no_deteccion": 0.1928,
       "proporcion_revisada": 0.134,
-      "dentro_de_capacidad": true
+      "dentro_de_capacidad": true,
+      "detecta_lo_suficiente": true,
+      "regla_aplicada": "el más barato entre los que caben en la capacidad de revisión (15%) y detectan al menos el 80% del fraude"
     },
     "comparacion_con_referencia": {
       "costo_con_umbrales_elegidos": 41373.56,
@@ -132,15 +138,38 @@
       "pedidos_revisados": 265,
       "pedidos_bloqueados": 149,
       "fraudes_aprobados": 30,
-      "legitimos_bloqueados": 37
+      "legitimos_bloqueados": 37,
+      "fraudes_detectados": 136,
+      "tasa_de_deteccion": 0.8193,
+      "tasa_de_no_deteccion": 0.1807
     }
+  },
+  "indicadores": {
+    "tasa_de_fraudes_detectados": {
+      "valor": 0.8193,
+      "direccion_deseada": "subir",
+      "medido_en": "partición de prueba, a los umbrales elegidos"
+    },
+    "tasa_de_fraude_no_detectado": {
+      "valor": 0.1807,
+      "direccion_deseada": "bajar",
+      "medido_en": "partición de prueba, a los umbrales elegidos"
+    },
+    "tiempo_de_deteccion_ms": {
+      "valor": 1.317,
+      "direccion_deseada": "bajar",
+      "presupuesto": 50.0,
+      "dentro_del_presupuesto": true,
+      "medido_en": "mediana de evaluaciones de una sola transacción"
+    },
+    "deteccion_del_modelo_anterior": 0.8193
   },
   "reemplazo_del_modelo": {
     "reemplaza": true,
     "resultado_sospechoso": false,
-    "motivo": "AUC-PR 0.7294 contra 0.2605 del modelo actual",
+    "motivo": "AUC-PR 0.7294 contra 0.7294 del modelo actual; detecta el 81.9% del fraude",
     "average_precision_candidato": 0.7294,
-    "average_precision_anterior": 0.2605
+    "average_precision_anterior": 0.7294
   },
   "figuras": [
     "curva_roc.png",

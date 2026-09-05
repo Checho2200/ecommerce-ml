@@ -13,7 +13,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type OrderSummaryResponse } from "@/lib/api";
+import { api, type FraudHistoryResponse, type OrderSummaryResponse } from "@/lib/api";
+import TarjetasDeIndicadores from "@/components/admin/TarjetasDeIndicadores";
 import { useAuth } from "@/lib/auth";
 import { ESTADOS_DE_PEDIDO, type EstadoDePedido } from "@/lib/estados";
 
@@ -64,6 +65,10 @@ export default function AdminDashboard() {
   });
   const [resumen, setResumen] = useState<OrderSummaryResponse | null>(null);
   const [salud, setSalud] = useState<{ status: string } | null>(null);
+  // Los tres indicadores de la tesis, en su versión reducida. El detalle vive
+  // en Antifraude; aquí solo se enseñan las cifras y un enlace, para que el
+  // Dashboard siga siendo un resumen y no el informe del modelo otra vez.
+  const [indicadores, setIndicadores] = useState<FraudHistoryResponse | null>(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -91,6 +96,14 @@ export default function AdminDashboard() {
           }
           try {
             servicios = (await api.serviceOrders.list({ page: 1 })).total;
+          } catch {
+            /* idem */
+          }
+          try {
+            // Sobre los últimos doce meses: en el Dashboard interesa la foto
+            // del año, no la del día.
+            const historial = await api.fraud.history({ granularity: "month", periods: 12 });
+            if (vigente) setIndicadores(historial);
           } catch {
             /* idem */
           }
@@ -248,6 +261,39 @@ export default function AdminDashboard() {
           </Grid>
         ))}
       </Grid>
+
+      {/* ── Indicadores del antifraude ──────────────────────────────── */}
+      <Card
+        elevation={0}
+        sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", mb: 3 }}
+      >
+        <CardContent sx={{ p: 3 }}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            spacing={2}
+            sx={{ justifyContent: "space-between", alignItems: { md: "center" }, mb: 2.5 }}
+          >
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                Indicadores del antifraude
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Últimos 12 meses. El detalle y el reporte descargable están en Antifraude.
+              </Typography>
+            </Box>
+            <Button
+              component={Link}
+              href="/admin/fraud"
+              size="small"
+              endIcon={<ArrowForwardIcon />}
+              sx={{ textTransform: "none", fontWeight: 700, whiteSpace: "nowrap" }}
+            >
+              Ver el detalle
+            </Button>
+          </Stack>
+          <TarjetasDeIndicadores datos={indicadores} cargando={cargando} compacto />
+        </CardContent>
+      </Card>
 
       <Grid container spacing={3}>
         {/* Los pedidos por estado: es el reparto que resume el día de la

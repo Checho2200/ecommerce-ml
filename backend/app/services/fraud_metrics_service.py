@@ -153,7 +153,7 @@ PERIODOS_MAXIMOS = 366
 
 @dataclass
 class PeriodoDelHistorial:
-    """Un día, una semana o un mes de decisiones del modelo."""
+    """Un día, una semana, un mes o un año de decisiones del modelo."""
 
     # Fecha de inicio del período, en ISO. La etiqueta legible la arma el panel,
     # que es quien sabe en qué idioma y con qué formato la va a enseñar.
@@ -167,6 +167,23 @@ class PeriodoDelHistorial:
     monto_aprobado: float
     monto_retenido: float
     puntaje_medio: float
+
+    # ── Los tres indicadores que mide la tesis ───────────────────────────────
+    #
+    # Los dos primeros solo tienen sentido sobre los pedidos que alguien revisó
+    # y etiquetó: sin saber cuáles eran fraude de verdad no se puede decir
+    # cuántos se detectaron. Por eso van en None —y no en cero— cuando el
+    # período no tiene ningún fraude confirmado: un cero diría "no detectamos
+    # nada", y lo cierto es "no hay con qué medirlo".
+    revisados: int
+    fraudes_reales: int
+    fraudes_detectados: int
+    fraudes_no_detectados: int
+    tasa_de_deteccion: float | None
+    tasa_de_no_deteccion: float | None
+    # Éste sí se mide siempre: no necesita etiquetas, lo cronometra el propio
+    # servicio en cada evaluación.
+    tiempo_medio_ms: float
 
 
 def _inicio_del_periodo(momento: datetime, granularidad: str) -> date:
@@ -227,7 +244,15 @@ async def historial(
 
     filas = (
         await db.execute(
-            select(FraudLog.decision, FraudLog.fraud_score, FraudLog.evaluated_at, Order.total_amount)
+            select(
+                FraudLog.decision,
+                FraudLog.fraud_score,
+                FraudLog.evaluated_at,
+                FraudLog.reviewed_at,
+                FraudLog.is_actual_fraud,
+                FraudLog.detection_time_ms,
+                Order.total_amount,
+            )
             .join(Order, Order.id == FraudLog.order_id)
             # El filtro sale en UTC porque así están guardadas las fechas; el
             # límite es la medianoche peruana del primer período.
@@ -239,7 +264,7 @@ async def historial(
     ).all()
 
     cubos: dict[date, dict] = {}
-    for decision, puntaje, evaluado, monto in filas:
+    for decision, puntaje, evaluado, revisado, es_fraude, milisegundos, monto in filas:
         if evaluado is None:
             continue
         if evaluado.tzinfo is None:
@@ -253,13 +278,19 @@ async def historial(
         cubo = cubos.setdefault(
             inicio,
             {"evaluaciones": 0, "aprobadas": 0, "en_revision": 0, "bloqueadas": 0,
-             "monto_aprobado": 0.0, "monto_retenido": 0.0, "suma_puntaje": 0.0},
+             "monto_aprobado": 0.0, "monto_retenido": 0.0, "suma_puntaje": 0.0,
+             "revisados": 0, "fraudes_reales": 0, "detectados": 0, "no_detectados": 0,
+             "suma_ms": 0.0, "con_tiempo": 0},
         )
         decision = getattr(decision, "value", decision)
         monto = float(monto or 0.0)
 
         cubo["evaluaciones"] += 1
         cubo["suma_puntaje"] += float(puntaje or 0.0)
+        if milisegundos is not None:
+            cubo["suma_ms"] += float(milisegundos)
+            cubo["con_tiempo"] += 1
+
         if decision == "REVIEW":
             cubo["en_revision"] += 1
             cubo["monto_retenido"] += monto
@@ -270,12 +301,26 @@ async def historial(
             cubo["aprobadas"] += 1
             cubo["monto_aprobado"] += monto
 
+        # Un fraude está "detectado" si el modelo no lo dejó pasar, sea porque
+        # lo bloqueó o porque lo mandó a revisión. Es la misma definición que
+        # usa `calcular`, y la que corresponde al indicador: lo que importa es
+        # que la compra no siguió su curso, no por cuál de las dos ramas.
+        if revisado is not None:
+            cubo["revisados"] += 1
+            if es_fraude:
+                cubo["fraudes_reales"] += 1
+                if decision in DECISIONES_DE_ALERTA:
+                    cubo["detectados"] += 1
+                else:
+                    cubo["no_detectados"] += 1
+
     # Se recorre la ventana completa hacia atrás y se le da la vuelta, así el
     # resultado sale en orden cronológico y sin huecos.
     serie: list[PeriodoDelHistorial] = []
     inicio = ultimo
     for _ in range(cuantos):
         c = cubos.get(inicio)
+        reales = c["fraudes_reales"] if c else 0
         serie.append(
             PeriodoDelHistorial(
                 inicio=inicio,
@@ -286,6 +331,13 @@ async def historial(
                 monto_aprobado=round(c["monto_aprobado"], 2) if c else 0.0,
                 monto_retenido=round(c["monto_retenido"], 2) if c else 0.0,
                 puntaje_medio=round(c["suma_puntaje"] / c["evaluaciones"], 4) if c and c["evaluaciones"] else 0.0,
+                revisados=c["revisados"] if c else 0,
+                fraudes_reales=reales,
+                fraudes_detectados=c["detectados"] if c else 0,
+                fraudes_no_detectados=c["no_detectados"] if c else 0,
+                tasa_de_deteccion=round(c["detectados"] / reales, 4) if reales else None,
+                tasa_de_no_deteccion=round(c["no_detectados"] / reales, 4) if reales else None,
+                tiempo_medio_ms=round(c["suma_ms"] / c["con_tiempo"], 2) if c and c["con_tiempo"] else 0.0,
             )
         )
         inicio = _periodo_anterior(inicio, granularidad)

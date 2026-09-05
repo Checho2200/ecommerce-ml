@@ -1,10 +1,11 @@
 /** Modelo de detección de fraude: métricas, etiquetado y reentrenamiento. */
 
-import { request } from "./cliente";
+import { descargar, request } from "./cliente";
 import type {
   FraudHistoryResponse,
   FraudLogResponse,
   FraudMetricsResponse,
+  FraudModelInfo,
 } from "./tipos";
 
 export const fraud = {
@@ -23,6 +24,24 @@ export const fraud = {
     if (params?.periods) qs.set("periods", String(params.periods));
     const cadena = qs.toString();
     return request<FraudHistoryResponse>(`/fraud/history${cadena ? `?${cadena}` : ""}`);
+  },
+
+  // Con qué se publicó el modelo que está sirviendo. No son las métricas de la
+  // tienda —esas se mueven con cada revisión—, sino las que midió el
+  // entrenamiento antes de publicarlo.
+  async model() {
+    return request<FraudModelInfo>("/fraud/model");
+  },
+
+  // El mismo reporte que enseña el panel, en un archivo de Excel.
+  async downloadReport(params?: { granularity?: "day" | "week" | "month" | "year" }) {
+    const qs = new URLSearchParams();
+    if (params?.granularity) qs.set("granularity", params.granularity);
+    const cadena = qs.toString();
+    return descargar(
+      `/fraud/report.xlsx${cadena ? `?${cadena}` : ""}`,
+      "indicadores-antifraude.xlsx"
+    );
   },
 
   async getLogs() {

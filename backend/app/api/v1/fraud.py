@@ -2,9 +2,10 @@
 Endpoints de evaluación y monitoreo de fraude usando el modelo LightGBM.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +13,7 @@ from app.api.deps import require_admin
 from app.core.database import get_db
 from app.models.fraud_log import FraudLog
 from app.models.user import User
-from app.services import fraud_metrics_service
+from app.services import fraud_metrics_service, reporte_de_indicadores
 from app.services.fraud_service import fraud_service
 from app.schemas.fraud import (
     FraudEvaluationRequest,
@@ -22,6 +23,7 @@ from app.schemas.fraud import (
     FraudLabelRequest,
     FraudLogResponse,
     FraudMetricsResponse,
+    FraudModelInfo,
 )
 
 router = APIRouter(prefix="/fraud", tags=["Detección de Fraude"])
@@ -74,6 +76,29 @@ async def list_fraud_logs(
     return result.scalars().all()
 
 
+@router.get("/model", response_model=FraudModelInfo)
+async def get_model_info(admin: User = Depends(require_admin)):
+    """
+    Con qué se publicó el modelo que está sirviendo (solo admin).
+
+    Los umbrales y los indicadores viajan en `fraud_model.meta.json`, que
+    escribe el entrenamiento. Si el archivo falta, el servicio cae en los
+    umbrales históricos y aquí se ve: los campos de medición vienen nulos.
+    """
+    meta = fraud_service.metadatos or {}
+    return FraudModelInfo(
+        loaded=fraud_service.is_loaded(),
+        trained_at=meta.get("entrenado_en"),
+        data_source=meta.get("origen_de_los_datos"),
+        approve_below=fraud_service.umbral_aprobacion,
+        block_above=fraud_service.umbral_bloqueo,
+        average_precision=meta.get("average_precision"),
+        roc_auc=meta.get("roc_auc"),
+        detection_rate=meta.get("tasa_de_deteccion"),
+        detection_time_ms=meta.get("tiempo_de_deteccion_ms"),
+    )
+
+
 @router.get("/metrics", response_model=FraudMetricsResponse)
 async def get_fraud_metrics(
     db: AsyncSession = Depends(get_db),
@@ -110,6 +135,60 @@ async def get_fraud_metrics(
     )
 
 
+def _a_respuesta_de_historial(
+    granularidad: str, serie: list
+) -> FraudHistoryResponse:
+    """
+    Traduce la serie del servicio a la forma que espera el panel.
+
+    Los totales de la ventana se calculan sumando los casos y dividiendo una
+    sola vez, no promediando las tasas de cada período: el promedio de
+    porcentajes le daría el mismo peso a un mes con un fraude que a uno con
+    cien, y el indicador que cita la tesis dejaría de ser el que dice ser.
+    """
+    reales = sum(p.fraudes_reales for p in serie)
+    detectados = sum(p.fraudes_detectados for p in serie)
+    no_detectados = sum(p.fraudes_no_detectados for p in serie)
+
+    # El tiempo medio se pondera por evaluaciones por la misma razón.
+    con_tiempo = sum(p.evaluaciones for p in serie if p.tiempo_medio_ms)
+    suma_ms = sum(p.tiempo_medio_ms * p.evaluaciones for p in serie if p.tiempo_medio_ms)
+
+    return FraudHistoryResponse(
+        granularity=granularidad,
+        periods=[
+            FraudHistoryPeriod(
+                period_start=p.inicio,
+                evaluations=p.evaluaciones,
+                approved=p.aprobadas,
+                in_review=p.en_revision,
+                blocked=p.bloqueadas,
+                approved_amount=p.monto_aprobado,
+                held_amount=p.monto_retenido,
+                average_score=p.puntaje_medio,
+                reviewed=p.revisados,
+                actual_frauds=p.fraudes_reales,
+                detected_frauds=p.fraudes_detectados,
+                undetected_frauds=p.fraudes_no_detectados,
+                detection_rate=p.tasa_de_deteccion,
+                undetected_rate=p.tasa_de_no_deteccion,
+                average_detection_time_ms=p.tiempo_medio_ms,
+            )
+            for p in serie
+        ],
+        total_evaluations=sum(p.evaluaciones for p in serie),
+        total_approved=sum(p.aprobadas for p in serie),
+        total_held=sum(p.en_revision + p.bloqueadas for p in serie),
+        total_reviewed=sum(p.revisados for p in serie),
+        total_actual_frauds=reales,
+        total_detected_frauds=detectados,
+        total_undetected_frauds=no_detectados,
+        detection_rate=round(detectados / reales, 4) if reales else None,
+        undetected_rate=round(no_detectados / reales, 4) if reales else None,
+        average_detection_time_ms=round(suma_ms / con_tiempo, 2) if con_tiempo else 0.0,
+    )
+
+
 @router.get("/history", response_model=FraudHistoryResponse)
 async def get_fraud_history(
     granularity: str = Query("day", pattern="^(day|week|month|year)$"),
@@ -130,25 +209,33 @@ async def get_fraud_history(
     y hace parecer sostenido lo que fue puntual.
     """
     serie = await fraud_metrics_service.historial(db, granularity, periods)
+    return _a_respuesta_de_historial(granularity, serie)
 
-    return FraudHistoryResponse(
-        granularity=granularity,
-        periods=[
-            FraudHistoryPeriod(
-                period_start=p.inicio,
-                evaluations=p.evaluaciones,
-                approved=p.aprobadas,
-                in_review=p.en_revision,
-                blocked=p.bloqueadas,
-                approved_amount=p.monto_aprobado,
-                held_amount=p.monto_retenido,
-                average_score=p.puntaje_medio,
-            )
-            for p in serie
-        ],
-        total_evaluations=sum(p.evaluaciones for p in serie),
-        total_approved=sum(p.aprobadas for p in serie),
-        total_held=sum(p.en_revision + p.bloqueadas for p in serie),
+
+@router.get("/report.xlsx")
+async def download_fraud_report(
+    granularity: str = Query("month", pattern="^(day|week|month|year)$"),
+    periods: int | None = Query(None, ge=1, le=366),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    El reporte de indicadores en un archivo de Excel (solo admin).
+
+    Devuelve exactamente los mismos números que `/history`: el archivo se arma
+    desde la misma función, así que no puede desviarse de lo que enseña el
+    panel. Un reporte que no cuadra con la pantalla de la que sale es peor que
+    no tener reporte.
+    """
+    serie = await fraud_metrics_service.historial(db, granularity, periods)
+    datos = _a_respuesta_de_historial(granularity, serie)
+    libro = reporte_de_indicadores.construir(datos)
+
+    nombre = f"indicadores-antifraude-{granularity}-{date.today().isoformat()}.xlsx"
+    return StreamingResponse(
+        libro,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
     )
 
 

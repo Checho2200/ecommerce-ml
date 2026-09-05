@@ -396,14 +396,36 @@ configurables):
   pedido entero.
 - Revisar a mano cuesta el tiempo de una persona (S/ 4) **más sus
   equivocaciones**: el revisor acierta el 90 % de las veces, no siempre.
-- Y no se puede revisar a mano más del **15 %** de los pedidos: es una
-  restricción operativa de una tienda pequeña, no un costo.
+- Y hay dos restricciones que no son costos:
+  - No se puede revisar a mano más del **15 %** de los pedidos: una tienda
+    pequeña no tiene a nadie mirando ocho de cada diez compras.
+  - El par elegido tiene que detectar al menos el **80 %** del fraude. Sin este
+    piso, el óptimo en soles deja escapar los fraudes pequeños —atraparlos
+    cuesta más revisiones de lo que valen—, la cuenta sale bien y la tasa de
+    fraudes detectados, que es lo que reporta la tesis, se hunde sin que nada
+    avise.
 
-Ese último punto importa. Sin él, el óptimo matemático manda el **84 %** de los
-pedidos a revisión manual —la respuesta correcta para la ecuación y absurda
-para el negocio—. Con la restricción, los umbrales elegidos son **aprobar por
-debajo de 0.35 y bloquear a partir de 0.80**, con un 13.4 % de pedidos en
-revisión.
+Esos dos puntos importan. Sin el tope de revisión, el óptimo matemático manda el
+**84 %** de los pedidos a revisión manual —la respuesta correcta para la
+ecuación y absurda para el negocio—. Con las dos restricciones, los umbrales
+elegidos son **aprobar por debajo de 0.35 y bloquear a partir de 0.80**, con un
+13.4 % de pedidos en revisión y un **81.9 %** de fraudes detectados.
+
+El piso de detección no distorsiona esa elección: el par más barato ya lo
+cumple. Actúa como una barandilla, y lo que cuesta subirlo se puede medir:
+
+| Piso de detección | Umbrales | Detección | Revisión manual | Pérdida (S/) |
+| :---: | :---: | ---: | ---: | ---: |
+| sin piso | 0.40 / 0.90 | 81.9 % | 13.1 % | 34 253 |
+| 80 % | 0.40 / 0.90 | 81.9 % | 13.1 % | 34 253 |
+| 90 % | 0.20 / 0.25 | 90.4 % | 8.8 % | 107 783 |
+| 99 % | 0.10 / 0.10 | 100.0 % | 0.0 % | 194 998 |
+
+Detectar ocho puntos más de fraude **triplica la pérdida**, porque para
+conseguirlo hay que bloquear compras legítimas a mansalva. Es el compromiso que
+el sistema resuelve a sabiendas, no por accidente. Si ningún par alcanzase el
+piso, la búsqueda elige el que más detecta y lo deja escrito en
+`regla_aplicada` en vez de rebajar el objetivo en silencio.
 
 Comparados con los 0.30 y 0.70 originales, ahorran un 9.5 % de la pérdida; y
 además esos valores originales ni siquiera eran operables, porque exigían
@@ -419,6 +441,47 @@ históricos para no quedarse nunca sin criterio.
 | menor a 0.35 | `APPROVED` | Sigue al pago |
 | 0.35 – 0.80 | `REVIEW` | Queda en `FRAUD_REVIEW` para que la revise una persona |
 | mayor a 0.80 | `BLOCKED` | Nace `REJECTED` y el stock se devuelve enseguida |
+
+### Los tres indicadores
+
+Son los que mide la tesis, y el sistema entero está organizado alrededor de
+ellos:
+
+| Indicador | Qué mide | Debe |
+| --- | --- | :---: |
+| Tasa de fraudes detectados | De los fraudes confirmados, qué proporción frenó el modelo antes de cobrar | subir |
+| Tasa de fraude no detectado | De los fraudes confirmados, qué proporción se aprobó igual | bajar |
+| Tiempo de detección | Cuánto tarda en evaluar una compra, en milisegundos | bajar |
+
+Un fraude cuenta como **detectado** si el modelo no lo dejó pasar, sea porque lo
+bloqueó o porque lo mandó a revisión: lo que importa es que la compra no siguió
+su curso hasta el cobro. La misma definición se usa en los tres sitios donde
+aparecen los indicadores —el entrenamiento, el panel y el reporte—, así que las
+cifras se pueden comparar entre ellos.
+
+**Dónde se persiguen.** No basta con medirlos:
+
+- Al elegir los umbrales se descartan los pares que no llegan al piso de
+  detección (arriba).
+- Al reentrenar, un candidato que detecte más de 5 puntos menos que el modelo
+  en producción **no se publica**, aunque su AUC-PR sea mejor: el AUC-PR resume
+  todos los umbrales posibles y el indicador mide el único que se va a usar.
+- El tiempo se cronometra evaluando transacciones de una en una —como ocurre en
+  producción, dentro de la petición que crea el pedido— y se compara con un
+  presupuesto de 50 ms. Medirlo en lote daría un número mucho menor que el real.
+
+**Dónde se ven.** En `ml/informes/informe_entrenamiento.json`, bloque
+`indicadores`; en el panel, en Antifraude (con su historial por día, semana, mes
+y año) y en resumen en el Dashboard; y en un archivo de Excel descargable desde
+Antifraude, que el backend arma con los mismos números que enseña la pantalla.
+
+**Una advertencia que acompaña siempre a estas cifras.** Las dos tasas se
+calculan solo sobre los pedidos que un administrador revisó y etiquetó. Un
+pedido bloqueado nunca llega a cobrarse, así que nunca tendrá un contracargo que
+lo confirme como fraude: los aciertos más valiosos del modelo son también los
+más difíciles de etiquetar, y estas cifras los subestiman. Un período sin
+fraudes confirmados no tiene tasa —se muestra un guion, no un cero—, porque un
+cero diría "no se detectó nada" y lo cierto es que no hay con qué medirlo.
 
 ### Por qué decidió lo que decidió
 

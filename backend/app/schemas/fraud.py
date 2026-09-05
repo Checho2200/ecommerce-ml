@@ -109,6 +109,17 @@ class FraudHistoryPeriod(BaseModel):
     held_amount: float
     average_score: float
 
+    # Los tres indicadores de la tesis. Los dos primeros van nulos cuando el
+    # período no tiene ningún fraude confirmado: un cero diría "no se detectó
+    # nada" y lo cierto es que no hay con qué medirlo.
+    reviewed: int = 0
+    actual_frauds: int = 0
+    detected_frauds: int = 0
+    undetected_frauds: int = 0
+    detection_rate: Optional[float] = None
+    undetected_rate: Optional[float] = None
+    average_detection_time_ms: float = 0.0
+
 
 class FraudHistoryResponse(BaseModel):
     """El historial completo, más el total de la ventana consultada."""
@@ -118,3 +129,37 @@ class FraudHistoryResponse(BaseModel):
     total_evaluations: int
     total_approved: int
     total_held: int
+
+    # Los mismos indicadores sobre la ventana entera. Se calculan sumando los
+    # casos y dividiendo una sola vez, no promediando las tasas de cada
+    # período: el promedio de porcentajes le da el mismo peso a un mes con un
+    # caso que a uno con cien.
+    total_reviewed: int = 0
+    total_actual_frauds: int = 0
+    total_detected_frauds: int = 0
+    total_undetected_frauds: int = 0
+    detection_rate: Optional[float] = None
+    undetected_rate: Optional[float] = None
+    average_detection_time_ms: float = 0.0
+
+
+class FraudModelInfo(BaseModel):
+    """
+    Con qué se publicó el modelo que está decidiendo ahora mismo.
+
+    No son las métricas de la tienda —esas salen de `/fraud/metrics` y se
+    mueven con cada revisión—, sino las que el entrenamiento midió sobre su
+    partición de prueba antes de publicar. Sirven para responder la pregunta
+    "¿el modelo que está corriendo es el bueno?" sin abrir el informe.
+    """
+
+    loaded: bool
+    trained_at: Optional[str] = None
+    data_source: Optional[str] = None
+    approve_below: float
+    block_above: float
+    average_precision: Optional[float] = None
+    roc_auc: Optional[float] = None
+    # Los indicadores de la tesis, tal como quedaron al publicarse.
+    detection_rate: Optional[float] = None
+    detection_time_ms: Optional[float] = None
