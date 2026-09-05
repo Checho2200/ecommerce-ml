@@ -163,3 +163,9 @@ class FraudModelInfo(BaseModel):
     # Los indicadores de la tesis, tal como quedaron al publicarse.
     detection_rate: Optional[float] = None
     detection_time_ms: Optional[float] = None
+
+    # Con qué se reconstruye la aritmética de una decisión:
+    # puntaje = sigmoide(base_value + suma de los aportes por variable).
+    base_value: Optional[float] = None
+    n_trees: Optional[int] = None
+    features: list[str] = []

@@ -95,6 +95,9 @@ class FraudDetectionService:
         self.umbral_aprobacion = UMBRAL_APROBACION_POR_DEFECTO
         self.umbral_bloqueo = UMBRAL_BLOQUEO_POR_DEFECTO
         self.metadatos: dict = {}
+        # Se calcula la primera vez que se pide y no cambia mientras el modelo
+        # sea el mismo; `recargar` lo borra.
+        self._valor_base: Optional[float] = None
 
     # ── Carga ────────────────────────────────────────────────────────────────
     def load_model(self):
@@ -138,6 +141,42 @@ class FraudDetectionService:
         except Exception as e:  # noqa: BLE001 - se sigue con los valores por defecto
             print(f"⚠️ No se pudieron leer los umbrales ({e}); se usan los históricos.")
 
+    def valor_base(self) -> Optional[float]:
+        """
+        El punto de partida del modelo, en escala logit, antes de mirar el
+        pedido.
+
+        Es la última columna que devuelve `pred_contrib`, y vale lo mismo para
+        cualquier entrada: es una constante del modelo, no algo del pedido. Con
+        ella la decisión se puede reconstruir a mano —puntaje = sigmoide(base +
+        suma de los aportes)—, que es lo que convierte "el modelo dijo 88 %" en
+        una cuenta que alguien puede rehacer.
+
+        OJO: no es la tasa de fraude de la tienda. El entrenamiento equilibra
+        las clases (`class_weight="balanced"`), así que este punto de partida
+        queda mucho más alto que la proporción real de compras fraudulentas.
+        """
+        if self.model is None:
+            return None
+        if self._valor_base is None:
+            try:
+                fila = pd.DataFrame([{variable: 0.0 for variable in FEATURES}])
+                contribuciones = self.model.booster_.predict(fila, pred_contrib=True)
+                self._valor_base = round(float(contribuciones[0][-1]), 4)
+            except Exception as e:  # noqa: BLE001 - es información, no una decisión
+                print(f"⚠️ No se pudo leer el valor base del modelo: {e}")
+                return None
+        return self._valor_base
+
+    def cantidad_de_arboles(self) -> Optional[int]:
+        """Cuántos árboles suma el modelo para llegar a su puntaje."""
+        if self.model is None:
+            return None
+        try:
+            return int(self.model.booster_.num_trees())
+        except Exception:  # noqa: BLE001
+            return None
+
     def is_loaded(self) -> bool:
         """Devuelve True si el modelo está cargado exitosamente."""
         return self.model is not None
@@ -146,6 +185,7 @@ class FraudDetectionService:
         """Vuelve a leer el modelo del disco, tras un reentrenamiento."""
         self.model = None
         self.metadatos = {}
+        self._valor_base = None
         self.load_model()
 
     # ── Explicación ──────────────────────────────────────────────────────────

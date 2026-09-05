@@ -496,6 +496,21 @@ que ve el administrador:
 Antes, todos los pedidos de alto riesgo recibían la misma frase fija, que no
 explicaba nada y no se podía auditar.
 
+Y como los valores SHAP **suman exactamente** el logit de la predicción, la
+decisión se puede rehacer a mano:
+
+```
+puntaje = 1 / (1 + e^-(base + aporte_monto + aporte_riesgo + aporte_checkout + aporte_dirección))
+```
+
+El `base` es el punto de partida del modelo antes de mirar el pedido (−1.09 con
+el modelo actual) y es el mismo para todos; no es la tasa de fraude de la
+tienda, porque el entrenamiento equilibra las clases y eso lo levanta por encima
+de la proporción real. La pantalla de Antifraude enseña esa cuenta completa con
+un pedido de verdad —punto de partida, el aporte de cada variable, la suma y la
+función logística—, y `tests/test_explicacion_del_modelo.py` comprueba que
+cierra. Es la diferencia entre "el modelo lo decidió" y una decisión auditable.
+
 ### El conjunto de datos
 
 Hay dos fuentes y se prefiere la primera:

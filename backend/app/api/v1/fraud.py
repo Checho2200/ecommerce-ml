@@ -96,6 +96,9 @@ async def get_model_info(admin: User = Depends(require_admin)):
         roc_auc=meta.get("roc_auc"),
         detection_rate=meta.get("tasa_de_deteccion"),
         detection_time_ms=meta.get("tiempo_de_deteccion_ms"),
+        base_value=fraud_service.valor_base(),
+        n_trees=fraud_service.cantidad_de_arboles(),
+        features=meta.get("variables", []),
     )
 
 

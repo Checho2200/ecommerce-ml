@@ -99,6 +99,9 @@ export interface FraudLogResponse {
   decision: string;
   risk_level: string | null;
   explanation: string | null;
+  // Los valores que el modelo leyó de este pedido. Con ellos y los aportes se
+  // puede rehacer la cuenta entera de la decisión.
+  feature_vector: Record<string, number> | null;
   // Cuánto empujó cada variable el puntaje de este pedido, en escala logit:
   // positivo hacia fraude, negativo hacia compra legítima.
   contributions: Record<string, number> | null;
@@ -186,6 +189,11 @@ export interface FraudModelInfo {
   roc_auc: number | null;
   detection_rate: number | null;
   detection_time_ms: number | null;
+  // Con qué se reconstruye la aritmética de una decisión:
+  // puntaje = sigmoide(base_value + suma de los aportes por variable).
+  base_value: number | null;
+  n_trees: number | null;
+  features: string[];
 }
 
 /** Resumen de la tienda para el panel: pedidos por estado y lo cobrado. */

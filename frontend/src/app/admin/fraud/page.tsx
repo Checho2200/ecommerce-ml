@@ -20,7 +20,7 @@ import {
   Typography,
 } from "@mui/material";
 
-import CuandoActuaElModelo from "@/components/admin/CuandoActuaElModelo";
+import ComoDecideElModelo from "@/components/admin/ComoDecideElModelo";
 import ColaDeRevision from "@/components/admin/ColaDeRevision";
 import MetricasDelModelo from "@/components/admin/MetricasDelModelo";
 import TarjetasDeIndicadores from "@/components/admin/TarjetasDeIndicadores";
@@ -28,12 +28,20 @@ import HistorialAntifraude, { type Granularidad } from "@/components/admin/Histo
 import {
   api,
   type FraudHistoryResponse,
+  type FraudLogResponse,
   type FraudMetricsResponse,
+  type FraudModelInfo,
   type OrderResponse,
 } from "@/lib/api";
 
 export default function AdminFraudPage() {
   const [metricas, setMetricas] = useState<FraudMetricsResponse | null>(null);
+  const [modelo, setModelo] = useState<FraudModelInfo | null>(null);
+  // Una evaluación reciente con la que enseñar la aritmética de una decisión.
+  // Se prefiere una que el modelo no haya aprobado: en un pedido bloqueado los
+  // aportes son grandes y el reparto se lee de un vistazo, mientras que en uno
+  // aprobado son todos pequeños y negativos.
+  const [ejemplo, setEjemplo] = useState<FraudLogResponse | null>(null);
   const [retenidos, setRetenidos] = useState<OrderResponse[]>([]);
   const [granularidad, setGranularidad] = useState<Granularidad>("day");
   const [cargando, setCargando] = useState(true);
@@ -68,11 +76,21 @@ export default function AdminFraudPage() {
   // Separarlos evita volver a pedirlo todo cada vez que se toca "Semanal".
   useEffect(() => {
     let vigente = true;
-    Promise.all([api.fraud.getMetrics(), traerCola()])
-      .then(([m, cola]) => {
+    Promise.all([
+      api.fraud.getMetrics(),
+      traerCola(),
+      api.fraud.model(),
+      api.fraud.getLogs(),
+    ])
+      .then(([m, cola, info, registros]) => {
         if (!vigente) return;
         setMetricas(m);
         setRetenidos(cola);
+        setModelo(info);
+        const conCuenta = registros.filter((r) => r.contributions);
+        setEjemplo(
+          conCuenta.find((r) => r.decision !== "APPROVED") ?? conCuenta[0] ?? null
+        );
       })
       .catch(() => {
         if (vigente) avisar("No se pudieron cargar los datos del modelo", "error");
@@ -188,7 +206,7 @@ export default function AdminFraudPage() {
       </Box>
 
       <Stack spacing={3}>
-        <CuandoActuaElModelo milisegundos={metricas?.average_detection_time_ms} />
+        <ComoDecideElModelo modelo={modelo} ejemplo={ejemplo} cargando={cargando} />
 
         <ColaDeRevision
           pedidos={retenidos}
