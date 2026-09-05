@@ -22,7 +22,30 @@ export const BRAND = {
   goldDark: "#E6B800",
   offer: "#E11D2E",
   ink: "#16202E",
+  // El azul de marca escrito sobre el fondo oscuro: el navy es casi invisible
+  // ahí, así que el modo oscuro necesita su propia versión del mismo color.
+  navySobreOscuro: "#79A9E8",
+  navySobreOscuroFuerte: "#5C95DC",
 } as const;
+
+/**
+ * `acento` es el azul de marca cuando se usa para escribir —titulares,
+ * precios, íconos, enlaces— y no como fondo.
+ *
+ * Existe porque `primary.main` no puede hacer las dos cosas: en modo oscuro el
+ * navy sigue siendo el fondo correcto para la cinta y el bloque de portada,
+ * pero como color de texto sobre el gris casi negro no se lee. Quien escribe
+ * sobre un fondo claro u oscuro usa `acento.main`; quien pinta un fondo azul
+ * sigue usando `primary.main`.
+ */
+declare module "@mui/material/styles" {
+  interface Palette {
+    acento: Palette["primary"];
+  }
+  interface PaletteOptions {
+    acento?: PaletteOptions["primary"];
+  }
+}
 
 /** Tipografía de titulares. Se usa desde `sx` donde hace falta peso visual. */
 export const DISPLAY_FONT = "var(--font-display), 'Archivo Black', system-ui, sans-serif";
@@ -63,6 +86,14 @@ export default function AppThemeProvider({ children }: { children: ReactNode }) 
             contrastText: BRAND.navy,
           },
           error: { main: BRAND.offer },
+          // MUI solo completa light/dark/contrastText de las claves que ya
+          // conoce; en una propia hay que darlas a mano.
+          acento: {
+            main: mode === "light" ? BRAND.navy : BRAND.navySobreOscuro,
+            light: mode === "light" ? BRAND.navyLight : "#9FC4EF",
+            dark: mode === "light" ? BRAND.navyDark : BRAND.navySobreOscuroFuerte,
+            contrastText: mode === "light" ? "#FFFFFF" : BRAND.ink,
+          },
           background: {
             default: mode === "light" ? "#F2F4F7" : "#0B1520",
             paper: mode === "light" ? "#FFFFFF" : "#16202E",

@@ -83,12 +83,12 @@ export default function ProductCard({
         animation: `${fadeIn} 0.45s ease-out ${index * 0.04}s both`,
         "@media (hover: hover)": {
           "&:hover": {
-            borderColor: "primary.main",
+            borderColor: "acento.main",
             boxShadow: "0 14px 28px -18px rgba(12,58,110,0.55)",
             "& .product-img": { transform: "scale(1.05)" },
           },
         },
-        "&:active": { borderColor: "primary.main" },
+        "&:active": { borderColor: "acento.main" },
       }}
     >
       {/* Etiqueta de oferta o de stock bajo */}
@@ -167,7 +167,7 @@ export default function ProductCard({
             sx={{
               fontFamily: DISPLAY_FONT,
               fontSize: { xs: "1.25rem", sm: "1.5rem" },
-              color: hasDiscount ? "error.main" : "primary.main",
+              color: hasDiscount ? "error.main" : "acento.main",
               lineHeight: 1.05,
             }}
           >
@@ -177,7 +177,7 @@ export default function ProductCard({
             sx={{
               fontFamily: DISPLAY_FONT,
               fontSize: { xs: "0.8rem", sm: "0.92rem" },
-              color: hasDiscount ? "error.main" : "primary.main",
+              color: hasDiscount ? "error.main" : "acento.main",
             }}
           >
             .{decimal}

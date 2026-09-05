@@ -8,7 +8,7 @@
  */
 
 import Link from "next/link";
-import { Box, Container, Grid, Typography, Divider, Stack } from "@mui/material";
+import { Box, Container, Grid, Typography, Divider, Stack, useTheme } from "@mui/material";
 import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
 import MailOutlineIcon from "@mui/icons-material/EmailOutlined";
 import PhoneOutlinedIcon from "@mui/icons-material/PhoneOutlined";
@@ -43,7 +43,7 @@ function FooterLink({ href, label }: { href: string; label: string }) {
         color: "text.secondary",
         textDecoration: "none",
         transition: "color 0.2s",
-        "&:hover": { color: "primary.main" },
+        "&:hover": { color: "acento.main" },
       }}
     >
       {label}
@@ -53,6 +53,9 @@ function FooterLink({ href, label }: { href: string; label: string }) {
 
 export default function Footer() {
   const year = new Date().getFullYear();
+  // El logotipo a color es azul marino sobre transparente: sobre el fondo
+  // oscuro se pierde, así que ahí va la versión en blanco que ya existe.
+  const oscuro = useTheme().palette.mode === "dark";
 
   return (
     <Box
@@ -72,7 +75,7 @@ export default function Footer() {
           <Grid size={{ xs: 12, md: 4 }}>
             <Box
               component="img"
-              src="/brand/logo-sts.png"
+              src={oscuro ? "/brand/logo-sts-blanco.png" : "/brand/logo-sts.png"}
               alt="Grupo STS SAC"
               sx={{ height: 44, width: "auto", mb: 1.8, display: "block" }}
             />
@@ -121,7 +124,7 @@ export default function Footer() {
                 { icon: <ScheduleOutlinedIcon fontSize="small" />, text: "Lun a Sáb · 9:00 – 21:00" },
               ].map((item, i) => (
                 <Stack key={i} direction="row" spacing={1.2} sx={{ alignItems: "center" }}>
-                  <Box sx={{ color: "primary.main", display: "flex" }}>{item.icon}</Box>
+                  <Box sx={{ color: "acento.main", display: "flex" }}>{item.icon}</Box>
                   <Typography
                     variant="body2"
                     color="text.secondary"
@@ -131,7 +134,7 @@ export default function Footer() {
                           href: item.href,
                           target: "_blank",
                           rel: "noopener noreferrer",
-                          sx: { textDecoration: "none", "&:hover": { color: "primary.main" } },
+                          sx: { textDecoration: "none", "&:hover": { color: "acento.main" } },
                         }
                       : {})}
                   >
@@ -162,7 +165,7 @@ export default function Footer() {
                 variant="caption"
                 sx={{
                   color: "text.disabled", textDecoration: "none",
-                  "&:hover": { color: "primary.main" },
+                  "&:hover": { color: "acento.main" },
                 }}
               >
                 {r.label}

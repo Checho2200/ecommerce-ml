@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { useCartStore } from "@/lib/stores/cart";
 import { useThemeStore } from "@/lib/stores/theme";
 import { api, CategoryResponse } from "@/lib/api";
+import { categoriasRaiz } from "@/lib/categorias";
 import { DISPLAY_FONT } from "@/components/ThemeProvider";
 
 import {
@@ -74,21 +75,10 @@ export default function Header() {
     api.categories.list().then(setCategories).catch(() => setCategories([]));
   }, []);
 
-  // El menú muestra solo las categorías raíz que tengan algo que ofrecer
-  // —productos propios o en alguna subcategoría—; las subcategorías (DDR4,
-  // Intel Core i7…) se ven al entrar, no en la barra de navegación.
-  const categoriasRaiz = useMemo(() => {
-    const raizConProductos = new Set(
-      categories
-        .filter((c) => c.parent_id !== null && c.product_count > 0)
-        .map((c) => c.parent_id)
-    );
-    return categories.filter(
-      (c) =>
-        c.parent_id === null &&
-        (c.product_count > 0 || raizConProductos.has(c.id))
-    );
-  }, [categories]);
+  // El menú muestra solo las categorías raíz que tengan algo que ofrecer; las
+  // subcategorías (DDR4, Intel Core i7…) se ven al entrar, no en la barra de
+  // navegación. La regla la comparte con la portada: ver lib/categorias.ts.
+  const raices = useMemo(() => categoriasRaiz(categories), [categories]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +106,7 @@ export default function Header() {
         px: 1.8,
         py: { xs: 0.9, md: 1.15 },
         transition: "border-color 0.2s",
-        "&:focus-within": { borderColor: "primary.main" },
+        "&:focus-within": { borderColor: "acento.main" },
       }}
     >
       <SearchIcon sx={{ fontSize: 19, color: "text.secondary" }} />
@@ -243,7 +233,7 @@ export default function Header() {
                 sx={{
                   fontFamily: DISPLAY_FONT,
                   fontSize: { xs: 15, md: 18 },
-                  color: "primary.main",
+                  color: "acento.main",
                   lineHeight: 1,
                 }}
               >
@@ -262,7 +252,7 @@ export default function Header() {
                 onClick={(e) => (user ? setAnchorEl(e.currentTarget) : router.push("/login"))}
                 sx={{ alignItems: "center", cursor: "pointer" }}
               >
-                <PersonOutlineIcon sx={{ fontSize: 22, color: "primary.main" }} />
+                <PersonOutlineIcon sx={{ fontSize: 22, color: "acento.main" }} />
                 <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
                   {user ? user.full_name.split(" ")[0] : "Mi cuenta"}
                 </Typography>
@@ -277,7 +267,7 @@ export default function Header() {
               sx={{ alignItems: "center", textDecoration: "none", color: "text.primary" }}
             >
               <Badge badgeContent={itemCount} color="error">
-                <ShoppingCartOutlinedIcon sx={{ fontSize: 22, color: "primary.main" }} />
+                <ShoppingCartOutlinedIcon sx={{ fontSize: 22, color: "acento.main" }} />
               </Badge>
               {!isMobile && (
                 <Typography sx={{ fontSize: 14, fontWeight: 600 }}>Carrito</Typography>
@@ -290,11 +280,11 @@ export default function Header() {
         </Container>
 
         {/* ── Menú de categorías (escritorio) ───────────── */}
-        {!isMobile && categoriasRaiz.length > 0 && (
+        {!isMobile && raices.length > 0 && (
           <Box sx={{ borderTop: "1px solid", borderColor: "divider" }}>
             <Container maxWidth="lg">
               <Stack direction="row" spacing={3.5} sx={{ alignItems: "center" }}>
-                {categoriasRaiz.slice(0, 7).map((c) => (
+                {raices.slice(0, 7).map((c) => (
                   <Typography
                     key={c.id}
                     component={Link}
@@ -307,7 +297,7 @@ export default function Header() {
                       textDecoration: "none",
                       borderBottom: "3px solid transparent",
                       transition: "all 0.2s",
-                      "&:hover": { color: "primary.main", borderBottomColor: "secondary.main" },
+                      "&:hover": { color: "acento.main", borderBottomColor: "secondary.main" },
                     }}
                   >
                     {c.name}
@@ -415,7 +405,7 @@ export default function Header() {
             Categorías
           </Typography>
           <List dense>
-            {categoriasRaiz.map((c) => (
+            {raices.map((c) => (
               <ListItem disablePadding key={c.id}>
                 <ListItemButton onClick={() => go(`/catalog?category_id=${c.id}`)}>
                   <ListItemText primary={c.name} />
@@ -461,7 +451,7 @@ export default function Header() {
                 <ListItem disablePadding>
                   <ListItemButton onClick={() => go("/register")}>
                     <ListItemText
-                      primary={<Typography sx={{ fontWeight: 700, color: "primary.main" }}>Crear cuenta</Typography>}
+                      primary={<Typography sx={{ fontWeight: 700, color: "acento.main" }}>Crear cuenta</Typography>}
                     />
                   </ListItemButton>
                 </ListItem>

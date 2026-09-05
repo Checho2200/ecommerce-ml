@@ -1,20 +1,24 @@
 "use client";
 
 /**
- * Sección de confianza de la portada.
+ * Portada: por qué se puede comprar tranquilo.
  *
- * Está escrita para el cliente, no para explicar la implementación: dice qué
- * lo protege y por qué puede comprar tranquilo. El detalle técnico del modelo
- * de detección de fraude vive en el panel de administración.
+ * Está escrita para el cliente, no para explicar la implementación: dice qué lo
+ * protege y por qué puede comprar tranquilo. El detalle técnico del modelo de
+ * detección de fraude vive en el panel de administración.
+ *
+ * Los colores salen del tema (antes eran grises de Tailwind escritos a mano,
+ * que no seguían el modo oscuro) y las esquinas son rectas, como en el resto
+ * del sitio.
  */
 
-import { Box, Container, Grid, Typography, Stack } from "@mui/material";
+import { Box, Container, Grid, Stack, Typography } from "@mui/material";
 import { DISPLAY_FONT } from "@/components/ThemeProvider";
 import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import AutorenewOutlinedIcon from "@mui/icons-material/AutorenewOutlined";
 
-const PILLARS = [
+const PILARES = [
   {
     icon: ShieldOutlinedIcon,
     title: "Cada pedido se revisa",
@@ -27,71 +31,76 @@ const PILLARS = [
   },
   {
     icon: AutorenewOutlinedIcon,
-    title: "Garantía y cambios",
-    desc: "12 meses de garantía en todos los productos y 7 días para solicitar un cambio.",
+    title: "Cambios y garantía",
+    desc: "Tienes siete días para solicitar un cambio, además de los doce meses de garantía del producto.",
   },
 ];
 
 export default function FraudSection() {
   return (
     <Box
+      component="section"
       id="seguridad"
       sx={{
-        position: "relative",
         bgcolor: "primary.dark",
-        color: "#e2e8f0",
-        py: { xs: 6, md: 8 },
-        overflow: "hidden",
+        color: "#FFFFFF",
+        borderTop: "1px solid rgba(255,206,0,0.35)",
       }}
     >
-      <Box
-        aria-hidden
-        sx={{
-          position: "absolute", top: -160, right: -120, width: 440, height: 440,
-          borderRadius: "50%", pointerEvents: "none",
-          background: "radial-gradient(circle, rgba(255,206,0,0.16) 0%, rgba(255,206,0,0) 70%)",
-        }}
-      />
-
-      <Container maxWidth="lg" sx={{ position: "relative" }}>
-        <Box sx={{ textAlign: "center", maxWidth: 620, mx: "auto", mb: { xs: 4.5, md: 6 } }}>
+      <Container maxWidth="lg" sx={{ py: { xs: 6, md: 9 } }}>
+        <Box sx={{ maxWidth: 560, mb: { xs: 4.5, md: 6 } }}>
           <Typography
-            variant="h3"
-            sx={{ fontFamily: DISPLAY_FONT, fontSize: { xs: "1.7rem", md: "2.3rem" }, lineHeight: 1.2, color: "#FFFFFF" }}
+            component="h2"
+            sx={{
+              fontFamily: DISPLAY_FONT,
+              fontSize: { xs: "1.6rem", md: "2.1rem" },
+              lineHeight: 1.15,
+              color: "#FFFFFF",
+            }}
           >
             Compra con confianza
           </Typography>
           <Typography
-            sx={{ mt: 1.8, color: "#94a3b8", fontSize: { xs: "1rem", md: "1.08rem" }, lineHeight: 1.7 }}
+            sx={{
+              mt: 2,
+              color: "rgba(255,255,255,0.72)",
+              fontSize: { xs: "0.98rem", md: "1.04rem" },
+              lineHeight: 1.7,
+            }}
           >
-            Protegemos cada compra de principio a fin, para que lo único que tengas
-            que decidir sea qué componente llevarte.
+            Protegemos cada compra de principio a fin, para que lo único que
+            tengas que decidir sea qué componente llevarte.
           </Typography>
         </Box>
 
-        <Grid container spacing={{ xs: 3, md: 4 }}>
-          {PILLARS.map((p) => (
-            <Grid size={{ xs: 12, md: 4 }} key={p.title}>
-              <Stack
-                spacing={1.5}
-                sx={{
-                  alignItems: { xs: "flex-start", md: "center" },
-                  textAlign: { xs: "left", md: "center" },
-                }}
-              >
+        <Grid container spacing={{ xs: 3.5, md: 5 }}>
+          {PILARES.map((p) => (
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={p.title}>
+              <Stack spacing={1.6} sx={{ alignItems: "flex-start" }}>
                 <Box
                   sx={{
-                    width: 52, height: 52, borderRadius: 2.5,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    bgcolor: "rgba(255,206,0,0.16)", color: "secondary.main",
+                    width: 46,
+                    height: 46,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "1px solid rgba(255,206,0,0.45)",
+                    color: "secondary.main",
                   }}
                 >
-                  <p.icon />
+                  <p.icon sx={{ fontSize: 22 }} />
                 </Box>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: "#FFFFFF" }}>
+                <Typography sx={{ fontWeight: 700, fontSize: "1.02rem", color: "#FFFFFF" }}>
                   {p.title}
                 </Typography>
-                <Typography variant="body2" sx={{ color: "#94a3b8", lineHeight: 1.75, maxWidth: 320 }}>
+                <Typography
+                  sx={{
+                    fontSize: "0.9rem",
+                    color: "rgba(255,255,255,0.7)",
+                    lineHeight: 1.75,
+                    maxWidth: 330,
+                  }}
+                >
                   {p.desc}
                 </Typography>
               </Stack>

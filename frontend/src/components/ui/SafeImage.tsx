@@ -19,12 +19,15 @@ export default function SafeImage({
   className,
   sx,
   objectFit = "contain",
+  eager = false,
 }: {
   src?: string | null;
   alt: string;
   className?: string;
   sx?: SxProps<Theme>;
   objectFit?: "contain" | "cover";
+  /** Para la imagen visible al abrir la página: diferirla retrasa el pintado. */
+  eager?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const resolved = !src || failed ? FALLBACK : src;
@@ -35,7 +38,8 @@ export default function SafeImage({
       src={resolved}
       alt={alt}
       className={className}
-      loading="lazy"
+      loading={eager ? "eager" : "lazy"}
+      fetchPriority={eager ? "high" : undefined}
       decoding="async"
       onError={() => setFailed(true)}
       sx={{
