@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { ESTADOS_DE_PEDIDO, type EstadoDePedido } from "@/lib/estados";
 import { useRecurso } from "@/hooks/useRecurso";
+import Link from "next/link";
 import { api, type OrderResponse } from "@/lib/api";
 
 // MUI
@@ -34,6 +35,7 @@ import {
 // MUI Icons
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import PsychologyIcon from "@mui/icons-material/Psychology";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 
 
 export default function OrdersPage() {
@@ -66,33 +68,6 @@ export default function OrdersPage() {
 
   const showSnack = (msg: string, severity: "success" | "error" = "success") =>
     setSnack({ msg, severity });
-
-  /**
-   * Registra lo que realmente pasó con un pedido evaluado.
-   *
-   * Marcar los fraudes reales mide cuántos se escapan; marcar las compras
-   * legítimas mide cuántas ventas buenas se están frenando. Con una sola de
-   * las dos, la precisión del modelo no se puede calcular.
-   */
-  const etiquetar = async (fraudLogId: string, fueFraude: boolean) => {
-    if (fueFraude && !window.confirm(
-      "¿Confirmas que este pedido terminó en un contracargo? " +
-      "Se usará para medir y reentrenar el modelo."
-    )) {
-      return;
-    }
-    try {
-      await api.fraud.label(fraudLogId, fueFraude);
-      showSnack(
-        fueFraude ? "Registrado como fraude real" : "Registrado como compra legítima"
-      );
-    } catch (err: unknown) {
-      showSnack(
-        err instanceof Error ? err.message : "No se pudo registrar la etiqueta",
-        "error"
-      );
-    }
-  };
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     try {
@@ -361,33 +336,19 @@ export default function OrdersPage() {
                   </Typography>
                 )}
 
+                {/* Etiquetar el caso —decirle al modelo qué pasó de verdad—
+                    es otro trabajo, y vive con el modelo. Aquí solo se explica
+                    por qué el pedido está en el estado en que está. */}
                 {selectedOrder.fraud_log_id && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 1 }}>
-                      ¿Qué pasó de verdad con este pedido? Etiquetarlo es lo que
-                      permite medir al modelo y lo que alimenta su reentrenamiento.
-                    </Typography>
-                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        size="small"
-                        sx={{ textTransform: "none", fontWeight: 700 }}
-                        onClick={() => etiquetar(selectedOrder.fraud_log_id!, true)}
-                      >
-                        Fue fraude (contracargo)
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        color="success"
-                        size="small"
-                        sx={{ textTransform: "none", fontWeight: 700 }}
-                        onClick={() => etiquetar(selectedOrder.fraud_log_id!, false)}
-                      >
-                        Fue una compra legítima
-                      </Button>
-                    </Box>
-                  </Box>
+                  <Button
+                    component={Link}
+                    href="/admin/fraud"
+                    size="small"
+                    endIcon={<ArrowForwardIcon />}
+                    sx={{ mt: 1.5, textTransform: "none", fontWeight: 700, px: 0 }}
+                  >
+                    Revisar en Antifraude
+                  </Button>
                 )}
               </Box>
             )}

@@ -34,6 +34,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
 import SettingsIcon from "@mui/icons-material/Settings";
 import BuildIcon from "@mui/icons-material/Build";
+import PsychologyIcon from "@mui/icons-material/Psychology";
 
 const drawerWidth = 260;
 
@@ -69,6 +70,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/products", icon: <PackageIcon />, label: "Productos" },
     { href: "/admin/categories", icon: <TagsIcon />, label: "Categorías" },
     { href: "/admin/orders", icon: <ShoppingCartIcon />, label: "Órdenes" },
+    // El modelo tiene su propia entrada: repartido entre el Dashboard y
+    // Órdenes no se podía ni revisar una cola ni leer una tendencia.
+    { href: "/admin/fraud", icon: <PsychologyIcon />, label: "Antifraude" },
     { href: "/admin/services", icon: <BuildIcon />, label: "Servicios" },
     { href: "/admin/settings", icon: <SettingsIcon />, label: "Configuración" },
   ];

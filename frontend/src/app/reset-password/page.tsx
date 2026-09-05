@@ -2,27 +2,24 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
+import CampoDeContrasena, { LONGITUD_MINIMA } from "@/components/ui/CampoDeContrasena";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
 import {
   Box,
   Typography,
-  TextField,
   Button,
   Paper,
   Alert,
   CircularProgress,
-  InputAdornment,
-  IconButton,
   Stack,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import Visibility from "@mui/icons-material/Visibility";
-import VisibilityOff from "@mui/icons-material/VisibilityOff";
 
-const MINIMO = 6;
+// Igual que en el registro: el mínimo real lo impone el backend.
+const MINIMO = LONGITUD_MINIMA;
 
 function ResetPasswordForm() {
   const parametros = useSearchParams();
@@ -34,7 +31,6 @@ function ResetPasswordForm() {
 
   const [password, setPassword] = useState("");
   const [repetida, setRepetida] = useState("");
-  const [verClave, setVerClave] = useState(false);
   const [error, setError] = useState("");
   const [listo, setListo] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -124,47 +120,25 @@ function ResetPasswordForm() {
 
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2.5}>
-          <TextField
+          <CampoDeContrasena
             label="Contraseña nueva"
-            type={verClave ? "text" : "password"}
             fullWidth
             required
             autoFocus
             autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            helperText={`Mínimo ${MINIMO} caracteres`}
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setVerClave(!verClave)}
-                      edge="end"
-                      size="small"
-                      tabIndex={-1}
-                      aria-label={verClave ? "Ocultar contraseña" : "Mostrar contraseña"}
-                    >
-                      {verClave ? (
-                        <VisibilityOff fontSize="small" />
-                      ) : (
-                        <Visibility fontSize="small" />
-                      )}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
+            valor={password}
+            onCambio={setPassword}
+            medirFuerza
+            helperText={`Al menos ${MINIMO} caracteres. Una frase larga es mejor que una palabra con símbolos.`}
           />
 
-          <TextField
+          <CampoDeContrasena
             label="Repite la contraseña"
-            type={verClave ? "text" : "password"}
             fullWidth
             required
             autoComplete="new-password"
-            value={repetida}
-            onChange={(e) => setRepetida(e.target.value)}
+            valor={repetida}
+            onCambio={setRepetida}
           />
 
           <Button

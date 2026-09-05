@@ -1,223 +1,246 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, FraudMetricsResponse } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+/**
+ * Dashboard: el estado general de la tienda, y nada más.
+ *
+ * Antes esta pantalla era dos cosas a la vez. Debajo de cuatro contadores venía
+ * el informe completo del modelo de fraude —precisión, exhaustividad, matriz de
+ * confusión, impacto en dinero—, que ocupaba más espacio que la tienda entera y
+ * que es el detalle de un subsistema, no un resumen del negocio. Todo eso vive
+ * ahora en Antifraude; aquí queda un enlace y el número que sí es general: si
+ * hay pedidos esperando decisión.
+ */
 
-// MUI
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { api, type OrderSummaryResponse } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { ESTADOS_DE_PEDIDO, type EstadoDePedido } from "@/lib/estados";
+
 import {
+  Alert,
   Box,
-  Typography,
-  Grid,
+  Button,
   Card,
   CardContent,
   Chip,
+  Grid,
   Skeleton,
+  Stack,
+  Typography,
   alpha,
 } from "@mui/material";
 import { keyframes } from "@mui/system";
 
-// MUI Icons
 import InventoryIcon from "@mui/icons-material/Inventory";
 import LabelIcon from "@mui/icons-material/Label";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import BuildIcon from "@mui/icons-material/Build";
-import PsychologyIcon from "@mui/icons-material/Psychology";
-import SettingsIcon from "@mui/icons-material/Settings";
-import TimerIcon from "@mui/icons-material/Timer";
-import DoneAllIcon from "@mui/icons-material/DoneAll";
 import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
-import RuleIcon from "@mui/icons-material/Rule";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 
-const fadeIn = keyframes`
+const aparecer = keyframes`
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 `;
 
-/** Una cifra del panel, con su icono y su pie explicativo. */
-function TarjetaMetrica({
-  titulo,
-  valor,
-  pie,
-  icono,
-  color,
-  cargando,
-}: {
-  titulo: string;
-  valor: string;
-  pie: string;
-  icono: React.ReactNode;
-  color: string;
-  cargando: boolean;
-}) {
-  return (
-    <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", height: "100%" }}>
-      <CardContent sx={{ p: 3 }}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-          <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem" }}>
-            {titulo}
-          </Typography>
-          {icono}
-        </Box>
-        {cargando ? (
-          <Skeleton width={80} height={40} />
-        ) : (
-          <Typography variant="h4" sx={{ fontWeight: 900, color }}>
-            {valor}
-          </Typography>
-        )}
-        <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 1 }}>
-          {pie}
-        </Typography>
-      </CardContent>
-    </Card>
-  );
-}
-
 const soles = (monto: number) =>
   `S/ ${monto.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-interface DashboardStats {
-  totalProducts: number;
-  totalOrders: number;
-  totalServices: number;
-  totalCategories: number;
+interface Cifras {
+  productos: number;
+  categorias: number;
+  ordenes: number;
+  servicios: number;
 }
 
 export default function AdminDashboard() {
   const { user, isAdmin } = useAuth();
-  const [stats, setStats] = useState<DashboardStats>({
-    totalProducts: 0,
-    totalOrders: 0,
-    totalServices: 0,
-    totalCategories: 0,
+  const [cifras, setCifras] = useState<Cifras>({
+    productos: 0,
+    categorias: 0,
+    ordenes: 0,
+    servicios: 0,
   });
-  const [fraudMetrics, setFraudMetrics] = useState<FraudMetricsResponse | null>(null);
-  const [health, setHealth] = useState<{ status: string; database: string; ml_model: string } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [resumen, setResumen] = useState<OrderSummaryResponse | null>(null);
+  const [salud, setSalud] = useState<{ status: string } | null>(null);
+  const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    const fetchStats = async () => {
+    let vigente = true;
+
+    const cargar = async () => {
       try {
-        const [products, categories] = await Promise.all([
+        const [productos, categorias] = await Promise.all([
           api.products.list({ per_page: 1, active_only: false }),
           api.categories.list(),
         ]);
 
-        let ordersTotal = 0;
-        let servicesTotal = 0;
+        let ordenes = 0;
+        let servicios = 0;
 
         if (isAdmin) {
           try {
-            const orders = await api.orders.list({ per_page: 1 });
-            ordersTotal = orders.total;
-          } catch { /* no admin access */ }
-
+            // Una sola consulta agrupada trae el total y el desglose por
+            // estado; antes hacía falta una petición paginada por cada uno.
+            const datos = await api.orders.summary();
+            if (vigente) setResumen(datos);
+            ordenes = datos.total;
+          } catch {
+            /* sin permisos o API caída: las tarjetas quedan en cero */
+          }
           try {
-            const services = await api.serviceOrders.list({ page: 1 });
-            servicesTotal = services.total;
-          } catch { /* no admin access */ }
-          
-          try {
-            const metrics = await api.fraud.getMetrics();
-            setFraudMetrics(metrics);
-          } catch { /* ignored */ }
+            servicios = (await api.serviceOrders.list({ page: 1 })).total;
+          } catch {
+            /* idem */
+          }
         }
 
         try {
-          const healthData = await api.system.health();
-          setHealth(healthData);
-        } catch { /* ignored */ }
+          if (vigente) setSalud(await api.system.health());
+        } catch {
+          if (vigente) setSalud(null);
+        }
 
-        setStats({
-          totalProducts: products.total,
-          totalCategories: categories.length,
-          totalOrders: ordersTotal,
-          totalServices: servicesTotal,
-        });
-      } catch (err) {
-        console.error("Error fetching stats:", err);
+        if (vigente) {
+          setCifras({
+            productos: productos.total,
+            categorias: categorias.length,
+            ordenes,
+            servicios,
+          });
+        }
       } finally {
-        setLoading(false);
+        if (vigente) setCargando(false);
       }
     };
 
-    fetchStats();
+    cargar();
+    return () => {
+      vigente = false;
+    };
   }, [isAdmin]);
 
-  const STAT_CARDS = [
-    { value: stats.totalProducts, label: "Productos", icon: <InventoryIcon />, color: "#6366f1" },
-    { value: stats.totalCategories, label: "Categorías", icon: <LabelIcon />, color: "#06b6d4" },
-    { value: stats.totalOrders, label: "Órdenes", icon: <ShoppingCartIcon />, color: "#10b981" },
-    { value: stats.totalServices, label: "Servicios", icon: <BuildIcon />, color: "#f59e0b" },
+  const TARJETAS = [
+    { valor: cifras.productos, etiqueta: "Productos", icono: <InventoryIcon />, color: "#6366f1", href: "/admin/products" },
+    { valor: cifras.categorias, etiqueta: "Categorías", icono: <LabelIcon />, color: "#06b6d4", href: "/admin/categories" },
+    { valor: cifras.ordenes, etiqueta: "Órdenes", icono: <ShoppingCartIcon />, color: "#10b981", href: "/admin/orders" },
+    { valor: cifras.servicios, etiqueta: "Servicios", icono: <BuildIcon />, color: "#f59e0b", href: "/admin/services" },
   ];
+
+  const porEstado = Object.entries(resumen?.by_status ?? {}).sort((a, b) => b[1] - a[1]);
+  const enRevision = resumen?.awaiting_review ?? 0;
 
   return (
     <>
-      {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{ justifyContent: "space-between", alignItems: "center" }}
+        >
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800 }}>
               Dashboard
             </Typography>
             <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>
-              Bienvenido, {user?.full_name} 👋
+              Bienvenido, {user?.full_name}
             </Typography>
           </Box>
+          {/* El estado sale de /health, no de una etiqueta fija: antes decía
+              "Sistema Activo" incluso con la API caída. */}
           <Chip
-            label="🟢 Sistema Activo"
+            label={cargando ? "Comprobando…" : salud ? "Sistema activo" : "Sin conexión con la API"}
             variant="outlined"
-            color="success"
+            color={cargando ? "default" : salud ? "success" : "error"}
             sx={{ fontWeight: 700 }}
           />
-        </Box>
+        </Stack>
       </Box>
 
-      {/* Stats Grid */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {STAT_CARDS.map((card, i) => (
-          <Grid size={{ xs: 6, md: 3 }} key={i}>
+      {enRevision > 0 && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 3, borderRadius: 2 }}
+          action={
+            <Button
+              component={Link}
+              href="/admin/fraud"
+              size="small"
+              color="inherit"
+              endIcon={<ArrowForwardIcon />}
+              sx={{ fontWeight: 700, textTransform: "none" }}
+            >
+              Revisar
+            </Button>
+          }
+        >
+          {enRevision === 1
+            ? "Hay 1 pedido retenido esperando decisión."
+            : `Hay ${enRevision} pedidos retenidos esperando decisión.`}{" "}
+          Mientras tanto el cliente no puede pagar y su stock sigue apartado.
+        </Alert>
+      )}
+
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        {TARJETAS.map((tarjeta, i) => (
+          <Grid size={{ xs: 6, md: 3 }} key={tarjeta.etiqueta}>
             <Card
+              component={Link}
+              href={tarjeta.href}
               elevation={0}
               sx={{
+                display: "block",
+                textDecoration: "none",
                 borderRadius: 3,
                 border: "1px solid",
                 borderColor: "divider",
-                animation: `${fadeIn} 0.5s ease-out ${i * 0.1}s both`,
+                animation: `${aparecer} 0.5s ease-out ${i * 0.08}s both`,
                 transition: "all 0.2s",
                 "&:hover": {
                   transform: "translateY(-4px)",
-                  boxShadow: `0 12px 24px -8px ${alpha(card.color, 0.2)}`,
-                  borderColor: card.color,
+                  boxShadow: `0 12px 24px -8px ${alpha(tarjeta.color, 0.2)}`,
+                  borderColor: tarjeta.color,
                 },
               }}
             >
               <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem", letterSpacing: 0.5 }}>
-                    {card.label}
+                <Stack
+                  direction="row"
+                  sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      fontSize: "0.72rem",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    {tarjeta.etiqueta}
                   </Typography>
                   <Box
                     sx={{
                       width: 40,
                       height: 40,
                       borderRadius: 2,
-                      bgcolor: alpha(card.color, 0.1),
+                      bgcolor: alpha(tarjeta.color, 0.1),
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: card.color,
+                      color: tarjeta.color,
                     }}
                   >
-                    {card.icon}
+                    {tarjeta.icono}
                   </Box>
-                </Box>
-                {loading ? (
+                </Stack>
+                {cargando ? (
                   <Skeleton width={60} height={40} />
                 ) : (
-                  <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1 }}>
-                    {card.value}
+                  <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1, color: "text.primary" }}>
+                    {tarjeta.valor}
                   </Typography>
                 )}
               </CardContent>
@@ -226,130 +249,67 @@ export default function AdminDashboard() {
         ))}
       </Grid>
 
-      {/* Fraud Metrics Grid */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5, display: "flex", alignItems: "center", gap: 1 }}>
-          <PsychologyIcon color="primary" /> Métricas del Modelo de Fraude (LightGBM)
-        </Typography>
-        <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mb: 2 }}>
-          Calculadas sobre los {fraudMetrics?.reviewed_count ?? 0} pedidos ya
-          revisados y etiquetados, de {fraudMetrics?.total_evaluations ?? 0}{" "}
-          evaluados. Un pedido bloqueado nunca llega a cobrarse, así que nunca
-          tendrá un contracargo que lo confirme: los aciertos más valiosos del
-          modelo son también los más difíciles de etiquetar.
-        </Typography>
-
-        <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TarjetaMetrica
-              titulo="Precisión"
-              valor={`${fraudMetrics?.precision ?? 0}%`}
-              pie="De cada alerta, cuántas eran fraude de verdad"
-              icono={<DoneAllIcon color="success" />}
-              color="success.main"
-              cargando={loading}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TarjetaMetrica
-              titulo="Exhaustividad (recall)"
-              valor={`${fraudMetrics?.recall ?? 0}%`}
-              pie="De los fraudes reales, cuántos alcanzó a detectar"
-              icono={<RuleIcon color="primary" />}
-              color="primary.main"
-              cargando={loading}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TarjetaMetrica
-              titulo="F1"
-              valor={`${fraudMetrics?.f1_score ?? 0}%`}
-              pie="El equilibrio entre las dos anteriores"
-              icono={<PsychologyIcon color="secondary" />}
-              color="text.primary"
-              cargando={loading}
-            />
-          </Grid>
-        </Grid>
-
-        <Grid container spacing={3}>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", height: "100%" }}>
-              <CardContent sx={{ p: 3 }}>
-                <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem", mb: 2 }}>
-                  Matriz de confusión
-                </Typography>
-                {[
-                  { etiqueta: "Fraudes detectados", valor: fraudMetrics?.true_positives ?? 0, color: "success.main" },
-                  { etiqueta: "Fraudes que se escaparon", valor: fraudMetrics?.false_negatives ?? 0, color: "error.main" },
-                  { etiqueta: "Falsas alarmas", valor: fraudMetrics?.false_positives ?? 0, color: "warning.main" },
-                  { etiqueta: "Compras buenas bien aprobadas", valor: fraudMetrics?.true_negatives ?? 0, color: "text.primary" },
-                ].map((fila) => (
-                  <Box key={fila.etiqueta} sx={{ display: "flex", justifyContent: "space-between", py: 0.75 }}>
-                    <Typography variant="body2" sx={{ color: "text.secondary" }}>{fila.etiqueta}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 800, color: fila.color }}>{fila.valor}</Typography>
-                  </Box>
-                ))}
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", height: "100%" }}>
-              <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-                  <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", fontSize: "0.72rem" }}>
-                    Impacto en dinero
-                  </Typography>
-                  <PaidOutlinedIcon color="success" />
-                </Box>
-                {[
-                  { etiqueta: "Pérdida evitada", valor: soles(fraudMetrics?.loss_prevented ?? 0), color: "success.main" },
-                  { etiqueta: "Pérdida asumida", valor: soles(fraudMetrics?.loss_absorbed ?? 0), color: "error.main" },
-                  { etiqueta: "Ganancia no realizada", valor: soles(fraudMetrics?.revenue_lost ?? 0), color: "warning.main" },
-                ].map((fila) => (
-                  <Box key={fila.etiqueta} sx={{ display: "flex", justifyContent: "space-between", py: 0.75 }}>
-                    <Typography variant="body2" sx={{ color: "text.secondary" }}>{fila.etiqueta}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 800, color: fila.color }}>{fila.valor}</Typography>
-                  </Box>
-                ))}
-                <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 1 }}>
-                  Frenar una compra buena no cuesta el pedido entero: cuesta el
-                  margen de esa venta.
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TarjetaMetrica
-              titulo="Tiempo de evaluación"
-              valor={`${fraudMetrics?.average_detection_time_ms.toFixed(1) ?? 0} ms`}
-              pie={`Promedio sobre ${fraudMetrics?.total_evaluations ?? 0} evaluaciones`}
-              icono={<TimerIcon color="info" />}
-              color="info.main"
-              cargando={loading}
-            />
-          </Grid>
-        </Grid>
-      </Box>
-
-      {/* Quick Info Cards */}
       <Grid container spacing={3}>
-
-        {/* System Info */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card
-            elevation={0}
-            sx={{
-              borderRadius: 3,
-              border: "1px solid",
-              borderColor: "divider",
-              height: "100%",
-            }}
-          >
+        {/* Los pedidos por estado: es el reparto que resume el día de la
+            tienda, y el que decide qué hay que atender. */}
+        <Grid size={{ xs: 12, md: 7 }}>
+          <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", height: "100%" }}>
             <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5 }}>
+                Órdenes por estado
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 2 }}>
+                Sobre las {resumen?.total ?? 0} órdenes registradas.
+              </Typography>
+
+              {cargando ? (
+                <Stack spacing={1.2}>
+                  {[0, 1, 2].map((i) => (
+                    <Skeleton key={i} height={26} />
+                  ))}
+                </Stack>
+              ) : porEstado.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: "center" }}>
+                  Todavía no hay órdenes.
+                </Typography>
+              ) : (
+                porEstado.map(([estado, cuantas]) => {
+                  const info = ESTADOS_DE_PEDIDO[estado as EstadoDePedido];
+                  const proporcion = resumen?.total ? (cuantas / resumen.total) * 100 : 0;
+                  return (
+                    <Box key={estado} sx={{ py: 0.9 }}>
+                      <Stack direction="row" sx={{ justifyContent: "space-between", mb: 0.6 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {info?.label ?? estado}
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                          {cuantas}
+                        </Typography>
+                      </Stack>
+                      {/* La barra es la misma cifra, en proporción: da el peso
+                          relativo sin obligar a hacer la división mentalmente. */}
+                      <Box sx={{ height: 6, bgcolor: "action.hover", borderRadius: 3, overflow: "hidden" }}>
+                        <Box
+                          sx={{
+                            width: `${proporcion}%`,
+                            height: "100%",
+                            bgcolor: "acento.main",
+                            borderRadius: 3,
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 5 }}>
+          <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", height: "100%" }}>
+            <CardContent sx={{ p: 3 }}>
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: 2 }}>
                 <Box
                   sx={{
                     width: 44,
@@ -362,49 +322,40 @@ export default function AdminDashboard() {
                     color: "success.main",
                   }}
                 >
-                  <SettingsIcon />
+                  <PaidOutlinedIcon />
                 </Box>
                 <Box>
                   <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
-                    Info del Sistema
+                    Cobrado
                   </Typography>
-                  <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                    Estado de los componentes
+                  <Typography variant="caption" color="text.secondary">
+                    Órdenes aprobadas y completadas
                   </Typography>
                 </Box>
-              </Box>
+              </Stack>
 
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                {[
-                  { label: "Backend API", status: health ? "Activo" : "Error", chipColor: health ? "success" as const : "error" as const },
-                  { label: "Base de Datos", status: health?.database === "connected" ? "Activa" : "Pendiente", chipColor: health?.database === "connected" ? "info" as const : "warning" as const },
-                  { label: "Modelo ML", status: health?.ml_model === "loaded" ? "Cargado" : "Pendiente", chipColor: health?.ml_model === "loaded" ? "success" as const : "warning" as const },
-                  { label: "Pasarela de Pago", status: "MercadoPago (Sandbox)", chipColor: "primary" as const },
-                ].map((item, i, arr) => (
-                  <Box
-                    key={i}
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      py: 1.5,
-                      borderBottom: i < arr.length - 1 ? "1px solid" : "none",
-                      borderColor: "divider",
-                    }}
-                  >
-                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                      {item.label}
-                    </Typography>
-                    <Chip
-                      label={item.status}
-                      size="small"
-                      color={item.chipColor}
-                      variant="outlined"
-                      sx={{ fontWeight: 700, fontSize: "0.7rem" }}
-                    />
-                  </Box>
-                ))}
-              </Box>
+              {cargando ? (
+                <Skeleton width={160} height={44} />
+              ) : (
+                <Typography variant="h4" sx={{ fontWeight: 900 }}>
+                  {soles(resumen?.revenue ?? 0)}
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                Una orden pendiente todavía no es una venta, y una rechazada no lo será
+                nunca: ninguna de las dos suma aquí.
+              </Typography>
+
+              <Button
+                component={Link}
+                href="/admin/fraud"
+                variant="outlined"
+                fullWidth
+                endIcon={<ArrowForwardIcon />}
+                sx={{ mt: 2.5, textTransform: "none", fontWeight: 700, borderRadius: 2 }}
+              >
+                Ver el detalle del antifraude
+              </Button>
             </CardContent>
           </Card>
         </Grid>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import CampoDeContrasena, { LONGITUD_MINIMA } from "@/components/ui/CampoDeContrasena";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
@@ -11,18 +12,16 @@ import {
   TextField,
   Button,
   Paper,
-  InputAdornment,
-  IconButton,
   Alert,
   CircularProgress,
   Stack,
 } from "@mui/material";
-import Visibility from "@mui/icons-material/Visibility";
-import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 // El backend exige al menos 6 caracteres (backend/app/schemas/user.py)
-const MIN_PASSWORD = 6;
+// El mínimo lo define el backend (app/core/passwords.py); aquí se reexporta
+// desde el campo compartido para que las dos mitades no se separen.
+const MIN_PASSWORD = LONGITUD_MINIMA;
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -32,7 +31,6 @@ export default function RegisterPage() {
     full_name: "",
     phone: "",
   });
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
@@ -170,49 +168,31 @@ export default function RegisterPage() {
                 onChange={handleChange}
               />
 
-              <TextField
+              <CampoDeContrasena
                 name="password"
                 label="Contraseña"
-                type={showPassword ? "text" : "password"}
                 fullWidth
                 required
                 autoComplete="new-password"
-                value={form.password}
-                onChange={handleChange}
+                valor={form.password}
+                onCambio={(valor) => setForm({ ...form, password: valor })}
+                medirFuerza
                 error={passwordTooShort}
                 helperText={
                   passwordTooShort
                     ? `Debe tener al menos ${MIN_PASSWORD} caracteres`
-                    : `Mínimo ${MIN_PASSWORD} caracteres`
+                    : `Al menos ${MIN_PASSWORD} caracteres. Una frase larga es mejor que una palabra con símbolos.`
                 }
-                slotProps={{
-                  input: {
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={() => setShowPassword(!showPassword)}
-                          edge="end"
-                          size="small"
-                          tabIndex={-1}
-                          aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                        >
-                          {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
               />
 
-              <TextField
+              <CampoDeContrasena
                 name="confirmPassword"
                 label="Repetir contraseña"
-                type={showPassword ? "text" : "password"}
                 fullWidth
                 required
                 autoComplete="new-password"
-                value={form.confirmPassword}
-                onChange={handleChange}
+                valor={form.confirmPassword}
+                onCambio={(valor) => setForm({ ...form, confirmPassword: valor })}
                 error={mismatch}
                 helperText={mismatch ? "Las contraseñas no coinciden" : " "}
               />

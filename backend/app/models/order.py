@@ -39,6 +39,17 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    # Desde cuándo el cliente puede pagar esta orden.
+    #
+    # Casi siempre coincide con `created_at`, pero no cuando el modelo la
+    # retuvo: una orden que estuvo tres horas en revisión y se liberó recién
+    # ahora lleva tres horas de existencia y cero de poder pagarse. El plazo de
+    # caducidad se cuenta desde aquí, porque contarlo desde `created_at`
+    # cancelaba justo las órdenes que un administrador acababa de aprobar.
+    # Nula en las que nunca llegaron a ser pagables (rechazadas, en revisión).
+    payable_since: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     user = relationship("User", back_populates="orders", lazy="selectin")

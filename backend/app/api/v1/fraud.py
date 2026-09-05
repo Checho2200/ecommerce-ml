@@ -4,7 +4,7 @@ Endpoints de evaluación y monitoreo de fraude usando el modelo LightGBM.
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,8 @@ from app.services.fraud_service import fraud_service
 from app.schemas.fraud import (
     FraudEvaluationRequest,
     FraudEvaluationResponse,
+    FraudHistoryPeriod,
+    FraudHistoryResponse,
     FraudLabelRequest,
     FraudLogResponse,
     FraudMetricsResponse,
@@ -105,6 +107,48 @@ async def get_fraud_metrics(
         loss_prevented=round(m.perdida_evitada, 2),
         loss_absorbed=round(m.perdida_asumida, 2),
         revenue_lost=round(m.venta_perdida, 2),
+    )
+
+
+@router.get("/history", response_model=FraudHistoryResponse)
+async def get_fraud_history(
+    granularity: str = Query("day", pattern="^(day|week|month|year)$"),
+    periods: int | None = Query(None, ge=1, le=366),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    Las decisiones del modelo repartidas en el tiempo (solo admin).
+
+    `/metrics` responde cómo va el modelo hoy; esto responde cómo ha ido. Un
+    promedio sobre toda la vida de la tienda esconde que los bloqueos se
+    dispararon la semana pasada, y esa es justo la lectura que sirve para
+    decidir si hay que revisar el umbral.
+
+    Devuelve la ventana completa, incluidos los períodos sin evaluaciones: una
+    gráfica a la que le faltan los días tranquilos une dos picos con una recta
+    y hace parecer sostenido lo que fue puntual.
+    """
+    serie = await fraud_metrics_service.historial(db, granularity, periods)
+
+    return FraudHistoryResponse(
+        granularity=granularity,
+        periods=[
+            FraudHistoryPeriod(
+                period_start=p.inicio,
+                evaluations=p.evaluaciones,
+                approved=p.aprobadas,
+                in_review=p.en_revision,
+                blocked=p.bloqueadas,
+                approved_amount=p.monto_aprobado,
+                held_amount=p.monto_retenido,
+                average_score=p.puntaje_medio,
+            )
+            for p in serie
+        ],
+        total_evaluations=sum(p.evaluaciones for p in serie),
+        total_approved=sum(p.aprobadas for p in serie),
+        total_held=sum(p.en_revision + p.bloqueadas for p in serie),
     )
 
 

@@ -4,16 +4,33 @@ Schemas Pydantic para autenticación y gestión de usuarios.
 
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator
+
+from app.core.passwords import ContrasenaDebil, LONGITUD_MAXIMA, LONGITUD_MINIMA
+from app.core import passwords
 
 
 # --- Auth Requests ---
 class UserRegister(BaseModel):
     """Schema para registro de nuevo usuario."""
     email: EmailStr
-    password: str = Field(..., min_length=6, max_length=100)
+    password: str = Field(..., min_length=LONGITUD_MINIMA, max_length=LONGITUD_MAXIMA)
     full_name: str = Field(..., min_length=2, max_length=150)
     phone: Optional[str] = Field(None, max_length=20)
+
+    # La política completa —longitud, claves de diccionario, el correo dentro
+    # de la clave— vive en app/core/passwords.py. Aquí solo se aplica, y se
+    # aplica igual en el registro y en el restablecimiento: una regla que solo
+    # rige en la puerta de entrada la esquiva quien pide un enlace de
+    # recuperación. El login NO la usa: quien ya tiene una contraseña anterior
+    # más corta tiene que poder entrar y cambiarla.
+    @field_validator("password")
+    @classmethod
+    def _politica(cls, valor: str, info: ValidationInfo) -> str:
+        try:
+            return passwords.validar(valor, info.data.get("email"))
+        except ContrasenaDebil as error:
+            raise ValueError(str(error)) from error
 
 
 class UserLogin(BaseModel):
@@ -64,7 +81,17 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     """Nueva contraseña, acompañada del token que llegó por correo."""
     token: str
-    new_password: str = Field(..., min_length=6, max_length=100)
+    new_password: str = Field(..., min_length=LONGITUD_MINIMA, max_length=LONGITUD_MAXIMA)
+
+    @field_validator("new_password")
+    @classmethod
+    def _politica(cls, valor: str) -> str:
+        try:
+            # Sin el correo: aquí solo se conoce el token, y el usuario al que
+            # pertenece se resuelve después, ya en el endpoint.
+            return passwords.validar(valor)
+        except ContrasenaDebil as error:
+            raise ValueError(str(error)) from error
 
 
 class MensajeResponse(BaseModel):

@@ -3,7 +3,7 @@ Schemas Pydantic para órdenes de compra.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -64,3 +64,22 @@ class OrderListResponse(BaseModel):
     total: int
     page: int
     pages: int
+
+
+class OrderSummaryResponse(BaseModel):
+    """
+    Resumen de la tienda para el panel: cuántos pedidos hay en cada estado y
+    cuánto dinero representan.
+
+    Existe para que el panel no tenga que pedir la lista de órdenes una vez por
+    estado solo para leer el `total` de cada respuesta. Es una consulta
+    agrupada, no seis paginadas.
+    """
+
+    total: int
+    # Estado del pedido -> cuántos hay. Solo aparecen los que existen.
+    by_status: Dict[str, int]
+    # Cobrado de verdad: pedidos aprobados o completados.
+    revenue: float
+    # Pedidos que el modelo dejó retenidos y esperan que alguien los mire.
+    awaiting_review: int

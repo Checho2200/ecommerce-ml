@@ -2,7 +2,7 @@
 Schemas Pydantic para evaluación de fraude.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
 
@@ -88,3 +88,33 @@ class FraudMetricsResponse(BaseModel):
     loss_absorbed: float = 0.0
     revenue_lost: float = 0.0
 
+
+
+class FraudHistoryPeriod(BaseModel):
+    """
+    Un período del historial: cuántas compras evaluó el modelo y qué decidió.
+
+    "Pasaron" son las aprobadas, que siguieron su curso hasta el cobro; "no
+    pasaron" son las retenidas —las que quedaron en revisión y las bloqueadas—,
+    que nunca llegaron a la pasarela de pago.
+    """
+
+    # Fecha de inicio del período (el día, el lunes de la semana, o el día 1).
+    period_start: date
+    evaluations: int
+    approved: int
+    in_review: int
+    blocked: int
+    approved_amount: float
+    held_amount: float
+    average_score: float
+
+
+class FraudHistoryResponse(BaseModel):
+    """El historial completo, más el total de la ventana consultada."""
+
+    granularity: str
+    periods: list[FraudHistoryPeriod]
+    total_evaluations: int
+    total_approved: int
+    total_held: int

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import CampoDeContrasena from "@/components/ui/CampoDeContrasena";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -12,20 +13,15 @@ import {
   TextField,
   Button,
   Paper,
-  InputAdornment,
-  IconButton,
   Alert,
   CircularProgress,
   Stack,
 } from "@mui/material";
-import Visibility from "@mui/icons-material/Visibility";
-import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -122,31 +118,17 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
               />
 
-              <TextField
+              {/* Al entrar no se mide la fuerza: la contraseña ya está
+                  elegida y juzgarla aquí solo estorba. Tampoco se aplica la
+                  política nueva, para que quien tenga una clave anterior más
+                  corta pueda entrar y cambiarla. */}
+              <CampoDeContrasena
                 label="Contraseña"
-                type={showPassword ? "text" : "password"}
                 fullWidth
                 required
                 autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                slotProps={{
-                  input: {
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={() => setShowPassword(!showPassword)}
-                          edge="end"
-                          size="small"
-                          tabIndex={-1}
-                          aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                        >
-                          {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
+                valor={password}
+                onCambio={setPassword}
               />
 
               <Button

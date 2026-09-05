@@ -27,6 +27,35 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * El texto que se le enseña a la persona cuando el backend rechaza algo.
+ *
+ * FastAPI usa `detail` para dos cosas distintas: en un error de negocio es una
+ * frase ("El email ya está registrado"), pero en un 422 de validación es la
+ * lista de campos que fallaron. Pasar esa lista tal cual a la pantalla
+ * mostraba "[object Object]", que era justo el caso en el que el usuario más
+ * necesitaba leer qué corregir —por ejemplo, qué le falta a su contraseña—.
+ */
+function mensajeDeError(data: { detail?: unknown }): string {
+  const detalle = data?.detail;
+
+  if (typeof detalle === "string") return detalle;
+
+  if (Array.isArray(detalle)) {
+    const frases = detalle
+      .map((e) => {
+        const msg = typeof e?.msg === "string" ? e.msg : null;
+        // Pydantic antepone "Value error, " a lo que lanza un validador
+        // propio; el prefijo es ruido para quien lee la pantalla.
+        return msg ? msg.replace(/^Value error,\s*/, "") : null;
+      })
+      .filter(Boolean);
+    if (frases.length) return frases.join(". ");
+  }
+
+  return "Error en la solicitud";
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("access_token");
@@ -75,11 +104,7 @@ async function request<T>(
   const data = await response.json();
 
   if (!response.ok) {
-    throw new ApiError(
-      data.detail || "Error en la solicitud",
-      response.status,
-      data
-    );
+    throw new ApiError(mensajeDeError(data), response.status, data);
   }
 
   return data as T;

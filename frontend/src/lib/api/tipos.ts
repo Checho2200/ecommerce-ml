@@ -133,3 +133,34 @@ export interface FraudMetricsResponse {
   loss_absorbed: number;
   revenue_lost: number;
 }
+
+/** Un día, una semana o un mes del historial del modelo antifraude. */
+export interface FraudHistoryPeriod {
+  // Fecha de inicio en ISO (AAAA-MM-DD): el día, el lunes de la semana o el 1.
+  period_start: string;
+  evaluations: number;
+  // "Pasaron": el modelo las dejó seguir hasta el cobro.
+  approved: number;
+  // "No pasaron": retenidas antes de llegar a la pasarela de pago.
+  in_review: number;
+  blocked: number;
+  approved_amount: number;
+  held_amount: number;
+  average_score: number;
+}
+
+export interface FraudHistoryResponse {
+  granularity: "day" | "week" | "month" | "year";
+  periods: FraudHistoryPeriod[];
+  total_evaluations: number;
+  total_approved: number;
+  total_held: number;
+}
+
+/** Resumen de la tienda para el panel: pedidos por estado y lo cobrado. */
+export interface OrderSummaryResponse {
+  total: number;
+  by_status: Record<string, number>;
+  revenue: number;
+  awaiting_review: number;
+}

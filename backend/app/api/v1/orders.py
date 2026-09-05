@@ -29,6 +29,7 @@ from app.schemas.order import (
     OrderListResponse,
     OrderResponse,
     OrderStatusUpdate,
+    OrderSummaryResponse,
 )
 from app.services import email_service, order_service, webhook_security
 from app.services.payment_service import leer_notificacion, payment_service
@@ -143,6 +144,44 @@ async def list_orders(
     return await _pagina(db, consulta, page, per_page)
 
 
+@router.get("/summary", response_model=OrderSummaryResponse)
+async def orders_summary(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    Cuántos pedidos hay en cada estado y cuánto suman (solo admin).
+
+    Va declarado antes que `/{order_id}` a propósito: FastAPI resuelve las
+    rutas en orden y, puesto después, "summary" se leería como un id de orden.
+    """
+    filas = (
+        await db.execute(
+            select(Order.status, func.count(Order.id), func.sum(Order.total_amount))
+            .group_by(Order.status)
+        )
+    ).all()
+
+    por_estado: dict[str, int] = {}
+    total = 0
+    facturado = 0.0
+    for estado, cuantos, suma in filas:
+        clave = getattr(estado, "value", str(estado))
+        por_estado[clave] = cuantos
+        total += cuantos
+        # Solo cuenta lo que se cobró: un pedido pendiente todavía no es venta,
+        # y uno rechazado no lo será nunca.
+        if clave in ("APPROVED", "COMPLETED"):
+            facturado += float(suma or 0.0)
+
+    return OrderSummaryResponse(
+        total=total,
+        by_status=por_estado,
+        revenue=round(facturado, 2),
+        awaiting_review=por_estado.get("FRAUD_REVIEW", 0),
+    )
+
+
 @router.get("/my-orders", response_model=OrderListResponse)
 async def list_my_orders(
     page: int = Query(1, ge=1),
@@ -239,6 +278,24 @@ async def mercadopago_webhook(
     except Exception as exc:  # noqa: BLE001 - ver la nota del docstring
         print(f"Webhook error: {exc}")
         return {"status": "error", "message": str(exc)}
+
+
+@router.patch("/{order_id}/release", response_model=OrderResponse)
+async def release_order(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    Deja seguir una orden retenida por el modelo (solo admin).
+
+    No es lo mismo que cambiarle el estado a mano: además de moverla a PENDING,
+    le genera el enlace de pago que nunca tuvo y reinicia el plazo de
+    caducidad. Sin eso el cliente se quedaba con un pedido aprobado que no
+    podía pagar por ningún sitio.
+    """
+    orden, url_de_pago = await order_service.liberar_de_revision(db, order_id)
+    return _a_respuesta(orden, url_de_pago=url_de_pago)
 
 
 @router.patch("/{order_id}/status", response_model=OrderResponse)

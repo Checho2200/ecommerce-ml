@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -117,7 +117,11 @@ async def caducar_pendientes(db: AsyncSession, user_id: str) -> None:
         select(Order).where(
             Order.user_id == user_id,
             Order.status == OrderStatus.PENDING,
-            Order.created_at < limite,
+            # Desde que se pudo pagar, no desde que se creó: una orden que
+            # estuvo retenida en revisión y se liberó hace un minuto no lleva
+            # dos horas esperando pago aunque se creara ayer. `coalesce` cubre
+            # las órdenes anteriores a esta columna.
+            func.coalesce(Order.payable_since, Order.created_at) < limite,
         )
     )
 
@@ -273,6 +277,7 @@ async def crear_pedido(db: AsyncSession, cliente: User, datos: OrderCreate) -> P
 
     url_de_pago = None
     if orden.status == OrderStatus.PENDING:
+        orden.payable_since = orden.created_at
         url_de_pago = _generar_cobro(orden, reserva, cliente.email)
 
     return PedidoCreado(orden, reserva.nombres, url_de_pago, evaluacion)
@@ -336,6 +341,52 @@ async def cambiar_estado(db: AsyncSession, orden_id: str, nuevo_estado: str) -> 
     await db.flush()
     await db.refresh(orden)
     return orden
+
+
+async def liberar_de_revision(db: AsyncSession, orden_id: str) -> tuple[Order, Optional[str]]:
+    """
+    Deja seguir una orden que el modelo había retenido.
+
+    No basta con cambiar la etiqueta a PENDING. Una orden retenida nunca llegó
+    a tener enlace de pago —`crear_pedido` solo lo pide para las que aprueba el
+    modelo—, así que sin generarlo aquí el cliente se quedaría con un pedido
+    "pendiente" que no puede pagar por ningún sitio. Y el plazo de caducidad
+    arranca ahora, no cuando se creó la orden.
+
+    Devuelve la orden y la URL de pago, que puede ser nula si la pasarela falla:
+    igual que al crear el pedido, una caída de MercadoPago no debe deshacer la
+    decisión del administrador.
+    """
+    orden = await obtener_pedido(db, orden_id)
+
+    if orden.status != OrderStatus.FRAUD_REVIEW:
+        raise OperacionNoPermitida(
+            "Solo se puede liberar una orden que esté en revisión antifraude"
+        )
+
+    orden.status = OrderStatus.PENDING
+    orden.payable_since = datetime.now(timezone.utc)
+
+    articulos = [
+        {
+            "title": (linea.product.name if linea.product else "Producto"),
+            "quantity": linea.quantity,
+            "unit_price": linea.unit_price,
+        }
+        for linea in orden.items
+    ]
+
+    url_de_pago = None
+    try:
+        url_de_pago = payment_service.create_preference(
+            order_id=orden.id, items=articulos, payer_email=orden.user.email
+        )
+    except Exception as exc:  # noqa: BLE001 - la decisión no depende de esto
+        print(f"Error creating MP preference al liberar {orden.id}: {exc}")
+
+    await db.flush()
+    await db.refresh(orden)
+    return orden, url_de_pago
 
 
 async def cancelar_pedido_del_cliente(db: AsyncSession, cliente: User, orden_id: str) -> Order:

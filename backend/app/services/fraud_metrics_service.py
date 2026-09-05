@@ -14,6 +14,7 @@ los subestiman.
 """
 
 from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,3 +124,171 @@ async def calcular(db: AsyncSession) -> MetricasDelModelo:
         venta_perdida=venta_perdida,
         tiempo_medio_ms=tiempo_medio,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Historial: las mismas decisiones, repartidas en el tiempo
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `calcular` responde "cómo va el modelo"; esto responde "cómo ha ido". Son
+# preguntas distintas: un promedio sobre toda la vida de la tienda esconde que
+# los bloqueos se dispararon la semana pasada.
+
+GRANULARIDADES = ("day", "week", "month", "year")
+
+# Los cortes del historial son los del reloj de la tienda, no los de UTC. Con
+# UTC, una compra de las ocho de la noche en Trujillo cae en el informe del día
+# siguiente, y el "hoy" del panel empieza a las siete de la tarde. Perú no
+# aplica horario de verano desde 1994, así que un desfase fijo es exacto y
+# evita depender de la base de zonas horarias del sistema, que en Windows no
+# viene instalada.
+ZONA_DE_LA_TIENDA = timezone(timedelta(hours=-5), "America/Lima")
+
+# Cuántos períodos devolver cuando nadie pide un número. Un trimestre de días,
+# medio año de semanas o dos años de meses: en los tres casos, la ventana en la
+# que todavía se distingue una tendencia de un accidente.
+PERIODOS_POR_DEFECTO = {"day": 90, "week": 26, "month": 24, "year": 5}
+PERIODOS_MAXIMOS = 366
+
+
+@dataclass
+class PeriodoDelHistorial:
+    """Un día, una semana o un mes de decisiones del modelo."""
+
+    # Fecha de inicio del período, en ISO. La etiqueta legible la arma el panel,
+    # que es quien sabe en qué idioma y con qué formato la va a enseñar.
+    inicio: date
+    evaluaciones: int
+    aprobadas: int
+    en_revision: int
+    bloqueadas: int
+    # Lo que se dejó pasar y lo que se frenó, en soles. Es la lectura que
+    # entiende un gerente: cuánta plata pasó por cada rama de la decisión.
+    monto_aprobado: float
+    monto_retenido: float
+    puntaje_medio: float
+
+
+def _inicio_del_periodo(momento: datetime, granularidad: str) -> date:
+    """Lleva un instante al comienzo de su día, su semana (lunes), su mes o su año."""
+    dia = momento.astimezone(ZONA_DE_LA_TIENDA).date()
+    if granularidad == "week":
+        return dia - timedelta(days=dia.weekday())
+    if granularidad == "month":
+        return dia.replace(day=1)
+    if granularidad == "year":
+        return dia.replace(month=1, day=1)
+    return dia
+
+
+def _periodo_anterior(inicio: date, granularidad: str) -> date:
+    if granularidad == "week":
+        return inicio - timedelta(days=7)
+    if granularidad == "month":
+        # Retroceder un mes sin depender de cuántos días tenga: el día 1 del
+        # mes anterior es el día anterior al 1 de éste, normalizado.
+        return (inicio - timedelta(days=1)).replace(day=1)
+    if granularidad == "year":
+        return inicio.replace(year=inicio.year - 1, month=1, day=1)
+    return inicio - timedelta(days=1)
+
+
+async def historial(
+    db: AsyncSession,
+    granularidad: str = "day",
+    periodos: int | None = None,
+) -> list[PeriodoDelHistorial]:
+    """
+    Las decisiones del modelo agrupadas por día, semana, mes o año, de la más
+    antigua a la más reciente.
+
+    El agrupamiento se hace en Python y no con `date_trunc` porque la tienda
+    corre sobre PostgreSQL en producción y sobre SQLite en desarrollo, y cada
+    uno escribe esa función a su manera. Con el volumen de una tienda —miles de
+    evaluaciones, no millones— traer las filas del rango y contarlas aquí sale
+    igual de rápido y funciona en las dos bases sin ramas por dialecto.
+
+    Los períodos sin ninguna evaluación se devuelven en cero en lugar de
+    faltar: una gráfica a la que le faltan los días tranquilos miente sobre la
+    tendencia, porque une dos picos con una línea recta.
+    """
+    if granularidad not in GRANULARIDADES:
+        granularidad = "day"
+    cuantos = periodos or PERIODOS_POR_DEFECTO[granularidad]
+    cuantos = max(1, min(cuantos, PERIODOS_MAXIMOS))
+
+    ultimo = _inicio_del_periodo(datetime.now(ZONA_DE_LA_TIENDA), granularidad)
+
+    # El primer período de la ventana: se retrocede contando, no restando días,
+    # para que los meses de 28 y de 31 días cuenten lo mismo.
+    primero = ultimo
+    for _ in range(cuantos - 1):
+        primero = _periodo_anterior(primero, granularidad)
+
+    filas = (
+        await db.execute(
+            select(FraudLog.decision, FraudLog.fraud_score, FraudLog.evaluated_at, Order.total_amount)
+            .join(Order, Order.id == FraudLog.order_id)
+            # El filtro sale en UTC porque así están guardadas las fechas; el
+            # límite es la medianoche peruana del primer período.
+            .where(
+                FraudLog.evaluated_at
+                >= datetime.combine(primero, time.min, tzinfo=ZONA_DE_LA_TIENDA)
+            )
+        )
+    ).all()
+
+    cubos: dict[date, dict] = {}
+    for decision, puntaje, evaluado, monto in filas:
+        if evaluado is None:
+            continue
+        if evaluado.tzinfo is None:
+            # SQLite devuelve fechas ingenuas; se leen como UTC, que es como se
+            # escribieron.
+            evaluado = evaluado.replace(tzinfo=timezone.utc)
+        inicio = _inicio_del_periodo(evaluado, granularidad)
+        if inicio < primero or inicio > ultimo:
+            continue
+
+        cubo = cubos.setdefault(
+            inicio,
+            {"evaluaciones": 0, "aprobadas": 0, "en_revision": 0, "bloqueadas": 0,
+             "monto_aprobado": 0.0, "monto_retenido": 0.0, "suma_puntaje": 0.0},
+        )
+        decision = getattr(decision, "value", decision)
+        monto = float(monto or 0.0)
+
+        cubo["evaluaciones"] += 1
+        cubo["suma_puntaje"] += float(puntaje or 0.0)
+        if decision == "REVIEW":
+            cubo["en_revision"] += 1
+            cubo["monto_retenido"] += monto
+        elif decision == "BLOCKED":
+            cubo["bloqueadas"] += 1
+            cubo["monto_retenido"] += monto
+        else:
+            cubo["aprobadas"] += 1
+            cubo["monto_aprobado"] += monto
+
+    # Se recorre la ventana completa hacia atrás y se le da la vuelta, así el
+    # resultado sale en orden cronológico y sin huecos.
+    serie: list[PeriodoDelHistorial] = []
+    inicio = ultimo
+    for _ in range(cuantos):
+        c = cubos.get(inicio)
+        serie.append(
+            PeriodoDelHistorial(
+                inicio=inicio,
+                evaluaciones=c["evaluaciones"] if c else 0,
+                aprobadas=c["aprobadas"] if c else 0,
+                en_revision=c["en_revision"] if c else 0,
+                bloqueadas=c["bloqueadas"] if c else 0,
+                monto_aprobado=round(c["monto_aprobado"], 2) if c else 0.0,
+                monto_retenido=round(c["monto_retenido"], 2) if c else 0.0,
+                puntaje_medio=round(c["suma_puntaje"] / c["evaluaciones"], 4) if c and c["evaluaciones"] else 0.0,
+            )
+        )
+        inicio = _periodo_anterior(inicio, granularidad)
+
+    serie.reverse()
+    return serie
