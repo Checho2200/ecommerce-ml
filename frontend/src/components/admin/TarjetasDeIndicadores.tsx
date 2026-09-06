@@ -21,7 +21,7 @@ import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
 import ReportGmailerrorredOutlinedIcon from "@mui/icons-material/ReportGmailerrorredOutlined";
 import BoltOutlinedIcon from "@mui/icons-material/BoltOutlined";
 import type { SvgIconComponent } from "@mui/icons-material";
-import type { FraudHistoryResponse } from "@/lib/api";
+import type { FraudHistoryResponse, FraudModelInfo } from "@/lib/api";
 
 type Direccion = "subir" | "bajar";
 
@@ -35,13 +35,30 @@ interface Indicador {
   icono: SvgIconComponent;
   /** Sin fraudes confirmados en el rango, la tasa no se puede calcular. */
   medible: boolean;
+  /**
+   * Lo que el modelo midió al entrenarse, sobre datos que no había visto.
+   *
+   * Se enseña solo cuando el indicador todavía no se puede calcular con los
+   * pedidos de la tienda. Una tienda sin contracargos confirmados no puede
+   * decir qué proporción de fraude frena —y decir 0 % sería mentir—, pero sí
+   * puede decir qué midió el modelo en su partición de prueba. Es el número
+   * honesto que se puede enseñar mientras el otro no exista.
+   */
+  referencia: string | null;
 }
 
 const porcentaje = (v: number | null) => (v === null ? "—" : `${(v * 100).toFixed(1)} %`);
 
-export function indicadoresDe(datos: FraudHistoryResponse | null): Indicador[] {
+export function indicadoresDe(
+  datos: FraudHistoryResponse | null,
+  modelo?: FraudModelInfo | null
+): Indicador[] {
   const medible = (datos?.total_actual_frauds ?? 0) > 0;
   const confirmados = datos?.total_actual_frauds ?? 0;
+
+  // La tasa que el entrenamiento midió sobre su partición de prueba.
+  const alEntrenarse = modelo?.detection_rate ?? null;
+  const comoPorcentaje = (v: number) => `${(v * 100).toFixed(1)} %`;
 
   return [
     {
@@ -50,12 +67,16 @@ export function indicadoresDe(datos: FraudHistoryResponse | null): Indicador[] {
       valor: porcentaje(datos?.detection_rate ?? null),
       detalle: medible
         ? `${datos?.total_detected_frauds ?? 0} de ${confirmados} fraudes confirmados`
-        : "Sin fraudes confirmados en el rango",
+        : "Aún sin fraudes confirmados que medir",
       explicacion:
         "De los fraudes confirmados, qué proporción frenó el modelo antes de cobrar.",
       direccion: "subir",
       icono: ShieldOutlinedIcon,
       medible,
+      referencia:
+        medible || alEntrenarse === null
+          ? null
+          : `Al entrenarse detectó el ${comoPorcentaje(alEntrenarse)} sobre compras que no había visto.`,
     },
     {
       clave: "no-detectados",
@@ -63,12 +84,16 @@ export function indicadoresDe(datos: FraudHistoryResponse | null): Indicador[] {
       valor: porcentaje(datos?.undetected_rate ?? null),
       detalle: medible
         ? `${datos?.total_undetected_frauds ?? 0} de ${confirmados} se aprobaron igual`
-        : "Sin fraudes confirmados en el rango",
+        : "Aún sin fraudes confirmados que medir",
       explicacion:
         "De los fraudes confirmados, qué proporción se aprobó igual y terminó en pérdida.",
       direccion: "bajar",
       icono: ReportGmailerrorredOutlinedIcon,
       medible,
+      referencia:
+        medible || alEntrenarse === null
+          ? null
+          : `Al entrenarse se le escapó el ${comoPorcentaje(1 - alEntrenarse)} sobre compras que no había visto.`,
     },
     {
       clave: "tiempo",
@@ -81,6 +106,10 @@ export function indicadoresDe(datos: FraudHistoryResponse | null): Indicador[] {
       icono: BoltOutlinedIcon,
       // El tiempo no necesita etiquetas: lo cronometra el propio servicio.
       medible: (datos?.total_evaluations ?? 0) > 0,
+      referencia:
+        (datos?.total_evaluations ?? 0) > 0 || modelo?.detection_time_ms == null
+          ? null
+          : `Al entrenarse tardó ${modelo.detection_time_ms.toFixed(1)} ms por compra.`,
     },
   ];
 }
@@ -100,14 +129,21 @@ function Flecha({ direccion }: { direccion: Direccion }) {
 export default function TarjetasDeIndicadores({
   datos,
   cargando,
+  modelo = null,
   compacto = false,
 }: {
   datos: FraudHistoryResponse | null;
   cargando: boolean;
+  /**
+   * La ficha del modelo, si la pantalla ya la tiene. Sirve para enseñar lo
+   * que midió al entrenarse en los indicadores que todavía no se pueden
+   * calcular con los pedidos de la tienda.
+   */
+  modelo?: FraudModelInfo | null;
   /** Versión reducida para el Dashboard: solo las tres cifras. */
   compacto?: boolean;
 }) {
-  const indicadores = indicadoresDe(datos);
+  const indicadores = indicadoresDe(datos, modelo);
 
   if (compacto) {
     return (
@@ -181,6 +217,32 @@ export default function TarjetasDeIndicadores({
               <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 0.8 }}>
                 {i.detalle}
               </Typography>
+
+              {/* Mientras la tienda no tenga con qué medir, se enseña lo que
+                  midió el entrenamiento. Va marcado como lo que es —una
+                  referencia de laboratorio, no el dato de la tienda— para que
+                  nadie lo lea como si fuera lo segundo. */}
+              {!cargando && i.referencia && (
+                <Box
+                  sx={{
+                    mt: 1.5,
+                    px: 1.5,
+                    py: 1,
+                    borderRadius: 1.5,
+                    bgcolor: "action.hover",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{ color: "text.secondary", display: "block", lineHeight: 1.6 }}
+                  >
+                    <Box component="span" sx={{ fontWeight: 800 }}>
+                      Referencia del entrenamiento:{" "}
+                    </Box>
+                    {i.referencia}
+                  </Typography>
+                </Box>
+              )}
 
               <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
                 <Flecha direccion={i.direccion} />

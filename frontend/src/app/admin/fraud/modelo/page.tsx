@@ -172,7 +172,11 @@ export default function AdminFraudModelPage() {
             menos el 80 % del fraude, y un modelo reentrenado no se publica si detecta
             menos que el que ya está sirviendo.
           </Typography>
-          <TarjetasDeIndicadores datos={historial.datos} cargando={cargandoHistorial} />
+          <TarjetasDeIndicadores
+            datos={historial.datos}
+            cargando={cargandoHistorial}
+            modelo={modelo}
+          />
         </Box>
 
         <MetricasDelModelo metricas={metricas} cargando={cargando} />
