@@ -433,7 +433,7 @@ además esos valores originales ni siquiera eran operables, porque exigían
 revisar el 16.3 % de los pedidos. El informe lo dice explícitamente en
 `comparacion_con_referencia`.
 
-Los umbrales viajan con el modelo en `app/services/fraud_model.meta.json`, y el
+Los umbrales viajan con el modelo en `ml/modelos/modelo_actual.meta.json`, y el
 servicio los lee al arrancar. Si ese archivo falta, vuelve a los valores
 históricos para no quedarse nunca sin criterio.
 
@@ -595,8 +595,8 @@ en segundo plano y recarga el modelo sin reiniciar el servidor.
 Un detalle del despliegue: el disco de Render es efímero, así que un modelo
 reentrenado en el servidor vive hasta el siguiente reinicio —y el plan gratuito
 reinicia al despertar de la suspensión—. Para que un modelo nuevo sea
-permanente hay que entrenarlo en local y subir `fraud_model.joblib` y
-`fraud_model.meta.json` al repositorio. El botón sirve para demostrar el ciclo
+permanente hay que entrenarlo en local y subir `ml/modelos/modelo_actual.joblib`
+y `ml/modelos/modelo_actual.meta.json` al repositorio. El botón sirve para demostrar el ciclo
 completo de aprendizaje, que es lo que interesa mostrar en la sustentación.
 
 ### La evidencia de que mejoró

@@ -84,7 +84,7 @@ async def get_model_info(
     """
     Con qué se publicó el modelo que está sirviendo (solo admin).
 
-    Los umbrales y los indicadores viajan en `fraud_model.meta.json`, que
+    Los umbrales y los indicadores viajan en `ml/modelos/modelo_actual.meta.json`, que
     escribe el entrenamiento. Si el archivo falta, el servicio cae en los
     umbrales históricos y aquí se ve: los campos de medición vienen nulos.
 

@@ -46,8 +46,8 @@ from ml import evaluacion
 from ml.dataset import ETIQUETA, FEATURES, RANDOM_SEED, cargar_datos
 
 RAIZ = Path(__file__).resolve().parent.parent
-RUTA_MODELO = RAIZ / "app" / "services" / "fraud_model.joblib"
-RUTA_UMBRALES = RAIZ / "app" / "services" / "fraud_model.meta.json"
+RUTA_MODELO = RAIZ / "ml" / "modelos" / "modelo_actual.joblib"
+RUTA_UMBRALES = RAIZ / "ml" / "modelos" / "modelo_actual.meta.json"
 DIRECTORIO_INFORMES = RAIZ / "ml" / "informes"
 
 # Los umbrales con los que nació el sistema, escritos a mano. Se conservan como

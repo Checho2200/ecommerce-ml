@@ -281,6 +281,22 @@ class PeriodoDelHistorial:
     tiempo_medio_ms: float
 
 
+def _ahora() -> datetime:
+    """
+    El instante actual según el reloj de la tienda.
+
+    Está en una función suya, y no escrito dentro de `historial`, para poder
+    fijarlo desde las pruebas. Sin ese punto de anclaje, una prueba que fecha
+    sus datos con la hora de ahora y acto seguido pide el historial —que
+    vuelve a preguntar la hora— falla si la medianoche peruana cae justo entre
+    las dos llamadas: la ventana se corre un día entero y los datos aparecen
+    en el período de al lado. Ocurre una vez al día durante unos segundos, que
+    es lo peor que puede pasarle a una prueba: falla sola, de madrugada, y al
+    revisarla por la mañana vuelve a pasar.
+    """
+    return datetime.now(ZONA_DE_LA_TIENDA)
+
+
 def _inicio_del_periodo(momento: datetime, granularidad: str) -> date:
     """
     Lleva un instante al comienzo del período que lo contiene.
@@ -343,7 +359,7 @@ async def historial(
     cuantos = periodos or PERIODOS_POR_DEFECTO[granularidad]
     cuantos = max(1, min(cuantos, PERIODOS_MAXIMOS))
 
-    ultimo = _inicio_del_periodo(datetime.now(ZONA_DE_LA_TIENDA), granularidad)
+    ultimo = _inicio_del_periodo(_ahora(), granularidad)
 
     # El primer período de la ventana: se retrocede contando, no restando días,
     # para que los meses de 28 y de 31 días cuenten lo mismo.

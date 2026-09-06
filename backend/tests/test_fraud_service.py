@@ -35,7 +35,7 @@ def cargar_modelo():
 
 
 def test_el_modelo_entrenado_se_carga():
-    assert fraud_service.is_loaded(), "No se encontró fraud_model.joblib"
+    assert fraud_service.is_loaded(), "No se encontró ml/modelos/modelo_actual.joblib"
 
 
 def test_una_compra_corriente_devuelve_valores_coherentes():

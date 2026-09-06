@@ -3,6 +3,7 @@ Sanchez Tech Store — Backend API
 Entry point de la aplicación FastAPI.
 """
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -37,6 +38,18 @@ from app.services.payment_service import payment_service
 
 settings = get_settings()
 
+# Uvicorn solo configura sus propios registros, no el de la raíz, así que sin
+# esta línea todo lo que la aplicación escriba por debajo de WARNING se pierde
+# en silencio: los avisos de Cloudinary cuando una subida falla, por ejemplo.
+# Con ella, cada mensaje sale con su hora, su nivel y el módulo que lo emitió,
+# que es lo que hace legible el log de Render cuando algo va mal en producción.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,7 +59,7 @@ async def lifespan(app: FastAPI):
     - Shutdown: libera recursos.
     """
     # === STARTUP ===
-    print(f"🚀 Iniciando {settings.APP_NAME}...")
+    logger.info("Iniciando %s", settings.APP_NAME)
 
     # El esquema se crea al vuelo solo en SQLite, que es la base de desarrollo
     # y la de las pruebas. En PostgreSQL manda Alembic: el despliegue ejecuta
@@ -55,18 +68,18 @@ async def lifespan(app: FastAPI):
     # migraciones se volverían decorativas.
     if settings.DATABASE_URL.startswith("sqlite"):
         await create_tables()
-        print("📦 Tablas creadas/verificadas (SQLite)")
+        logger.info("Tablas creadas o verificadas (SQLite)")
     else:
-        print("📦 Esquema gestionado por Alembic")
+        logger.info("Esquema gestionado por Alembic")
 
     # Cargar modelo LightGBM de detección de fraude (Fase 4 completada)
     fraud_service.load_model()
 
-    print(f"✅ {settings.APP_NAME} listo!")
+    logger.info("%s listo", settings.APP_NAME)
     yield
 
     # === SHUTDOWN ===
-    print(f"👋 Cerrando {settings.APP_NAME}...")
+    logger.info("Cerrando %s", settings.APP_NAME)
 
 
 # Crear app
@@ -156,7 +169,7 @@ async def health():
             await conn.execute(sqlalchemy.text("SELECT 1"))
         database = "connected"
     except Exception as exc:  # noqa: BLE001 - se reporta, no se propaga
-        print(f"Health check: fallo al consultar la base de datos: {exc}")
+        logger.error("Health check: fallo al consultar la base de datos: %s", exc)
         database = "unavailable"
 
     return {

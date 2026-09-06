@@ -64,9 +64,9 @@ async def _evaluacion(
 
 
 @pytest.mark.asyncio
-async def test_la_tasa_de_deteccion_solo_cuenta_lo_etiquetado(sesion):
+async def test_la_tasa_de_deteccion_solo_cuenta_lo_etiquetado(sesion, ahora):
     usuario = await crear_usuario(sesion)
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
 
     # Dos fraudes confirmados: uno bloqueado (detectado) y otro aprobado (no).
     await _evaluacion(sesion, usuario, "BLOCKED", hoy, etiquetada=True, fue_fraude=True)
@@ -88,13 +88,13 @@ async def test_la_tasa_de_deteccion_solo_cuenta_lo_etiquetado(sesion):
 
 
 @pytest.mark.asyncio
-async def test_una_revision_manual_tambien_cuenta_como_detectado(sesion):
+async def test_una_revision_manual_tambien_cuenta_como_detectado(sesion, ahora):
     """
     Un fraude mandado a revisión está detectado aunque no se haya bloqueado:
     lo que importa es que la compra no siguió su curso hasta el cobro.
     """
     usuario = await crear_usuario(sesion)
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
     await _evaluacion(sesion, usuario, "REVIEW", hoy, etiquetada=True, fue_fraude=True)
 
     periodo = (await fraud_metrics_service.historial(sesion, "day", periodos=1))[0]
@@ -103,14 +103,14 @@ async def test_una_revision_manual_tambien_cuenta_como_detectado(sesion):
 
 
 @pytest.mark.asyncio
-async def test_sin_fraudes_confirmados_la_tasa_no_es_cero_sino_desconocida(sesion):
+async def test_sin_fraudes_confirmados_la_tasa_no_es_cero_sino_desconocida(sesion, ahora):
     """
     Un período con compras legítimas y ningún fraude no tiene tasa de
     detección. Devolver 0 % diría "no detectamos nada", que es una acusación
     falsa contra el modelo; lo cierto es que no hay con qué medirlo.
     """
     usuario = await crear_usuario(sesion)
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
     await _evaluacion(sesion, usuario, "APPROVED", hoy, etiquetada=True, fue_fraude=False)
 
     periodo = (await fraud_metrics_service.historial(sesion, "day", periodos=1))[0]
@@ -123,7 +123,7 @@ async def test_sin_fraudes_confirmados_la_tasa_no_es_cero_sino_desconocida(sesio
 
 
 @pytest.mark.asyncio
-async def test_el_total_del_rango_no_promedia_porcentajes(cliente, sesion):
+async def test_el_total_del_rango_no_promedia_porcentajes(cliente, sesion, ahora):
     """
     El error clásico de este tipo de reporte.
 
@@ -134,7 +134,7 @@ async def test_el_total_del_rango_no_promedia_porcentajes(cliente, sesion):
     await crear_usuario(sesion, email="admin@ejemplo.com", rol=UserRole.ADMIN)
     usuario = await crear_usuario(sesion)
 
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
     ayer = hoy - timedelta(days=1)
 
     await _evaluacion(sesion, usuario, "BLOCKED", ayer, etiquetada=True, fue_fraude=True)
@@ -163,10 +163,10 @@ async def test_el_total_del_rango_no_promedia_porcentajes(cliente, sesion):
 
 
 @pytest.mark.asyncio
-async def test_el_reporte_en_excel_trae_los_mismos_numeros_que_el_panel(cliente, sesion):
+async def test_el_reporte_en_excel_trae_los_mismos_numeros_que_el_panel(cliente, sesion, ahora):
     await crear_usuario(sesion, email="admin@ejemplo.com", rol=UserRole.ADMIN)
     usuario = await crear_usuario(sesion)
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
 
     await _evaluacion(sesion, usuario, "BLOCKED", hoy, etiquetada=True, fue_fraude=True, monto=900.0)
     await _evaluacion(sesion, usuario, "APPROVED", hoy, etiquetada=True, fue_fraude=False, monto=100.0)

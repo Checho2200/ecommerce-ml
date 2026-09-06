@@ -53,9 +53,9 @@ async def _evaluacion(sesion, usuario, decision: str, monto: float, cuando: date
 
 
 @pytest.mark.asyncio
-async def test_el_historial_separa_lo_que_paso_de_lo_que_se_retuvo(sesion):
+async def test_el_historial_separa_lo_que_paso_de_lo_que_se_retuvo(sesion, ahora):
     usuario = await crear_usuario(sesion)
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
 
     await _evaluacion(sesion, usuario, "APPROVED", 100.0, hoy)
     await _evaluacion(sesion, usuario, "APPROVED", 200.0, hoy)
@@ -77,9 +77,9 @@ async def test_el_historial_separa_lo_que_paso_de_lo_que_se_retuvo(sesion):
 
 
 @pytest.mark.asyncio
-async def test_los_periodos_sin_ventas_salen_en_cero_y_no_se_saltan(sesion):
+async def test_los_periodos_sin_ventas_salen_en_cero_y_no_se_saltan(sesion, ahora):
     usuario = await crear_usuario(sesion)
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
 
     await _evaluacion(sesion, usuario, "APPROVED", 100.0, hoy)
     await _evaluacion(sesion, usuario, "APPROVED", 100.0, hoy - timedelta(days=4))
@@ -94,7 +94,7 @@ async def test_los_periodos_sin_ventas_salen_en_cero_y_no_se_saltan(sesion):
 
 
 @pytest.mark.asyncio
-async def test_una_compra_de_la_noche_cuenta_en_el_dia_de_trujillo(sesion):
+async def test_una_compra_de_la_noche_cuenta_en_el_dia_de_trujillo(sesion, ahora):
     """
     Las 20:00 de Trujillo son las 01:00 UTC del día siguiente.
 
@@ -103,7 +103,7 @@ async def test_una_compra_de_la_noche_cuenta_en_el_dia_de_trujillo(sesion):
     """
     usuario = await crear_usuario(sesion)
 
-    anoche = datetime.now(ZONA_DE_LA_TIENDA).replace(
+    anoche = ahora.replace(
         hour=20, minute=30, second=0, microsecond=0
     ) - timedelta(days=1)
     assert anoche.astimezone(timezone.utc).date() != anoche.date(), (
@@ -120,9 +120,9 @@ async def test_una_compra_de_la_noche_cuenta_en_el_dia_de_trujillo(sesion):
 
 
 @pytest.mark.asyncio
-async def test_la_semana_empieza_en_lunes_y_el_mes_en_el_dia_uno(sesion):
+async def test_la_semana_empieza_en_lunes_y_el_mes_en_el_dia_uno(sesion, ahora):
     usuario = await crear_usuario(sesion)
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
     await _evaluacion(sesion, usuario, "APPROVED", 100.0, hoy)
 
     semanas = await fraud_metrics_service.historial(sesion, "week", periodos=3)
@@ -144,9 +144,9 @@ async def test_el_historial_es_solo_para_administradores(cliente, sesion):
 
 
 @pytest.mark.asyncio
-async def test_el_resumen_de_ordenes_solo_factura_lo_cobrado(cliente, sesion):
+async def test_el_resumen_de_ordenes_solo_factura_lo_cobrado(cliente, sesion, ahora):
     admin = await crear_usuario(sesion, email="admin@ejemplo.com", rol=UserRole.ADMIN)
-    hoy = datetime.now(ZONA_DE_LA_TIENDA)
+    hoy = ahora
 
     await _evaluacion(sesion, admin, "APPROVED", 500.0, hoy)   # queda PENDING
     await _evaluacion(sesion, admin, "REVIEW", 300.0, hoy)

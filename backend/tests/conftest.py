@@ -11,7 +11,9 @@ donde la API habla con PostgreSQL en producción.
 """
 
 import os
+from datetime import datetime
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -138,3 +140,27 @@ async def token_de(cliente: AsyncClient, email: str, contrasena: str = CONTRASEN
 
 async def cabeceras_de(cliente: AsyncClient, email: str, contrasena: str = CONTRASENA) -> dict:
     return {"Authorization": f"Bearer {await token_de(cliente, email, contrasena)}"}
+
+
+@pytest.fixture
+def ahora(monkeypatch):
+    """
+    Fija el reloj de la tienda durante toda la prueba y lo devuelve.
+
+    Las pruebas de indicadores fechan sus datos en «hoy» y luego piden el
+    historial, que vuelve a mirar la hora. Si la medianoche peruana cae entre
+    esas dos cosas —y la suite tarda casi un minuto, así que cae una vez al
+    día—, la ventana se corre un día y las cuentas dejan de cuadrar. Con el
+    reloj fijado, las dos mitades hablan del mismo instante.
+
+    Se elige el mediodía y no la hora real a propósito: deja doce horas de
+    margen a cada lado para las pruebas que fechan cosas «hace unas horas» sin
+    que se salgan del día.
+    """
+    from app.services import fraud_metrics_service
+
+    instante = datetime.now(fraud_metrics_service.ZONA_DE_LA_TIENDA).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
+    monkeypatch.setattr(fraud_metrics_service, "_ahora", lambda: instante)
+    return instante

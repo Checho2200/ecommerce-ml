@@ -8,7 +8,7 @@ bloquear.
 Dos cosas que no son obvias:
 
 **Los umbrales no están escritos aquí.** Vienen del archivo
-`fraud_model.meta.json` que produce el entrenamiento, donde se eligieron
+`ml/modelos/modelo_actual.meta.json` que produce el entrenamiento, donde se eligieron
 minimizando el costo en soles de los errores (ver `ml/evaluacion.py`). Si ese
 archivo no existe se usan los valores históricos 0.30 y 0.70, que es lo que
 había antes de medirlos.
@@ -21,8 +21,10 @@ pedidos de alto riesgo recibían la misma frase fija, que no explicaba nada.
 """
 
 import json
+import logging
 import os
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -36,6 +38,13 @@ FEATURES = [
     "checkout_duration_seconds",
     "is_new_shipping_address",
 ]
+
+logger = logging.getLogger(__name__)
+
+# Dónde el entrenamiento deja el modelo publicado. Se calcula desde este
+# archivo (app/services/ -> backend/) para que no dependa del directorio desde
+# el que se arranque el servidor.
+DIRECTORIO_MODELOS = Path(__file__).resolve().parent.parent.parent / "ml" / "modelos"
 
 UMBRAL_APROBACION_POR_DEFECTO = 0.30
 UMBRAL_BLOQUEO_POR_DEFECTO = 0.70
@@ -90,8 +99,13 @@ def _frase(variable: str, valor: float) -> str:
 class FraudDetectionService:
     def __init__(self):
         self.model = None
-        self.model_path = os.path.join(os.path.dirname(__file__), "fraud_model.joblib")
-        self.meta_path = os.path.join(os.path.dirname(__file__), "fraud_model.meta.json")
+        # El modelo publicado vive en ml/modelos/, junto al anterior, y no
+        # dentro de este paquete: aquí está el código que lo usa, allí el
+        # registro de artefactos que produce el entrenamiento. Tenerlo suelto
+        # entre los .py de servicios hacía parecer que un binario de 100 KB
+        # era parte del código de la aplicación.
+        self.model_path = str(DIRECTORIO_MODELOS / "modelo_actual.joblib")
+        self.meta_path = str(DIRECTORIO_MODELOS / "modelo_actual.meta.json")
         self.umbral_aprobacion = UMBRAL_APROBACION_POR_DEFECTO
         self.umbral_bloqueo = UMBRAL_BLOQUEO_POR_DEFECTO
         self.metadatos: dict = {}
@@ -106,11 +120,15 @@ class FraudDetectionService:
             if os.path.exists(self.model_path):
                 try:
                     self.model = joblib.load(self.model_path)
-                    print(f"✅ Modelo de fraude cargado desde: {self.model_path}")
+                    logger.info("Modelo de fraude cargado desde %s", self.model_path)
                 except Exception as e:
-                    print(f"⚠️ Error al cargar el modelo de fraude desde {self.model_path}: {e}")
+                    logger.error(
+                        "No se pudo cargar el modelo de fraude desde %s: %s",
+                        self.model_path,
+                        e,
+                    )
             else:
-                print(f"⚠️ Advertencia: No se encontró el modelo en {self.model_path}")
+                logger.warning("No se encontró el modelo en %s", self.model_path)
 
         self._cargar_umbrales()
 
@@ -134,12 +152,15 @@ class FraudDetectionService:
             self.umbral_bloqueo = float(
                 self.metadatos.get("umbral_bloqueo", UMBRAL_BLOQUEO_POR_DEFECTO)
             )
-            print(
-                f"📐 Umbrales del modelo: aprobar < {self.umbral_aprobacion}, "
-                f"bloquear ≥ {self.umbral_bloqueo}"
+            logger.info(
+                "Umbrales del modelo: aprobar < %s, bloquear >= %s",
+                self.umbral_aprobacion,
+                self.umbral_bloqueo,
             )
         except Exception as e:  # noqa: BLE001 - se sigue con los valores por defecto
-            print(f"⚠️ No se pudieron leer los umbrales ({e}); se usan los históricos.")
+            logger.warning(
+                "No se pudieron leer los umbrales (%s); se usan los históricos", e
+            )
 
     def valor_base(self) -> Optional[float]:
         """
@@ -164,7 +185,7 @@ class FraudDetectionService:
                 contribuciones = self.model.booster_.predict(fila, pred_contrib=True)
                 self._valor_base = round(float(contribuciones[0][-1]), 4)
             except Exception as e:  # noqa: BLE001 - es información, no una decisión
-                print(f"⚠️ No se pudo leer el valor base del modelo: {e}")
+                logger.warning("No se pudo leer el valor base del modelo: %s", e)
                 return None
         return self._valor_base
 
@@ -200,7 +221,7 @@ class FraudDetectionService:
         try:
             contribuciones = self.model.booster_.predict(datos, pred_contrib=True)[0]
         except Exception as e:  # noqa: BLE001 - la explicación no puede tumbar una compra
-            print(f"⚠️ No se pudieron calcular los aportes por variable: {e}")
+            logger.warning("No se pudieron calcular los aportes por variable: %s", e)
             return None
 
         # La última columna es el valor base (la predicción media), no una variable.

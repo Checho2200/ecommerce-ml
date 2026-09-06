@@ -37,8 +37,8 @@ RAIZ = Path(__file__).resolve().parent.parent
 DIRECTORIO_INFORMES = RAIZ / "ml" / "informes"
 DIRECTORIO_MODELOS = RAIZ / "ml" / "modelos"
 
-RUTA_MODELO_ACTUAL = RAIZ / "app" / "services" / "fraud_model.joblib"
-RUTA_META_ACTUAL = RAIZ / "app" / "services" / "fraud_model.meta.json"
+RUTA_MODELO_ACTUAL = DIRECTORIO_MODELOS / "modelo_actual.joblib"
+RUTA_META_ACTUAL = DIRECTORIO_MODELOS / "modelo_actual.meta.json"
 RUTA_MODELO_ANTERIOR = DIRECTORIO_MODELOS / "modelo_anterior.joblib"
 
 # Los umbrales con los que nació el sistema, escritos a mano en el código.
@@ -62,7 +62,7 @@ def _cargar_modelo(ruta: Path):
     if not ruta.exists():
         raise FileNotFoundError(
             f"Falta {ruta}. El modelo anterior se recupera del historial con:\n"
-            f"  git show <commit>:backend/app/services/fraud_model.joblib > {ruta}"
+            f"  git show <commit>:backend/ml/modelos/modelo_actual.joblib > {ruta}"
         )
     return joblib.load(ruta)
 
