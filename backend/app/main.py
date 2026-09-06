@@ -31,6 +31,7 @@ from app.api.v1.service_orders import router as service_orders_router
 from app.api.v1.fraud import router as fraud_router
 from app.api.v1.reviews import router as reviews_router
 from app.api.v1.upload import router as upload_router
+from app.services import image_storage
 from app.services.fraud_service import fraud_service
 from app.services.payment_service import payment_service
 
@@ -165,4 +166,8 @@ async def health():
         # Solo dice si hay token cargado, nunca el token en si: sirve para
         # comprobar desde fuera que la variable de entorno llego al servidor.
         "payments": "configured" if payment_service.is_configured else "not_configured",
+        # Igual que arriba: dónde acaban las imágenes que sube el panel. Sin
+        # credenciales de Cloudinary se guardan en la base, que funciona pero
+        # gasta el espacio del plan gratuito de Neon.
+        "images": "cloudinary" if image_storage.esta_configurado() else "database",
     }
