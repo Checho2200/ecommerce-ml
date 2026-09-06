@@ -175,3 +175,14 @@ class FraudModelInfo(BaseModel):
     base_value: Optional[float] = None
     n_trees: Optional[int] = None
     features: list[str] = []
+
+    # Cuánto le falta a la tienda para dejar de entrenar con el conjunto
+    # sintético y hacerlo con sus propias transacciones. Va aquí y no en un
+    # endpoint aparte porque es parte de la respuesta a "¿con qué se entrenó
+    # esto?", que es lo primero que se pregunta en una sustentación.
+    labeled_orders: int = 0
+    labeled_frauds: int = 0
+    labeled_legit: int = 0
+    required_total: int = 0
+    required_per_class: int = 0
+    can_train_with_real_data: bool = False

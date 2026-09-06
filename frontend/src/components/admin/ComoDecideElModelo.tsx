@@ -20,6 +20,7 @@
 
 import { useMemo } from "react";
 import {
+  Alert,
   Box,
   Card,
   CardContent,
@@ -184,6 +185,46 @@ export default function ComoDecideElModelo({
           exista un cobro</strong>: una compra bloqueada nunca llega a la pasarela de pago.
           Lo que sigue es la cuenta completa, con un pedido real.
         </Typography>
+
+        {/* ── Con qué aprendió ────────────────────────────────────────────
+            Va lo primero y sin adornos. Un panel que solo dice "modelo
+            cargado" deja entender que aprendió de las ventas de la tienda, y
+            hoy todavía no es así: aprendió de un conjunto sintético del
+            dominio, porque una tienda recién abierta no tiene contracargos
+            que enseñarle. Decirlo aquí es lo que hace que el resto de la
+            pantalla se pueda defender. */}
+        {modelo && (
+          <Alert
+            severity={modelo.data_source === "tienda" ? "success" : "info"}
+            sx={{ mb: 3.5, borderRadius: 2 }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>
+              {modelo.data_source === "tienda"
+                ? "Entrenado con las compras de esta tienda"
+                : "Entrenado con un conjunto sintético del dominio"}
+            </Typography>
+            <Typography variant="caption" sx={{ display: "block", lineHeight: 1.75 }}>
+              {modelo.data_source === "tienda" ? (
+                <>
+                  Aprendió de {modelo.labeled_orders} pedidos que un administrador revisó y
+                  etiquetó como fraude o como compra legítima.
+                </>
+              ) : (
+                <>
+                  Aprendió de transacciones generadas con el comportamiento típico de una
+                  tienda de componentes, no de las ventas reales: una tienda recién abierta
+                  no tiene contracargos con los que aprender. El reentrenamiento cambiará
+                  solo al tener bastantes pedidos revisados de las dos clases. Van{" "}
+                  <strong>
+                    {modelo.labeled_orders} de {modelo.required_total}
+                  </strong>{" "}
+                  ({modelo.labeled_frauds} fraudes y {modelo.labeled_legit} legítimos; hacen
+                  falta {modelo.required_per_class} de cada clase como mínimo).
+                </>
+              )}
+            </Typography>
+          </Alert>
+        )}
 
         {/* ── 1. Lo que mira ──────────────────────────────────────────── */}
         <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>

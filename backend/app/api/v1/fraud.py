@@ -77,15 +77,27 @@ async def list_fraud_logs(
 
 
 @router.get("/model", response_model=FraudModelInfo)
-async def get_model_info(admin: User = Depends(require_admin)):
+async def get_model_info(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
     """
     Con qué se publicó el modelo que está sirviendo (solo admin).
 
     Los umbrales y los indicadores viajan en `fraud_model.meta.json`, que
     escribe el entrenamiento. Si el archivo falta, el servicio cae en los
     umbrales históricos y aquí se ve: los campos de medición vienen nulos.
+
+    Se acompaña del recuento de pedidos ya etiquetados. El modelo que sirve
+    hoy aprendió de un conjunto sintético del dominio —una tienda recién
+    abierta no tiene contracargos que enseñarle—, y ese recuento dice cuánto
+    falta para reentrenarlo con las transacciones de la tienda. Sin él,
+    "modelo entrenado" se lee como "aprendió de nuestras ventas", que todavía
+    no es cierto.
     """
     meta = fraud_service.metadatos or {}
+    progreso = await fraud_metrics_service.progreso_hacia_datos_reales(db)
+
     return FraudModelInfo(
         loaded=fraud_service.is_loaded(),
         trained_at=meta.get("entrenado_en"),
@@ -99,6 +111,12 @@ async def get_model_info(admin: User = Depends(require_admin)):
         base_value=fraud_service.valor_base(),
         n_trees=fraud_service.cantidad_de_arboles(),
         features=meta.get("variables", []),
+        labeled_orders=progreso.etiquetados,
+        labeled_frauds=progreso.fraudes,
+        labeled_legit=progreso.legitimos,
+        required_total=progreso.minimo_total,
+        required_per_class=progreso.minimo_por_clase,
+        can_train_with_real_data=progreso.suficientes,
     )
 
 

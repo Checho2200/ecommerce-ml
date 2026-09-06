@@ -216,6 +216,15 @@ export interface FraudModelInfo {
   base_value: number | null;
   n_trees: number | null;
   features: string[];
+
+  // Cuánto le falta a la tienda para reentrenar con sus propias compras en
+  // lugar del conjunto sintético.
+  labeled_orders: number;
+  labeled_frauds: number;
+  labeled_legit: number;
+  required_total: number;
+  required_per_class: number;
+  can_train_with_real_data: boolean;
 }
 
 /** Resumen de la tienda para el panel: pedidos por estado y lo cobrado. */

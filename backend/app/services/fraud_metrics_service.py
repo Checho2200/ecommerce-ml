@@ -127,6 +127,68 @@ async def calcular(db: AsyncSession) -> MetricasDelModelo:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Cuánto falta para entrenar con los pedidos de la tienda
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class ProgresoDeDatosReales:
+    """Etiquetas acumuladas frente a las que pide el entrenamiento."""
+
+    etiquetados: int
+    fraudes: int
+    legitimos: int
+    minimo_total: int
+    minimo_por_clase: int
+
+    @property
+    def suficientes(self) -> bool:
+        return (
+            self.etiquetados >= self.minimo_total
+            and self.fraudes >= self.minimo_por_clase
+            and self.legitimos >= self.minimo_por_clase
+        )
+
+
+async def progreso_hacia_datos_reales(db: AsyncSession) -> ProgresoDeDatosReales:
+    """
+    Cuántos pedidos etiquetados lleva la tienda y cuántos le faltan.
+
+    El modelo que está sirviendo hoy se entrenó con un conjunto sintético del
+    dominio, porque una tienda que acaba de abrir no tiene contracargos que
+    aprender. En cuanto haya bastantes casos revisados de las dos clases, el
+    reentrenamiento usa las transacciones reales y deja el sintético.
+
+    Merece la pena enseñarlo en el panel: sin esto, "el modelo está entrenado"
+    suena a que aprendió de la tienda, y no es lo que pasó todavía.
+
+    La condición no se repite aquí: se lee de `ml/dataset.py`, que es quien la
+    aplica. Copiar los números permitiría que el panel prometiera un umbral y
+    el entrenamiento exigiera otro.
+    """
+    from ml.dataset import MINIMO_POR_CLASE, MINIMO_TOTAL
+
+    etiquetas = (
+        (
+            await db.execute(
+                select(FraudLog.is_actual_fraud).where(FraudLog.reviewed_at.is_not(None))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    fraudes = sum(1 for es_fraude in etiquetas if es_fraude)
+    return ProgresoDeDatosReales(
+        etiquetados=len(etiquetas),
+        fraudes=fraudes,
+        legitimos=len(etiquetas) - fraudes,
+        minimo_total=MINIMO_TOTAL,
+        minimo_por_clase=MINIMO_POR_CLASE,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Historial: las mismas decisiones, repartidas en el tiempo
 # ─────────────────────────────────────────────────────────────────────────────
 #
