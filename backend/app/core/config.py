@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     # CORS
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Imágenes del panel de administración (Cloudinary).
+    # Una sola variable con todo dentro, tal como la entrega el panel de
+    # Cloudinary: cloudinary://<api_key>:<api_secret>@<cloud_name>.
+    # Si queda vacía, las imágenes se guardan en la base de datos, que es lo
+    # que permite trabajar en local sin dar de alta ninguna cuenta.
+    CLOUDINARY_URL: str = ""
+    # Carpeta dentro de Cloudinary donde aterriza todo lo que sube el panel,
+    # para no mezclarlo con lo que haya en la cuenta.
+    CLOUDINARY_FOLDER: str = "sanchez-tech-store"
+
     # Pagos
     # Clave secreta del webhook, que se genera en el panel de MercadoPago
     # (Tus integraciones -> Webhooks). Sirve para comprobar la firma de cada

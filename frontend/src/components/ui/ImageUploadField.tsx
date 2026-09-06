@@ -49,9 +49,13 @@ export default function ImageUploadField({
     setUploadError("");
     try {
       const result = await api.upload.image(file);
-      // La URL relativa del backend se convierte a URL absoluta
-      const absoluteUrl = `${process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${result.url}`;
-      onChange(absoluteUrl);
+      // Cuando la imagen va a Cloudinary la URL ya llega completa. El respaldo
+      // que la guarda en la base devuelve una ruta del backend, y esa sí hay
+      // que convertirla en absoluta para que la vea el navegador.
+      const url = result.url.startsWith("http")
+        ? result.url
+        : `${process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${result.url}`;
+      onChange(url);
       setImgError(false);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error al subir la imagen";

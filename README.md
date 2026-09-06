@@ -224,6 +224,7 @@ Todas van en `backend/.env` (hay una plantilla en `backend/.env.example`).
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración de la sesión | 60 minutos |
 | `RESET_TOKEN_EXPIRE_MINUTES` | Duración del enlace de recuperación | 30 minutos |
 | `MERCADOPAGO_ACCESS_TOKEN` | Cobros | El checkout responde 503 |
+| `CLOUDINARY_URL` | Dónde se guardan las imágenes que sube el panel | Se guardan en la base de datos |
 | `MERCADOPAGO_WEBHOOK_SECRET` | Firma de las notificaciones de pago | No se exige firma |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Correo saliente | Los correos se escriben en el log en vez de enviarse |
 | `FRONTEND_URL` | CORS y enlaces de los correos | `http://localhost:3000` |

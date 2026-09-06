@@ -27,6 +27,13 @@ services:
         sync: false
       - key: SECRET_KEY
         sync: false
+      # Donde se guardan las imagenes que sube el panel de administracion.
+      # Panel de Cloudinary -> Dashboard -> API Environment variable, con la
+      # forma cloudinary://<api_key>:<api_secret>@<cloud_name>. Sin ella las
+      # imagenes se guardan en la base de datos, que aguanta pero se come el
+      # espacio del plan gratuito de Neon.
+      - key: CLOUDINARY_URL
+        sync: false
       # Correo saliente. Sin SMTP_HOST la aplicación no envía nada: escribe el
       # mensaje en el log y sigue, así que el resto del sistema funciona igual.
       - key: SMTP_HOST

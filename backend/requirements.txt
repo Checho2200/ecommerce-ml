@@ -20,3 +20,7 @@ pandas==2.2.3
 # descarga del reporte responde un 500.
 openpyxl==3.1.5
 mercadopago==3.5.0
+# Guarda las imagenes del panel de administracion fuera del servidor: en el
+# plan gratuito de Render el disco es efimero y en la base de datos ocuparian
+# el poco espacio del plan gratuito de Neon.
+cloudinary==1.41.0
