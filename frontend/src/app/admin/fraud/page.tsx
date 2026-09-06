@@ -1,99 +1,60 @@
 "use client";
 
 /**
- * Antifraude: todo lo que tiene que ver con el modelo, en un solo sitio.
+ * Antifraude · Revisión: lo único que hay que hacer, y hacerlo.
  *
- * Antes estaba repartido en tres pantallas que no se hablaban: las métricas
- * ocupaban dos tercios del Dashboard, la cola de revisión había que armarla a
- * mano filtrando en Órdenes, y en ninguna parte se decía en qué momento del
- * checkout corre el modelo. El orden de esta página sigue el de las preguntas
- * que se hacen sobre él: cuándo actúa, qué está esperando decisión, qué tan
- * bien lo hace, y cómo ha ido en el tiempo.
+ * Esta pantalla y la de al lado —«Modelo e indicadores»— eran una sola, y era
+ * demasiada. Mezclaba dos cosas que se usan en momentos distintos: explicar
+ * cómo razona el modelo y medir cómo le va, que se miran de vez en cuando, con
+ * la cola de pedidos retenidos, que hay que atender hoy porque mientras tanto
+ * el cliente no puede pagar y su stock sigue apartado. Con todo junto, lo
+ * urgente quedaba debajo de cuatrocientos píxeles de explicación.
+ *
+ * Aquí queda solo lo urgente. La teoría y los números están a un clic.
  */
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Alert,
   Box,
+  Button,
   Snackbar,
   Stack,
   Typography,
 } from "@mui/material";
+import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 
-import ComoDecideElModelo from "@/components/admin/ComoDecideElModelo";
 import ColaDeRevision from "@/components/admin/ColaDeRevision";
-import MetricasDelModelo from "@/components/admin/MetricasDelModelo";
-import TarjetasDeIndicadores from "@/components/admin/TarjetasDeIndicadores";
-import HistorialAntifraude, { type Granularidad } from "@/components/admin/HistorialAntifraude";
-import {
-  api,
-  type FraudHistoryResponse,
-  type FraudLogResponse,
-  type FraudMetricsResponse,
-  type FraudModelInfo,
-  type OrderResponse,
-} from "@/lib/api";
+import { api, type OrderResponse } from "@/lib/api";
 
 export default function AdminFraudPage() {
-  const [metricas, setMetricas] = useState<FraudMetricsResponse | null>(null);
-  const [modelo, setModelo] = useState<FraudModelInfo | null>(null);
-  // Una evaluación reciente con la que enseñar la aritmética de una decisión.
-  // Se prefiere una que el modelo no haya aprobado: en un pedido bloqueado los
-  // aportes son grandes y el reparto se lee de un vistazo, mientras que en uno
-  // aprobado son todos pequeños y negativos.
-  const [ejemplo, setEjemplo] = useState<FraudLogResponse | null>(null);
   const [retenidos, setRetenidos] = useState<OrderResponse[]>([]);
-  const [granularidad, setGranularidad] = useState<Granularidad>("day");
   const [cargando, setCargando] = useState(true);
+  const [fallo, setFallo] = useState(false);
   const [aviso, setAviso] = useState<{ texto: string; tipo: "success" | "error" } | null>(null);
-  const [exportando, setExportando] = useState(false);
-
-  // El historial se guarda junto a la escala con la que se pidió. Así "está
-  // cargando" es algo que se deduce —lo que hay en pantalla todavía no es de
-  // la escala elegida— en lugar de un estado aparte que hay que encender a
-  // mano dentro del efecto, que es lo que encadena un render de más en cada
-  // cambio de "Diario" a "Semanal".
-  const [historial, setHistorial] = useState<{
-    datos: FraudHistoryResponse | null;
-    escala: Granularidad | null;
-    fallo: boolean;
-  }>({ datos: null, escala: null, fallo: false });
-
-  const cargandoHistorial = historial.escala !== granularidad;
 
   const avisar = (texto: string, tipo: "success" | "error" = "success") =>
     setAviso({ texto, tipo });
 
   // Devuelve la cola en vez de guardarla: quien la pide decide cuándo tocar el
-  // estado, y el efecto de abajo puede pedirla junto a las métricas sin
-  // provocar dos repintados encadenados.
+  // estado, y así una decisión puede refrescarla sin duplicar el manejo.
   const traerCola = useCallback(
     () => api.orders.list({ status: "FRAUD_REVIEW", per_page: 50 }).then((r) => r.items),
     []
   );
 
-  // Las métricas y la cola no dependen de la escala elegida; el historial sí.
-  // Separarlos evita volver a pedirlo todo cada vez que se toca "Semanal".
   useEffect(() => {
     let vigente = true;
-    Promise.all([
-      api.fraud.getMetrics(),
-      traerCola(),
-      api.fraud.model(),
-      api.fraud.getLogs(),
-    ])
-      .then(([m, cola, info, registros]) => {
-        if (!vigente) return;
-        setMetricas(m);
-        setRetenidos(cola);
-        setModelo(info);
-        const conCuenta = registros.filter((r) => r.contributions);
-        setEjemplo(
-          conCuenta.find((r) => r.decision !== "APPROVED") ?? conCuenta[0] ?? null
-        );
+    traerCola()
+      .then((cola) => {
+        if (vigente) {
+          setRetenidos(cola);
+          setFallo(false);
+        }
       })
       .catch(() => {
-        if (vigente) avisar("No se pudieron cargar los datos del modelo", "error");
+        if (vigente) setFallo(true);
       })
       .finally(() => {
         if (vigente) setCargando(false);
@@ -102,45 +63,6 @@ export default function AdminFraudPage() {
       vigente = false;
     };
   }, [traerCola]);
-
-  useEffect(() => {
-    let vigente = true;
-    api.fraud
-      .history({ granularity: granularidad })
-      .then((datos) => {
-        if (vigente) setHistorial({ datos, escala: granularidad, fallo: false });
-      })
-      .catch(() => {
-        // La escala se anota igual: si no, la pantalla se quedaría cargando
-        // para siempre después de un fallo.
-        if (vigente) setHistorial({ datos: null, escala: granularidad, fallo: true });
-      });
-    return () => {
-      vigente = false;
-    };
-  }, [granularidad]);
-
-  /**
-   * Descarga el reporte de indicadores.
-   *
-   * Lo arma el backend a partir de los mismos números que se ven en pantalla,
-   * y en la escala que esté seleccionada: el archivo y el panel no pueden
-   * decir cosas distintas.
-   */
-  const exportar = async () => {
-    setExportando(true);
-    try {
-      await api.fraud.downloadReport({ granularity: granularidad });
-      avisar("Reporte descargado");
-    } catch (error: unknown) {
-      avisar(
-        error instanceof Error ? error.message : "No se pudo generar el reporte",
-        "error"
-      );
-    } finally {
-      setExportando(false);
-    }
-  };
 
   /**
    * Qué se hace con un pedido retenido.
@@ -171,7 +93,7 @@ export default function AdminFraudPage() {
    * Qué aprende el modelo de este caso.
    *
    * Las dos respuestas cuentan: sin los "era legítima" no hay verdaderos
-   * negativos y la precisión no se puede calcular.
+   * negativos, y sin ellos la precisión del modelo no se puede calcular.
    */
   const etiquetar = async (fraudLogId: string, fueFraude: boolean) => {
     if (
@@ -185,7 +107,6 @@ export default function AdminFraudPage() {
     try {
       await api.fraud.label(fraudLogId, fueFraude);
       avisar(fueFraude ? "Registrado como fraude real" : "Registrado como compra legítima");
-      setMetricas(await api.fraud.getMetrics());
     } catch (error: unknown) {
       avisar(
         error instanceof Error ? error.message : "No se pudo registrar la etiqueta",
@@ -196,58 +117,42 @@ export default function AdminFraudPage() {
 
   return (
     <>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" sx={{ fontWeight: 800 }}>
-          Antifraude
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          El modelo que revisa cada compra: cuándo decide, qué decidió y qué tan bien lo hace.
-        </Typography>
-      </Box>
-
-      <Stack spacing={3}>
-        <ComoDecideElModelo modelo={modelo} ejemplo={ejemplo} cargando={cargando} />
-
-        <ColaDeRevision
-          pedidos={retenidos}
-          cargando={cargando}
-          onDecidir={decidir}
-          onEtiquetar={etiquetar}
-        />
-
-        {/* Los tres indicadores de la tesis van arriba de todo lo demás: son
-            lo que el sistema promete mover, y el resto de la pantalla explica
-            cómo lo consigue. */}
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        sx={{ justifyContent: "space-between", alignItems: { sm: "center" }, mb: 4 }}
+      >
         <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5 }}>
-            Indicadores del sistema
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+            Antifraude · Revisión
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 820 }}>
-            Medidos sobre el rango que está seleccionado abajo. El modelo se entrena
-            persiguiéndolos: al elegir sus umbrales descarta los que no detectan al
-            menos el 80 % del fraude, y un modelo reentrenado no se publica si detecta
-            menos que el que ya está sirviendo.
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Las compras que el modelo no dejó pasar y esperan una decisión.
           </Typography>
-          <TarjetasDeIndicadores datos={historial.datos} cargando={cargandoHistorial} />
         </Box>
-
-        <MetricasDelModelo metricas={metricas} cargando={cargando} />
-
-        {historial.fallo && (
-          <Alert severity="error" sx={{ borderRadius: 2 }}>
-            No se pudo cargar el historial. Vuelve a elegir una escala para reintentarlo.
-          </Alert>
-        )}
-
-        <HistorialAntifraude
-          datos={historial.datos}
-          cargando={cargandoHistorial}
-          granularidad={granularidad}
-          onGranularidad={setGranularidad}
-          onExportar={exportar}
-          exportando={exportando}
-        />
+        <Button
+          component={Link}
+          href="/admin/fraud/modelo"
+          variant="outlined"
+          startIcon={<InsightsOutlinedIcon />}
+          sx={{ textTransform: "none", fontWeight: 700, borderRadius: 2, whiteSpace: "nowrap" }}
+        >
+          Modelo e indicadores
+        </Button>
       </Stack>
+
+      {fallo && (
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+          No se pudo cargar la cola de revisión. Vuelve a cargar la página para reintentarlo.
+        </Alert>
+      )}
+
+      <ColaDeRevision
+        pedidos={retenidos}
+        cargando={cargando}
+        onDecidir={decidir}
+        onEtiquetar={etiquetar}
+      />
 
       <Snackbar
         open={!!aviso}

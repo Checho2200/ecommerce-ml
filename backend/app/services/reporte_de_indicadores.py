@@ -26,6 +26,9 @@ ESCALAS = {
     "day": ("Diario", "días"),
     "week": ("Semanal", "semanas"),
     "month": ("Mensual", "meses"),
+    "bimester": ("Bimestral", "bimestres"),
+    "quarter": ("Trimestral", "trimestres"),
+    "semester": ("Semestral", "semestres"),
     "year": ("Anual", "años"),
 }
 
@@ -122,6 +125,11 @@ def _hoja_portada(libro: Workbook, datos: FraudHistoryResponse) -> None:
         ("Fraudes confirmados", datos.total_actual_frauds),
         ("Fraudes detectados", datos.total_detected_frauds),
         ("Fraudes no detectados", datos.total_undetected_frauds),
+        ("Falsas alertas (se frenó una compra buena)", datos.total_false_alerts),
+        (
+            "Precisión de las alertas",
+            f"{datos.precision * 100:.1f} %" if datos.precision is not None else "sin datos",
+        ),
     ]
     for i, (etiqueta, valor) in enumerate(base):
         fila = 15 + i
@@ -147,7 +155,7 @@ def _hoja_portada(libro: Workbook, datos: FraudHistoryResponse) -> None:
 
 def _hoja_serie(libro: Workbook, datos: FraudHistoryResponse) -> None:
     hoja = libro.create_sheet("Indicadores por período")
-    _anchos(hoja, [14, 12, 11, 12, 12, 11, 11, 12, 13, 14, 14, 15, 15])
+    _anchos(hoja, [14, 12, 11, 12, 12, 11, 11, 12, 13, 13, 14, 14, 12, 15, 15])
 
     _encabezado(
         hoja,
@@ -162,8 +170,10 @@ def _hoja_serie(libro: Workbook, datos: FraudHistoryResponse) -> None:
             "Fraudes",
             "Detectados",
             "No detectados",
+            "Falsas alertas",
             "Tasa detectados",
             "Tasa no detectado",
+            "Precisión",
             "Tiempo medio (ms)",
             "Puntaje medio",
         ],
@@ -186,20 +196,25 @@ def _hoja_serie(libro: Workbook, datos: FraudHistoryResponse) -> None:
         hoja.cell(row=fila, column=7, value=p.actual_frauds)
         hoja.cell(row=fila, column=8, value=p.detected_frauds)
         hoja.cell(row=fila, column=9, value=p.undetected_frauds)
+        hoja.cell(row=fila, column=10, value=p.false_alerts)
 
         # Las tasas van como número con formato de porcentaje, no como el texto
         # "57,1 %": un texto no se promedia ni se grafica.
-        for columna, tasa in ((10, p.detection_rate), (11, p.undetected_rate)):
+        for columna, tasa in (
+            (11, p.detection_rate),
+            (12, p.undetected_rate),
+            (13, p.precision),
+        ):
             celda = hoja.cell(row=fila, column=columna, value=tasa)
             celda.number_format = "0.0%"
             if tasa is None:
                 celda.value = "sin datos"
                 celda.font = Font(color="9AA5B1", italic=True)
 
-        hoja.cell(row=fila, column=12, value=p.average_detection_time_ms).number_format = "0.0"
-        hoja.cell(row=fila, column=13, value=p.average_score).number_format = "0.000"
+        hoja.cell(row=fila, column=14, value=p.average_detection_time_ms).number_format = "0.0"
+        hoja.cell(row=fila, column=15, value=p.average_score).number_format = "0.000"
 
-    hoja.auto_filter.ref = f"A1:M{1 + len(datos.periods)}"
+    hoja.auto_filter.ref = f"A1:O{1 + len(datos.periods)}"
 
 
 def _hoja_montos(libro: Workbook, datos: FraudHistoryResponse) -> None:

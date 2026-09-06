@@ -28,20 +28,29 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  ToggleButton,
-  ToggleButtonGroup,
+  MenuItem,
+  TextField,
   Typography,
   useTheme,
 } from "@mui/material";
 import DownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
-import type { FraudHistoryPeriod, FraudHistoryResponse } from "@/lib/api";
+import type {
+  EscalaDelHistorial,
+  FraudHistoryPeriod,
+  FraudHistoryResponse,
+} from "@/lib/api";
 
-export type Granularidad = "day" | "week" | "month" | "year";
+// La lista de escalas la define el cliente de la API, que es quien tiene que
+// coincidir con lo que valida el backend. Aquí solo se le pone nombre corto.
+export type Granularidad = EscalaDelHistorial;
 
 const OPCIONES: { valor: Granularidad; etiqueta: string }[] = [
   { valor: "day", etiqueta: "Diario" },
   { valor: "week", etiqueta: "Semanal" },
   { valor: "month", etiqueta: "Mensual" },
+  { valor: "bimester", etiqueta: "Bimestral" },
+  { valor: "quarter", etiqueta: "Trimestral" },
+  { valor: "semester", etiqueta: "Semestral" },
   { valor: "year", etiqueta: "Anual" },
 ];
 
@@ -81,6 +90,25 @@ function etiquetaDePeriodo(iso: string, granularidad: Granularidad, largo = fals
       month: largo ? "long" : "short",
       year: largo ? "numeric" : "2-digit",
     });
+  }
+
+  if (granularidad === "quarter" || granularidad === "semester") {
+    const tamano = granularidad === "quarter" ? 3 : 6;
+    const numero = Math.floor((mes - 1) / tamano) + 1;
+    const nombre = granularidad === "quarter" ? "trimestre" : "semestre";
+    const inicial = granularidad === "quarter" ? "T" : "S";
+    return largo
+      ? `${numero}.º ${nombre} de ${anio}`
+      : `${inicial}${numero} ${String(anio).slice(2)}`;
+  }
+
+  if (granularidad === "bimester") {
+    // `mes` es 1-based y el constructor de Date es 0-based, así que pasarle
+    // `mes` sin restar uno da justo el mes siguiente: el segundo del bimestre.
+    const segundo = new Date(anio, mes, 1);
+    const desde = fecha.toLocaleDateString("es-PE", { month: "short" });
+    const hasta = segundo.toLocaleDateString("es-PE", { month: "short" });
+    return largo ? `${desde}–${hasta} de ${anio}` : `${desde}–${hasta}`;
   }
 
   const corta = fecha.toLocaleDateString("es-PE", { day: "numeric", month: "short" });
@@ -309,23 +337,22 @@ export default function HistorialAntifraude({
           </Box>
 
           <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
-            <ToggleButtonGroup
+            {/* Una lista y no una fila de botones: con siete escalas, los
+                botones se salen de la tarjeta en un teléfono. */}
+            <TextField
+              select
               size="small"
-              exclusive
+              label="Escala"
               value={granularidad}
-              onChange={(_, valor) => valor && onGranularidad(valor)}
-              aria-label="Escala del historial"
+              onChange={(e) => onGranularidad(e.target.value as Granularidad)}
+              sx={{ minWidth: 150 }}
             >
               {OPCIONES.map((o) => (
-                <ToggleButton
-                  key={o.valor}
-                  value={o.valor}
-                  sx={{ textTransform: "none", fontWeight: 700, px: 2 }}
-                >
+                <MenuItem key={o.valor} value={o.valor} sx={{ fontWeight: 600 }}>
                   {o.etiqueta}
-                </ToggleButton>
+                </MenuItem>
               ))}
-            </ToggleButtonGroup>
+            </TextField>
 
             {/* El archivo lo arma el backend con los mismos números que se ven
                 en pantalla, así que no puede desviarse de ellos. */}
@@ -404,6 +431,7 @@ export default function HistorialAntifraude({
                       "Fraudes conf.",
                       "Detectados",
                       "No detectado",
+                      "Precisión",
                       "Tiempo",
                       "Monto cobrable",
                       "Monto retenido",
@@ -453,6 +481,14 @@ export default function HistorialAntifraude({
                           ? "—"
                           : `${(p.undetected_rate * 100).toFixed(0)}%`}
                       </TableCell>
+                      {/* De lo que el modelo frenó y alguien comprobó, cuánto
+                          era fraude de verdad. En guion mientras no se haya
+                          revisado ninguna alerta del período: sin comprobar no
+                          hay precisión, y un 0 % acusaría al modelo de fallar
+                          en algo que nadie miró. */}
+                      <TableCell align="right">
+                        {p.precision == null ? "—" : `${(p.precision * 100).toFixed(0)}%`}
+                      </TableCell>
                       <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                         {p.average_detection_time_ms.toFixed(1)} ms
                       </TableCell>
@@ -486,6 +522,9 @@ export default function HistorialAntifraude({
                       datos?.undetected_rate == null
                         ? "—"
                         : `${(datos.undetected_rate * 100).toFixed(0)}%`,
+                      datos?.precision == null
+                        ? "—"
+                        : `${(datos.precision * 100).toFixed(0)}%`,
                       `${(datos?.average_detection_time_ms ?? 0).toFixed(1)} ms`,
                       soles(conDatos.reduce((n, p) => n + p.approved_amount, 0)),
                       soles(conDatos.reduce((n, p) => n + p.held_amount, 0)),

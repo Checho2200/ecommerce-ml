@@ -152,6 +152,8 @@ def _a_respuesta_de_historial(
     reales = sum(p.fraudes_reales for p in serie)
     detectados = sum(p.fraudes_detectados for p in serie)
     no_detectados = sum(p.fraudes_no_detectados for p in serie)
+    falsas_alertas = sum(p.falsas_alertas for p in serie)
+    alertas_comprobadas = detectados + falsas_alertas
 
     # El tiempo medio se pondera por evaluaciones por la misma razón.
     con_tiempo = sum(p.evaluaciones for p in serie if p.tiempo_medio_ms)
@@ -175,6 +177,8 @@ def _a_respuesta_de_historial(
                 undetected_frauds=p.fraudes_no_detectados,
                 detection_rate=p.tasa_de_deteccion,
                 undetected_rate=p.tasa_de_no_deteccion,
+                false_alerts=p.falsas_alertas,
+                precision=p.precision,
                 average_detection_time_ms=p.tiempo_medio_ms,
             )
             for p in serie
@@ -186,15 +190,19 @@ def _a_respuesta_de_historial(
         total_actual_frauds=reales,
         total_detected_frauds=detectados,
         total_undetected_frauds=no_detectados,
+        total_false_alerts=falsas_alertas,
         detection_rate=round(detectados / reales, 4) if reales else None,
         undetected_rate=round(no_detectados / reales, 4) if reales else None,
+        precision=(
+            round(detectados / alertas_comprobadas, 4) if alertas_comprobadas else None
+        ),
         average_detection_time_ms=round(suma_ms / con_tiempo, 2) if con_tiempo else 0.0,
     )
 
 
 @router.get("/history", response_model=FraudHistoryResponse)
 async def get_fraud_history(
-    granularity: str = Query("day", pattern="^(day|week|month|year)$"),
+    granularity: str = Query("day", pattern="^(day|week|month|bimester|quarter|semester|year)$"),
     periods: int | None = Query(None, ge=1, le=366),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
@@ -217,7 +225,7 @@ async def get_fraud_history(
 
 @router.get("/report.xlsx")
 async def download_fraud_report(
-    granularity: str = Query("month", pattern="^(day|week|month|year)$"),
+    granularity: str = Query("month", pattern="^(day|week|month|bimester|quarter|semester|year)$"),
     periods: int | None = Query(None, ge=1, le=366),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),

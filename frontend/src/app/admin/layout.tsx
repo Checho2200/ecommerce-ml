@@ -35,6 +35,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import SettingsIcon from "@mui/icons-material/Settings";
 import BuildIcon from "@mui/icons-material/Build";
 import PsychologyIcon from "@mui/icons-material/Psychology";
+import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 
 const drawerWidth = 260;
 
@@ -71,11 +72,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/categories", icon: <TagsIcon />, label: "Categorías" },
     { href: "/admin/orders", icon: <ShoppingCartIcon />, label: "Órdenes" },
     // El modelo tiene su propia entrada: repartido entre el Dashboard y
-    // Órdenes no se podía ni revisar una cola ni leer una tendencia.
+    // Órdenes no se podía ni revisar una cola ni leer una tendencia. Y son
+    // dos entradas y no una porque atender la cola es trabajo de todos los
+    // días, mientras que leer los indicadores se hace de vez en cuando;
+    // juntarlas daba una pantalla que no se acababa nunca.
     { href: "/admin/fraud", icon: <PsychologyIcon />, label: "Antifraude" },
+    { href: "/admin/fraud/modelo", icon: <InsightsOutlinedIcon />, label: "Modelo e indicadores" },
     { href: "/admin/services", icon: <BuildIcon />, label: "Servicios" },
     { href: "/admin/settings", icon: <SettingsIcon />, label: "Configuración" },
   ];
+
+  // Cuál de las entradas del menú corresponde a la página abierta: la que
+  // casa con la ruta y, si casan varias por anidamiento, la más específica.
+  const rutaActiva = NAV_ITEMS.reduce((mejor, item) => {
+    const casa = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    if (!casa) return mejor;
+    return item.href.length > mejor.length ? item.href : mejor;
+  }, "");
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -105,7 +118,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </ListItem>
         <Divider sx={{ mb: 1 }} />
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
+          // Gana la coincidencia más larga. Con /admin/fraud y
+          // /admin/fraud/modelo, un simple `startsWith` marcaría las dos
+          // entradas a la vez estando en la segunda.
+          const isActive = item.href === rutaActiva;
           return (
             <ListItem key={item.href} disablePadding sx={{ mb: 0.5 }}>
               <ListItemButton

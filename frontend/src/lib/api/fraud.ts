@@ -2,6 +2,7 @@
 
 import { descargar, request } from "./cliente";
 import type {
+  EscalaDelHistorial,
   FraudHistoryResponse,
   FraudLogResponse,
   FraudMetricsResponse,
@@ -16,7 +17,7 @@ export const fraud = {
   // el modelo; esto dice cómo ha ido, que es lo que distingue una tendencia de
   // un mal día.
   async history(params?: {
-    granularity?: "day" | "week" | "month" | "year";
+    granularity?: EscalaDelHistorial;
     periods?: number;
   }) {
     const qs = new URLSearchParams();
@@ -34,7 +35,7 @@ export const fraud = {
   },
 
   // El mismo reporte que enseña el panel, en un archivo de Excel.
-  async downloadReport(params?: { granularity?: "day" | "week" | "month" | "year" }) {
+  async downloadReport(params?: { granularity?: EscalaDelHistorial }) {
     const qs = new URLSearchParams();
     if (params?.granularity) qs.set("granularity", params.granularity);
     const cadena = qs.toString();

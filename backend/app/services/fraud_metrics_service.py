@@ -134,7 +134,23 @@ async def calcular(db: AsyncSession) -> MetricasDelModelo:
 # preguntas distintas: un promedio sobre toda la vida de la tienda esconde que
 # los bloqueos se dispararon la semana pasada.
 
-GRANULARIDADES = ("day", "week", "month", "year")
+GRANULARIDADES = (
+    "day",
+    "week",
+    "month",
+    "bimester",
+    "quarter",
+    "semester",
+    "year",
+)
+
+# Las escalas que se cuentan por meses, y cuántos meses ocupa cada período.
+# Todas se anclan a enero: el primer bimestre del año es enero-febrero, el
+# primer trimestre enero-marzo, el primer semestre enero-junio. Anclarlos al
+# calendario y no a "hace dos meses desde hoy" es lo que hace que dos consultas
+# hechas en fechas distintas devuelvan los mismos bloques y se puedan comparar
+# entre sí, que es justo para lo que sirven en un informe.
+MESES_POR_PERIODO = {"month": 1, "bimester": 2, "quarter": 3, "semester": 6}
 
 # Los cortes del historial son los del reloj de la tienda, no los de UTC. Con
 # UTC, una compra de las ocho de la noche en Trujillo cae en el informe del día
@@ -147,7 +163,15 @@ ZONA_DE_LA_TIENDA = timezone(timedelta(hours=-5), "America/Lima")
 # Cuántos períodos devolver cuando nadie pide un número. Un trimestre de días,
 # medio año de semanas o dos años de meses: en los tres casos, la ventana en la
 # que todavía se distingue una tendencia de un accidente.
-PERIODOS_POR_DEFECTO = {"day": 90, "week": 26, "month": 24, "year": 5}
+PERIODOS_POR_DEFECTO = {
+    "day": 90,
+    "week": 26,
+    "month": 24,
+    "bimester": 12,
+    "quarter": 8,
+    "semester": 6,
+    "year": 5,
+}
 PERIODOS_MAXIMOS = 366
 
 
@@ -181,32 +205,55 @@ class PeriodoDelHistorial:
     fraudes_no_detectados: int
     tasa_de_deteccion: float | None
     tasa_de_no_deteccion: float | None
+    # Alertas que resultaron ser compras buenas: el administrador las revisó y
+    # las etiquetó como legítimas. Es la otra mitad del expediente del modelo,
+    # y la que le duele al negocio.
+    falsas_alertas: int
+    # De todo lo que el modelo frenó y alguien pudo comprobar, qué proporción
+    # era fraude de verdad. Va en None cuando en el período no se frenó y
+    # revisó nada: sin alertas comprobadas no hay precisión que calcular, y un
+    # cero diría "todo lo que frenó estaba bien" que es justo lo contrario.
+    precision: float | None
     # Éste sí se mide siempre: no necesita etiquetas, lo cronometra el propio
     # servicio en cada evaluación.
     tiempo_medio_ms: float
 
 
 def _inicio_del_periodo(momento: datetime, granularidad: str) -> date:
-    """Lleva un instante al comienzo de su día, su semana (lunes), su mes o su año."""
+    """
+    Lleva un instante al comienzo del período que lo contiene.
+
+    El día para "day", el lunes para "week", el 1 de enero para "year" y, para
+    las escalas de meses, el primer mes de su bloque contado desde enero.
+    """
     dia = momento.astimezone(ZONA_DE_LA_TIENDA).date()
     if granularidad == "week":
         return dia - timedelta(days=dia.weekday())
-    if granularidad == "month":
-        return dia.replace(day=1)
     if granularidad == "year":
         return dia.replace(month=1, day=1)
+
+    meses = MESES_POR_PERIODO.get(granularidad)
+    if meses:
+        primer_mes = ((dia.month - 1) // meses) * meses + 1
+        return dia.replace(month=primer_mes, day=1)
+
     return dia
 
 
 def _periodo_anterior(inicio: date, granularidad: str) -> date:
     if granularidad == "week":
         return inicio - timedelta(days=7)
-    if granularidad == "month":
-        # Retroceder un mes sin depender de cuántos días tenga: el día 1 del
-        # mes anterior es el día anterior al 1 de éste, normalizado.
-        return (inicio - timedelta(days=1)).replace(day=1)
     if granularidad == "year":
         return inicio.replace(year=inicio.year - 1, month=1, day=1)
+
+    meses = MESES_POR_PERIODO.get(granularidad)
+    if meses:
+        # Se cuenta en meses absolutos desde el año cero y se vuelve a fecha.
+        # Restar días no sirve: los meses no miden lo mismo, y un bimestre no
+        # son "61 días atrás".
+        absoluto = (inicio.year * 12 + inicio.month - 1) - meses
+        return date(absoluto // 12, absoluto % 12 + 1, 1)
+
     return inicio - timedelta(days=1)
 
 
@@ -280,7 +327,7 @@ async def historial(
             {"evaluaciones": 0, "aprobadas": 0, "en_revision": 0, "bloqueadas": 0,
              "monto_aprobado": 0.0, "monto_retenido": 0.0, "suma_puntaje": 0.0,
              "revisados": 0, "fraudes_reales": 0, "detectados": 0, "no_detectados": 0,
-             "suma_ms": 0.0, "con_tiempo": 0},
+             "falsas_alertas": 0, "suma_ms": 0.0, "con_tiempo": 0},
         )
         decision = getattr(decision, "value", decision)
         monto = float(monto or 0.0)
@@ -313,6 +360,10 @@ async def historial(
                     cubo["detectados"] += 1
                 else:
                     cubo["no_detectados"] += 1
+            elif decision in DECISIONES_DE_ALERTA:
+                # Frenó una compra buena. No entra en ninguna de las dos tasas
+                # de fraude, pero sin contarla la precisión no existe.
+                cubo["falsas_alertas"] += 1
 
     # Se recorre la ventana completa hacia atrás y se le da la vuelta, así el
     # resultado sale en orden cronológico y sin huecos.
@@ -321,6 +372,9 @@ async def historial(
     for _ in range(cuantos):
         c = cubos.get(inicio)
         reales = c["fraudes_reales"] if c else 0
+        falsas = c["falsas_alertas"] if c else 0
+        detectados = c["detectados"] if c else 0
+        alertas_comprobadas = detectados + falsas
         serie.append(
             PeriodoDelHistorial(
                 inicio=inicio,
@@ -333,10 +387,16 @@ async def historial(
                 puntaje_medio=round(c["suma_puntaje"] / c["evaluaciones"], 4) if c and c["evaluaciones"] else 0.0,
                 revisados=c["revisados"] if c else 0,
                 fraudes_reales=reales,
-                fraudes_detectados=c["detectados"] if c else 0,
+                fraudes_detectados=detectados,
                 fraudes_no_detectados=c["no_detectados"] if c else 0,
-                tasa_de_deteccion=round(c["detectados"] / reales, 4) if reales else None,
+                tasa_de_deteccion=round(detectados / reales, 4) if reales else None,
                 tasa_de_no_deteccion=round(c["no_detectados"] / reales, 4) if reales else None,
+                falsas_alertas=falsas,
+                precision=(
+                    round(detectados / alertas_comprobadas, 4)
+                    if alertas_comprobadas
+                    else None
+                ),
                 tiempo_medio_ms=round(c["suma_ms"] / c["con_tiempo"], 2) if c and c["con_tiempo"] else 0.0,
             )
         )

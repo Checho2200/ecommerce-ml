@@ -39,6 +39,7 @@ import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import BuildIcon from "@mui/icons-material/Build";
 import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import RefreshIcon from "@mui/icons-material/Refresh";
 
 const aparecer = keyframes`
   from { opacity: 0; transform: translateY(16px); }
@@ -70,61 +71,84 @@ export default function AdminDashboard() {
   // Dashboard siga siendo un resumen y no el informe del modelo otra vez.
   const [indicadores, setIndicadores] = useState<FraudHistoryResponse | null>(null);
   const [cargando, setCargando] = useState(true);
+  // Si alguna de las consultas se cayó. Importa decirlo: un panel lleno de
+  // ceros y uno que no pudo preguntar se ven exactamente igual, y el segundo
+  // hace pensar que la tienda está vacía.
+  const [incompleto, setIncompleto] = useState(false);
+  // Cambiarlo vuelve a lanzar el efecto: es lo que usa el botón de reintentar.
+  const [intento, setIntento] = useState(0);
 
   useEffect(() => {
     let vigente = true;
 
     const cargar = async () => {
-      try {
-        const [productos, categorias] = await Promise.all([
-          api.products.list({ per_page: 1, active_only: false }),
-          api.categories.list(),
-        ]);
+      let fallo = false;
 
-        let ordenes = 0;
-        let servicios = 0;
-
-        if (isAdmin) {
-          try {
-            // Una sola consulta agrupada trae el total y el desglose por
-            // estado; antes hacía falta una petición paginada por cada uno.
-            const datos = await api.orders.summary();
-            if (vigente) setResumen(datos);
-            ordenes = datos.total;
-          } catch {
-            /* sin permisos o API caída: las tarjetas quedan en cero */
-          }
-          try {
-            servicios = (await api.serviceOrders.list({ page: 1 })).total;
-          } catch {
-            /* idem */
-          }
-          try {
-            // Sobre los últimos doce meses: en el Dashboard interesa la foto
-            // del año, no la del día.
-            const historial = await api.fraud.history({ granularity: "month", periods: 12 });
-            if (vigente) setIndicadores(historial);
-          } catch {
-            /* idem */
-          }
-        }
-
+      /**
+       * Pide un dato sin que su caída arrastre al resto de la pantalla.
+       *
+       * Antes las dos primeras consultas iban en un `Promise.all` sin
+       * proteger, así que cualquiera de las dos que fallara tiraba la función
+       * entera: las cuatro tarjetas se quedaban en cero, los indicadores
+       * vacíos y sin ningún aviso. Y falla más de lo que parece — el plan
+       * gratuito de Render suspende el servicio tras un rato sin visitas, y la
+       * primera petición después de eso tarda entre 30 y 50 segundos.
+       */
+      const pedir = async <T,>(traer: () => Promise<T>): Promise<T | null> => {
         try {
-          if (vigente) setSalud(await api.system.health());
+          return await traer();
         } catch {
-          if (vigente) setSalud(null);
+          fallo = true;
+          return null;
+        }
+      };
+
+      const [productos, categorias] = await Promise.all([
+        pedir(() => api.products.list({ per_page: 1, active_only: false })),
+        pedir(() => api.categories.list()),
+      ]);
+
+      let ordenes = 0;
+      let servicios = 0;
+
+      if (isAdmin) {
+        // Una sola consulta agrupada trae el total y el desglose por estado;
+        // antes hacía falta una petición paginada por cada uno.
+        const datos = await pedir(() => api.orders.summary());
+        if (datos && vigente) {
+          setResumen(datos);
+          ordenes = datos.total;
         }
 
-        if (vigente) {
-          setCifras({
-            productos: productos.total,
-            categorias: categorias.length,
-            ordenes,
-            servicios,
-          });
-        }
-      } finally {
-        if (vigente) setCargando(false);
+        const listaDeServicios = await pedir(() => api.serviceOrders.list({ page: 1 }));
+        if (listaDeServicios) servicios = listaDeServicios.total;
+
+        // Sobre los últimos doce meses: en el Dashboard interesa la foto del
+        // año, no la del día.
+        const historial = await pedir(() =>
+          api.fraud.history({ granularity: "month", periods: 12 })
+        );
+        if (historial && vigente) setIndicadores(historial);
+      }
+
+      // La salud se pide aparte y su fallo no cuenta como panel incompleto:
+      // que la API no responda ya se enseña en el chip de la cabecera.
+      try {
+        const estado = await api.system.health();
+        if (vigente) setSalud(estado);
+      } catch {
+        if (vigente) setSalud(null);
+      }
+
+      if (vigente) {
+        setCifras({
+          productos: productos?.total ?? 0,
+          categorias: categorias?.length ?? 0,
+          ordenes,
+          servicios,
+        });
+        setIncompleto(fallo);
+        setCargando(false);
       }
     };
 
@@ -132,7 +156,7 @@ export default function AdminDashboard() {
     return () => {
       vigente = false;
     };
-  }, [isAdmin]);
+  }, [isAdmin, intento]);
 
   const TARJETAS = [
     { valor: cifras.productos, etiqueta: "Productos", icono: <InventoryIcon />, color: "#6366f1", href: "/admin/products" },
@@ -170,6 +194,32 @@ export default function AdminDashboard() {
           />
         </Stack>
       </Box>
+
+      {/* Un panel a medio cargar tiene que decirlo. Antes se quedaba en ceros
+          y era indistinguible de una tienda sin nada vendido. */}
+      {incompleto && !cargando && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 3, borderRadius: 2 }}
+          action={
+            <Button
+              size="small"
+              color="inherit"
+              startIcon={<RefreshIcon />}
+              onClick={() => {
+                setCargando(true);
+                setIntento((n) => n + 1);
+              }}
+              sx={{ fontWeight: 700, textTransform: "none" }}
+            >
+              Reintentar
+            </Button>
+          }
+        >
+          Algunas cifras no se pudieron cargar y se muestran en cero. Si el servidor
+          estaba en reposo, la primera petición puede tardar hasta un minuto.
+        </Alert>
+      )}
 
       {enRevision > 0 && (
         <Alert
@@ -283,7 +333,7 @@ export default function AdminDashboard() {
             </Box>
             <Button
               component={Link}
-              href="/admin/fraud"
+              href="/admin/fraud/modelo"
               size="small"
               endIcon={<ArrowForwardIcon />}
               sx={{ textTransform: "none", fontWeight: 700, whiteSpace: "nowrap" }}
@@ -394,7 +444,7 @@ export default function AdminDashboard() {
 
               <Button
                 component={Link}
-                href="/admin/fraud"
+                href="/admin/fraud/modelo"
                 variant="outlined"
                 fullWidth
                 endIcon={<ArrowForwardIcon />}

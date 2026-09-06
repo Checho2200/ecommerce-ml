@@ -118,6 +118,10 @@ class FraudHistoryPeriod(BaseModel):
     undetected_frauds: int = 0
     detection_rate: Optional[float] = None
     undetected_rate: Optional[float] = None
+    # Alertas del modelo que resultaron ser compras buenas, y la precisión que
+    # sale de ellas. Nula cuando en el período no se revisó ninguna alerta.
+    false_alerts: int = 0
+    precision: Optional[float] = None
     average_detection_time_ms: float = 0.0
 
 
@@ -138,8 +142,10 @@ class FraudHistoryResponse(BaseModel):
     total_actual_frauds: int = 0
     total_detected_frauds: int = 0
     total_undetected_frauds: int = 0
+    total_false_alerts: int = 0
     detection_rate: Optional[float] = None
     undetected_rate: Optional[float] = None
+    precision: Optional[float] = None
     average_detection_time_ms: float = 0.0
 
 

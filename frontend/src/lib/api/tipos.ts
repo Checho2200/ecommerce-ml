@@ -138,6 +138,22 @@ export interface FraudMetricsResponse {
 }
 
 /** Un día, una semana o un mes del historial del modelo antifraude. */
+/**
+ * Las escalas en las que se puede leer el historial.
+ *
+ * Vive aquí y no en el componente para que el cliente de la API y la pantalla
+ * no puedan discrepar: el backend valida esta misma lista y devolvería un 422
+ * ante cualquier otra.
+ */
+export type EscalaDelHistorial =
+  | "day"
+  | "week"
+  | "month"
+  | "bimester"
+  | "quarter"
+  | "semester"
+  | "year";
+
 export interface FraudHistoryPeriod {
   // Fecha de inicio en ISO (AAAA-MM-DD): el día, el lunes de la semana o el 1.
   period_start: string;
@@ -158,11 +174,15 @@ export interface FraudHistoryPeriod {
   undetected_frauds: number;
   detection_rate: number | null;
   undetected_rate: number | null;
+  // Alertas que resultaron ser compras buenas, y la precisión que sale de
+  // ellas. Nula mientras no se haya revisado ninguna alerta del período.
+  false_alerts: number;
+  precision: number | null;
   average_detection_time_ms: number;
 }
 
 export interface FraudHistoryResponse {
-  granularity: "day" | "week" | "month" | "year";
+  granularity: EscalaDelHistorial;
   periods: FraudHistoryPeriod[];
   total_evaluations: number;
   total_approved: number;
@@ -173,8 +193,10 @@ export interface FraudHistoryResponse {
   total_undetected_frauds: number;
   // Nulos mientras no haya ningún fraude confirmado en la ventana: un cero
   // diría "no se detectó nada" y lo cierto es que no hay con qué medirlo.
+  total_false_alerts: number;
   detection_rate: number | null;
   undetected_rate: number | null;
+  precision: number | null;
   average_detection_time_ms: number;
 }
 
