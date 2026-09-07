@@ -265,6 +265,32 @@ def _ya_se_sabe(dias: float, rng) -> bool:
     return rng.random() < probabilidad
 
 
+# ── El sistema anterior: una regla fija, sin modelo ──────────────────────────
+#
+# Es lo que hace una tienda antes de tener un modelo: unos cuantos `if` sobre
+# el importe y las señales más evidentes. Existe aquí para que el tramo
+# anterior del historial **no use el modelo en absoluto** y la mejora que
+# aparezca sea atribuible al aprendizaje automático, no a haber movido dos
+# umbrales.
+#
+# Comparar 0.30/0.70 contra 0.35/0.80 —que es lo que hacía este script antes—
+# tiene al modelo en las dos mitades: mide el efecto de elegir mejor el corte,
+# que es real pero es otra cosa, y por eso la detección salía plana.
+MONTO_SOSPECHOSO = 1500.0
+ARTICULOS_SOSPECHOSOS = 2
+
+
+def _decidir_con_la_regla(
+    monto: float, articulos_de_riesgo: int, direccion_nueva: bool
+) -> str:
+    """La decisión del sistema anterior, sin puntaje ni modelo de por medio."""
+    if monto > MONTO_SOSPECHOSO and direccion_nueva:
+        return "BLOCKED"
+    if monto > MONTO_SOSPECHOSO or articulos_de_riesgo >= ARTICULOS_SOSPECHOSOS:
+        return "REVIEW"
+    return "APPROVED"
+
+
 def _decidir(puntaje: float, umbral_aprobacion: float, umbral_bloqueo: float) -> str:
     if puntaje < umbral_aprobacion:
         return "APPROVED"
@@ -318,7 +344,13 @@ async def _catalogo(sesion):
 
 
 async def construir(
-    cuantas: int, antes: int, desde: date, hasta: date, corte: date, semilla: int
+    cuantas: int,
+    antes: int,
+    desde: date,
+    hasta: date,
+    corte: date,
+    semilla: int,
+    linea_base: str = "regla",
 ) -> dict:
     # El mismo generador que `ml/dataset.py`: si el tráfico ha de venir de la
     # misma distribución, también el sorteo.
@@ -344,6 +376,7 @@ async def construir(
         "despues": Counter(),
         "umbrales": umbrales,
         "corte": corte,
+        "linea_base": linea_base,
         "desde": desde,
         "hasta": hasta,
         "sin_etiquetar": 0,
@@ -380,8 +413,22 @@ async def construir(
             )
 
             tramo = "antes" if momento.date() < corte else "despues"
-            aprobar, bloquear = umbrales[tramo]
-            decision = _decidir(evaluacion.puntaje, aprobar, bloquear)
+            if tramo == "antes" and linea_base == "regla":
+                decision = _decidir_con_la_regla(
+                    total, de_riesgo, muestra["direccion_nueva"]
+                )
+                # El puntaje se registra igual, calculado a posteriori: no lo
+                # usó nadie para decidir, pero permite enseñar en el panel qué
+                # habría hecho el modelo con esa misma compra.
+                explicacion = (
+                    "Decidido por la regla fija anterior al modelo "
+                    f"(monto > S/ {MONTO_SOSPECHOSO:,.0f} o "
+                    f"{ARTICULOS_SOSPECHOSOS}+ artículos de alto riesgo)."
+                )
+            else:
+                aprobar, bloquear = umbrales[tramo]
+                decision = _decidir(evaluacion.puntaje, aprobar, bloquear)
+                explicacion = evaluacion.explicacion
 
             orden = Order(
                 user_id=usuario.id,
@@ -432,7 +479,7 @@ async def construir(
                     },
                     decision=decision,
                     risk_level=evaluacion.nivel_de_riesgo,
-                    explanation=evaluacion.explicacion,
+                    explanation=explicacion,
                     contributions=evaluacion.aportes,
                     detection_time_ms=round(evaluacion.milisegundos, 3),
                     evaluated_at=momento,
@@ -492,16 +539,28 @@ def _informe(resumen: dict, desde: date, hasta: date) -> str:
     perdida_antes = antes["perdida"] + antes["venta_perdida"]
     perdida_despues = despues["perdida"] + despues["venta_perdida"]
 
+    if resumen["linea_base"] == "regla":
+        criterio_antiguo = (
+            "una regla fija sin modelo (bloquear si el monto pasa de "
+            f"S/ {MONTO_SOSPECHOSO:,.0f} y la dirección es nueva; revisar si "
+            f"pasa de ese monto o lleva {ARTICULOS_SOSPECHOSOS} o más "
+            "artículos de alto riesgo)"
+        )
+    else:
+        criterio_antiguo = (
+            "el mismo modelo con los umbrales escritos a mano "
+            f"({ap_antes} / {bl_antes})"
+        )
+
     lineas = [
         "# Historial simulado de la tienda\n",
         f"{antes['compras'] + despues['compras']} compras repartidas entre el "
         f"{desde:%d/%m/%Y} y el {hasta:%d/%m/%Y}, evaluadas una por una por el "
         "modelo que está en producción.\n",
-        "El tramo antiguo decide con los umbrales que el sistema traía escritos "
-        f"a mano ({ap_antes} / {bl_antes}); el nuevo, con los que el "
-        f"entrenamiento eligió minimizando el costo en soles ({ap_desp} / "
-        f"{bl_desp}). El tráfico se genera igual en los dos: lo único que "
-        "cambia es el criterio de decisión.\n",
+        f"El tramo antiguo decide con {criterio_antiguo}; el nuevo, con el "
+        f"modelo y los umbrales que el entrenamiento eligió minimizando el "
+        f"costo en soles ({ap_desp} / {bl_desp}). El tráfico se genera igual "
+        "en los dos: lo único que cambia es el criterio de decisión.\n",
         "| | Antes | Después |",
         "| :--- | ---: | ---: |",
         f"| Compras evaluadas | {antes['compras']} | {despues['compras']} |",
@@ -628,6 +687,17 @@ def main() -> int:
     )
     parser.add_argument("--semilla", type=int, default=2026)
     parser.add_argument(
+        "--linea-base",
+        choices=("regla", "umbrales"),
+        default="regla",
+        dest="linea_base",
+        help=(
+            "Con qué decide el tramo anterior: 'regla' es el sistema sin "
+            "modelo (por defecto) y 'umbrales' es el mismo modelo con los "
+            "umbrales viejos"
+        ),
+    )
+    parser.add_argument(
         "--limpiar",
         action="store_true",
         help="Borra el historial simulado en vez de crearlo, y no toca nada más",
@@ -673,7 +743,13 @@ def main() -> int:
 
     resumen = asyncio.run(
         construir(
-            args.cuantas, args.antes, args.desde, args.hasta, corte, args.semilla
+            args.cuantas,
+            args.antes,
+            args.desde,
+            args.hasta,
+            corte,
+            args.semilla,
+            args.linea_base,
         )
     )
 
