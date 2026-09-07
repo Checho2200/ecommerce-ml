@@ -2,7 +2,10 @@
 Endpoints de evaluación y monitoreo de fraude usando el modelo LightGBM.
 """
 
+import json
+import logging
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -24,7 +27,10 @@ from app.schemas.fraud import (
     FraudLogResponse,
     FraudMetricsResponse,
     FraudModelInfo,
+    ModelComparisonResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/fraud", tags=["Detección de Fraude"])
 
@@ -117,6 +123,50 @@ async def get_model_info(
         required_total=progreso.minimo_total,
         required_per_class=progreso.minimo_por_clase,
         can_train_with_real_data=progreso.suficientes,
+    )
+
+
+@router.get("/comparison", response_model=ModelComparisonResponse)
+async def get_model_comparison(admin: User = Depends(require_admin)):
+    """
+    Por qué LightGBM y no otro clasificador (solo admin).
+
+    Devuelve la comparación que produce `ml/baselines.py`: los mismos datos, la
+    misma partición de prueba y el mismo criterio de costo para todos los
+    modelos, incluidas unas reglas heurísticas y un clasificador trivial que
+    marcan el suelo.
+
+    Se sirve desde el informe que escribió el entrenamiento y no se recalcula
+    aquí: recalcularlo en cada visita al panel significaría entrenar cinco
+    modelos dentro de una petición HTTP, y además el número que hay que
+    enseñar es el que se midió al publicar, no uno nuevo cada vez.
+
+    Si el archivo no está —una copia del proyecto sin haber entrenado nunca—,
+    responde `disponible: false` en lugar de un error: el panel enseña un aviso
+    y el resto de la pantalla sigue funcionando.
+    """
+    ruta = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "ml"
+        / "informes"
+        / "comparacion_de_modelos.json"
+    )
+    if not ruta.exists():
+        return ModelComparisonResponse(disponible=False)
+
+    try:
+        informe = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:  # noqa: BLE001
+        logger.error("No se pudo leer la comparación de modelos: %s", exc)
+        return ModelComparisonResponse(disponible=False)
+
+    datos = informe.get("datos", {})
+    return ModelComparisonResponse(
+        disponible=True,
+        origen_de_los_datos=datos.get("origen"),
+        detalle_de_los_datos=datos.get("detalle"),
+        particion_de_prueba=informe.get("particion_de_prueba"),
+        resultados=informe.get("resultados", []),
     )
 
 

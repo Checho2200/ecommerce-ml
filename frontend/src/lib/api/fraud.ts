@@ -4,12 +4,19 @@ import { descargar, request } from "./cliente";
 import type {
   EscalaDelHistorial,
   FraudHistoryResponse,
+  ModelComparisonResponse,
   FraudLogResponse,
   FraudMetricsResponse,
   FraudModelInfo,
 } from "./tipos";
 
 export const fraud = {
+  // Por qué LightGBM y no otro clasificador. Sale del informe que escribe el
+  // entrenamiento, así que no puede desviarse del modelo que está sirviendo.
+  async comparison() {
+    return request<ModelComparisonResponse>("/fraud/comparison");
+  },
+
   async getMetrics() {
     return request<FraudMetricsResponse>("/fraud/metrics");
   },

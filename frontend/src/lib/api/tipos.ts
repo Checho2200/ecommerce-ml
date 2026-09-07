@@ -261,3 +261,25 @@ export interface UserListResponse {
   // degradar al último que queda, en vez de dejar que el backend lo rechace.
   active_admins: number;
 }
+
+/** Una fila de la comparación entre LightGBM y las alternativas. */
+export interface ModelComparisonRow {
+  modelo: string;
+  average_precision: number;
+  roc_auc: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  fraudes_aprobados: number;
+  legitimos_bloqueados: number;
+  perdida_total: number;
+}
+
+/** La comparación completa, tal como la dejó el entrenamiento. */
+export interface ModelComparisonResponse {
+  disponible: boolean;
+  origen_de_los_datos: string | null;
+  detalle_de_los_datos: string | null;
+  particion_de_prueba: number | null;
+  resultados: ModelComparisonRow[];
+}

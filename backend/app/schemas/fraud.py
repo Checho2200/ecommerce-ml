@@ -149,6 +149,38 @@ class FraudHistoryResponse(BaseModel):
     average_detection_time_ms: float = 0.0
 
 
+class ModelComparisonRow(BaseModel):
+    """Cómo le fue a un clasificador sobre la misma partición de prueba."""
+
+    modelo: str
+    average_precision: float
+    roc_auc: float
+    precision: float
+    recall: float
+    f1: float
+    fraudes_aprobados: int
+    legitimos_bloqueados: int
+    perdida_total: float
+
+
+class ModelComparisonResponse(BaseModel):
+    """
+    La comparación entre LightGBM y las alternativas.
+
+    Existe como endpoint, y no solo como informe en el repositorio, porque el
+    trabajo se titula «sistema web basado en LightGBM»: la razón de haber
+    elegido ese algoritmo es lo primero que se pregunta, y tiene que poder
+    verse dentro del propio sistema en vez de en un archivo que hay que abrir
+    aparte.
+    """
+
+    disponible: bool
+    origen_de_los_datos: Optional[str] = None
+    detalle_de_los_datos: Optional[str] = None
+    particion_de_prueba: Optional[int] = None
+    resultados: list[ModelComparisonRow] = []
+
+
 class FraudModelInfo(BaseModel):
     """
     Con qué se publicó el modelo que está decidiendo ahora mismo.

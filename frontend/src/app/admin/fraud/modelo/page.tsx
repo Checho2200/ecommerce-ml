@@ -27,6 +27,7 @@ import {
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 
 import ComoDecideElModelo from "@/components/admin/ComoDecideElModelo";
+import PorQueLightGBM from "@/components/admin/PorQueLightGBM";
 import MetricasDelModelo from "@/components/admin/MetricasDelModelo";
 import TarjetasDeIndicadores from "@/components/admin/TarjetasDeIndicadores";
 import HistorialAntifraude, { type Granularidad } from "@/components/admin/HistorialAntifraude";
@@ -36,6 +37,7 @@ import {
   type FraudLogResponse,
   type FraudMetricsResponse,
   type FraudModelInfo,
+  type ModelComparisonResponse,
 } from "@/lib/api";
 
 export default function AdminFraudModelPage() {
@@ -46,6 +48,7 @@ export default function AdminFraudModelPage() {
   // aportes son grandes y el reparto se lee de un vistazo, mientras que en uno
   // aprobado son todos pequeños y negativos.
   const [ejemplo, setEjemplo] = useState<FraudLogResponse | null>(null);
+  const [comparacion, setComparacion] = useState<ModelComparisonResponse | null>(null);
   const [granularidad, setGranularidad] = useState<Granularidad>("month");
   const [cargando, setCargando] = useState(true);
   const [aviso, setAviso] = useState<{ texto: string; tipo: "success" | "error" } | null>(null);
@@ -71,11 +74,17 @@ export default function AdminFraudModelPage() {
   // historial sí. Separarlos evita volver a pedirlo todo al cambiar de escala.
   useEffect(() => {
     let vigente = true;
-    Promise.all([api.fraud.getMetrics(), api.fraud.model(), api.fraud.getLogs()])
-      .then(([m, info, registros]) => {
+    Promise.all([
+      api.fraud.getMetrics(),
+      api.fraud.model(),
+      api.fraud.getLogs(),
+      api.fraud.comparison(),
+    ])
+      .then(([m, info, registros, tabla]) => {
         if (!vigente) return;
         setMetricas(m);
         setModelo(info);
+        setComparacion(tabla);
         const conCuenta = registros.filter((r) => r.contributions);
         setEjemplo(
           conCuenta.find((r) => r.decision !== "APPROVED") ?? conCuenta[0] ?? null
@@ -158,6 +167,8 @@ export default function AdminFraudModelPage() {
       </Stack>
 
       <Stack spacing={3}>
+        <PorQueLightGBM datos={comparacion} cargando={cargando} />
+
         <ComoDecideElModelo modelo={modelo} ejemplo={ejemplo} cargando={cargando} />
 
         {/* Los tres indicadores de la tesis van antes que el detalle: son lo
