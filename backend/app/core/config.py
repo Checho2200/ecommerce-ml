@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # CORS
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # La URL pública del propio backend. Es la que se le da a MercadoPago para
+    # que mande ahí las notificaciones de pago, así que en local no sirve de
+    # nada apuntarla a localhost: la pasarela no puede alcanzarlo.
+    BACKEND_URL: str = "http://localhost:8000"
+
     # Imágenes del panel de administración (Cloudinary).
     # Una sola variable con todo dentro, tal como la entrega el panel de
     # Cloudinary: cloudinary://<api_key>:<api_secret>@<cloud_name>.
@@ -38,6 +43,12 @@ class Settings(BaseSettings):
     CLOUDINARY_FOLDER: str = "sanchez-tech-store"
 
     # Pagos
+    # Token de MercadoPago. Empieza por "TEST-" en el entorno de pruebas y por
+    # "APP_USR-" en el de producción, y de ese prefijo depende a qué checkout
+    # se manda al comprador. Sin token, el checkout responde 503 en vez de
+    # fingir que cobró.
+    MERCADOPAGO_ACCESS_TOKEN: str = ""
+
     # Clave secreta del webhook, que se genera en el panel de MercadoPago
     # (Tus integraciones -> Webhooks). Sirve para comprobar la firma de cada
     # notificación. Si se deja vacía, la firma no se exige.

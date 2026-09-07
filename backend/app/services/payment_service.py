@@ -1,12 +1,20 @@
 import mercadopago
 from fastapi import HTTPException
-import os
 from typing import List, Dict, Any
 
-# El token SIEMPRE viene del entorno. Antes había uno de prueba escrito en el
-# código como valor por defecto: quedó inservible (MercadoPago lo rechaza) y
-# además viajaba en el repositorio, que es público.
-MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "")
+from app.core.config import get_settings
+
+# El token SIEMPRE viene de la configuración. Antes había uno de prueba escrito
+# en el código como valor por defecto: quedó inservible (MercadoPago lo
+# rechaza) y además viajaba en el repositorio, que es público.
+#
+# Y se lee por `get_settings()` y no por `os.getenv` como antes. La diferencia
+# importa: pydantic carga también el archivo `.env`, y `os.getenv` no. Con la
+# versión anterior, poner el token en `backend/.env` —que es lo que dicen el
+# README y el .env.example— no surtía ningún efecto en local, y el checkout
+# respondía 503 sin pista de por qué. En Render funcionaba igual porque allí
+# las variables son de verdad del entorno, así que el fallo solo aparecía en la
+# máquina de quien estuviera desarrollando.
 
 
 def leer_notificacion(query: dict, body: dict) -> tuple:
@@ -34,11 +42,24 @@ def leer_notificacion(query: dict, body: dict) -> tuple:
 
 class PaymentService:
     def __init__(self):
-        self.sdk = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN) if MERCADOPAGO_ACCESS_TOKEN else None
+        self.access_token = get_settings().MERCADOPAGO_ACCESS_TOKEN
+        self.sdk = mercadopago.SDK(self.access_token) if self.access_token else None
 
     @property
     def is_configured(self) -> bool:
         return self.sdk is not None
+
+    @property
+    def es_de_prueba(self) -> bool:
+        """
+        Si el token es del entorno de pruebas de MercadoPago.
+
+        Se mira el prefijo completo `TEST-`, que es el formato documentado, y
+        no un "TEST" suelto en cualquier posición: un token de producción que
+        lo contuviera por casualidad mandaría a los compradores reales al
+        checkout de pruebas, donde su pago no existe.
+        """
+        return self.access_token.startswith("TEST-")
 
     def create_preference(self, order_id: str, items: List[Dict[str, Any]], payer_email: str) -> str:
         """
@@ -54,12 +75,11 @@ class PaymentService:
                 "currency_id": "PEN"  # Assuming Peruvian Soles
             })
 
-        # URLs de retorno del checkout. En produccion las define el entorno.
-        FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        
-        # Webhook URL for IPN notifications (must be publicly accessible in prod, like ngrok for local)
-        # We will point it to our backend endpoint
-        BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+        # URLs de retorno del checkout y de la notificación de pago. Salen de
+        # la configuración, que lee tanto el entorno como el archivo `.env`.
+        ajustes = get_settings()
+        FRONTEND_URL = ajustes.FRONTEND_URL
+        BACKEND_URL = ajustes.BACKEND_URL
         notification_url = f"{BACKEND_URL}/api/v1/orders/webhook/mercadopago"
 
         preference_data = {
@@ -111,10 +131,11 @@ class PaymentService:
             # The init_point is the URL where the user should be redirected to pay
             init_point = preference.get("init_point")
             
-            # Use sandbox_init_point if in test mode (depends on the token used, but usually init_point works fine for both)
+            # Con un token de pruebas hay que mandar al comprador al checkout
+            # de pruebas: el de producción no reconocería esa preferencia.
             sandbox_init_point = preference.get("sandbox_init_point")
-            
-            return sandbox_init_point if "TEST" in MERCADOPAGO_ACCESS_TOKEN else init_point
+
+            return sandbox_init_point if self.es_de_prueba else init_point
             
         except Exception as e:
             print(f"Error creating MP preference: {str(e)}")

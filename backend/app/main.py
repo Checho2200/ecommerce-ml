@@ -176,9 +176,18 @@ async def health():
         "status": "healthy" if database == "connected" else "degraded",
         "database": database,
         "ml_model": "loaded" if fraud_service.is_loaded() else "not_loaded",
-        # Solo dice si hay token cargado, nunca el token en si: sirve para
-        # comprobar desde fuera que la variable de entorno llego al servidor.
-        "payments": "configured" if payment_service.is_configured else "not_configured",
+        # Nunca el token: solo si hay uno y de qué entorno es. Distinguir
+        # "test" de "production" desde fuera evita la peor confusión posible
+        # con una pasarela — creer que se está cobrando de verdad cuando no, o
+        # al revés — y permite comprobar de un vistazo que un cambio de
+        # credenciales llegó al servidor.
+        "payments": (
+            "not_configured"
+            if not payment_service.is_configured
+            else "test"
+            if payment_service.es_de_prueba
+            else "production"
+        ),
         # Igual que arriba: dónde acaban las imágenes que sube el panel. Sin
         # credenciales de Cloudinary se guardan en la base, que funciona pero
         # gasta el espacio del plan gratuito de Neon.

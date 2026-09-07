@@ -86,8 +86,20 @@ export default function AdminSettingsPage() {
     },
     {
       label: 'Pasarela de pagos',
-      note: salud?.payments === 'configured' ? 'MercadoPago configurado' : 'Sin credenciales',
-      estado: consultando ? 'cargando' as const : salud?.payments === 'configured' ? 'ok' as const : 'parcial' as const,
+      // Se distingue el entorno, no solo si hay credenciales: cobrar de verdad
+      // creyendo que se está en pruebas —o al revés— es el peor malentendido
+      // posible con una pasarela, y aquí se ve sin abrir nada.
+      note:
+        salud?.payments === 'test'
+          ? 'MercadoPago en modo pruebas'
+          : salud?.payments === 'production'
+            ? 'MercadoPago en producción: los cobros son reales'
+            : 'Sin credenciales',
+      estado: consultando
+        ? ('cargando' as const)
+        : salud?.payments === 'test' || salud?.payments === 'production'
+          ? ('ok' as const)
+          : ('parcial' as const),
     },
   ]
 
