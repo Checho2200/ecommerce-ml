@@ -32,6 +32,7 @@ from app.api.v1.service_orders import router as service_orders_router
 from app.api.v1.fraud import router as fraud_router
 from app.api.v1.reviews import router as reviews_router
 from app.api.v1.upload import router as upload_router
+from app.api.v1.users import router as users_router
 from app.services import image_storage
 from app.services.fraud_service import fraud_service
 from app.services.payment_service import payment_service
@@ -132,6 +133,7 @@ app.include_router(service_orders_router, prefix=API_PREFIX)
 app.include_router(fraud_router, prefix=API_PREFIX)
 app.include_router(reviews_router, prefix=f"{API_PREFIX}/reviews", tags=["Reviews"])
 app.include_router(upload_router, prefix=API_PREFIX)
+app.include_router(users_router, prefix=API_PREFIX)
 
 # Servir archivos estáticos (imágenes subidas)
 static_dir = Path("static")

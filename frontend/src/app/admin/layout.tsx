@@ -36,6 +36,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import BuildIcon from "@mui/icons-material/Build";
 import PsychologyIcon from "@mui/icons-material/Psychology";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
+import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
 
 const drawerWidth = 260;
 
@@ -79,6 +80,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/fraud", icon: <PsychologyIcon />, label: "Antifraude" },
     { href: "/admin/fraud/modelo", icon: <InsightsOutlinedIcon />, label: "Modelo e indicadores" },
     { href: "/admin/services", icon: <BuildIcon />, label: "Servicios" },
+    // La tienda dependía de un único administrador creado con un script al
+    // desplegar. Desde aquí se puede nombrar a otro sin tocar el servidor.
+    { href: "/admin/users", icon: <GroupOutlinedIcon />, label: "Usuarios" },
     { href: "/admin/settings", icon: <SettingsIcon />, label: "Configuración" },
   ];
 

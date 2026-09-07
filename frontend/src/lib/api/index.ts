@@ -15,6 +15,7 @@ import { serviceOrders } from "./servicios";
 import { reviews } from "./reviews";
 import { upload } from "./upload";
 import { fraud } from "./fraud";
+import { users } from "./users";
 
 export const api = {
   system,
@@ -26,9 +27,11 @@ export const api = {
   reviews,
   upload,
   fraud,
+  users,
 };
 
 export { ApiError, getToken, setToken, removeToken } from "./cliente";
 export type { ProductSort } from "./products";
+export type { CambiosDeCuenta } from "./users";
 export * from "./tipos";
 export default api;

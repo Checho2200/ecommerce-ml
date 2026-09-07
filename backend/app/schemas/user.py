@@ -72,6 +72,63 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
 
 
+# --- Gestión de usuarios desde el panel ---
+class UserCreateByAdmin(BaseModel):
+    """
+    Alta de una cuenta hecha por un administrador.
+
+    Se separa de `UserRegister` porque son dos cosas distintas aunque creen la
+    misma fila: el registro público siempre produce un CLIENTE —nadie se hace
+    administrador desde fuera— y esto puede producir un ADMIN. Mezclarlas
+    habría dejado el rol como un campo más del formulario abierto a internet.
+
+    La política de contraseñas es la misma. Una cuenta creada a mano no merece
+    una contraseña más floja que una registrada por su dueño; al contrario,
+    suele ser la del administrador.
+    """
+
+    email: EmailStr
+    password: str = Field(..., min_length=LONGITUD_MINIMA, max_length=LONGITUD_MAXIMA)
+    full_name: str = Field(..., min_length=2, max_length=150)
+    phone: Optional[str] = Field(None, max_length=20)
+    role: str = Field(default="CLIENTE", pattern="^(CLIENTE|ADMIN)$")
+
+    @field_validator("password")
+    @classmethod
+    def _politica(cls, valor: str, info: ValidationInfo) -> str:
+        try:
+            return passwords.validar(valor, info.data.get("email"))
+        except ContrasenaDebil as error:
+            raise ValueError(str(error)) from error
+
+
+class UserAdminUpdate(BaseModel):
+    """
+    Lo que un administrador puede cambiarle a una cuenta ajena.
+
+    No está la contraseña, y es a propósito: cambiársela a alguien sin que se
+    entere es suplantarlo. Para eso está el enlace de recuperación, que va al
+    correo de su dueño.
+    """
+
+    full_name: Optional[str] = Field(None, min_length=2, max_length=150)
+    phone: Optional[str] = Field(None, max_length=20)
+    role: Optional[str] = Field(None, pattern="^(CLIENTE|ADMIN)$")
+    is_active: Optional[bool] = None
+
+
+class UserListResponse(BaseModel):
+    """Una página del listado de usuarios."""
+
+    items: list[UserResponse]
+    total: int
+    page: int
+    pages: int
+    # Cuántos administradores activos hay en total. El panel lo necesita para
+    # avisar antes de quitarle el rol al último que queda.
+    active_admins: int
+
+
 # --- Recuperación de contraseña ---
 class ForgotPasswordRequest(BaseModel):
     """Solicitud del enlace para restablecer la contraseña."""

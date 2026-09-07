@@ -234,3 +234,30 @@ export interface OrderSummaryResponse {
   revenue: number;
   awaiting_review: number;
 }
+
+/**
+ * Una cuenta de la tienda, tal como la devuelve la API.
+ *
+ * Nunca trae la contraseña ni su hash: el backend responde con este mismo
+ * recorte en el registro, en el perfil y en el panel.
+ */
+export interface UserResponse {
+  id: string;
+  email: string;
+  full_name: string;
+  phone: string | null;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+/** Una página del listado de cuentas del panel. */
+export interface UserListResponse {
+  items: UserResponse[];
+  total: number;
+  page: number;
+  pages: number;
+  // Cuántos administradores activos hay. El panel lo usa para avisar antes de
+  // degradar al último que queda, en vez de dejar que el backend lo rechace.
+  active_admins: number;
+}
