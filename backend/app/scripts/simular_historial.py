@@ -56,8 +56,9 @@ mezclados con los de verdad no sirven ni para vender ni para medir.
 import argparse
 import asyncio
 import math
-import random
 import sys
+
+import numpy as np
 from collections import Counter
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -118,84 +119,89 @@ DIRECTORIO_INFORMES = Path(__file__).resolve().parent.parent.parent / "ml" / "in
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-# Cuántos fraudes se disfrazan de compra corriente, y cuántas compras honestas
-# parecen sospechosas. Son los dos números que hacen que esto sea un problema
-# de clasificación y no un `if`.
+# Las distribuciones del tráfico simulado son **las mismas** que usa
+# `ml/dataset.py` para generar el conjunto de entrenamiento, con los mismos
+# parámetros. No es un detalle de implementación: es lo que hace que las cifras
+# del panel se puedan comparar con las que el modelo midió al entrenarse.
 #
-# Sin ellos el modelo detecta el 100 % del fraude y no frena ni una venta
-# buena, que es precisamente el resultado que delata un experimento amañado:
-# ningún sistema antifraude del mundo acierta siempre, y un panel que lo
-# afirmara sería lo primero que un jurado pondría en duda. Con estas
-# proporciones la detección cae al entorno del 80 %, que es lo que el modelo
-# midió sobre su partición de prueba.
-FRAUDES_CAMUFLADOS = 0.38
-COMPRAS_BUENAS_QUE_PARECEN_MALAS = 0.13
+# La versión anterior las inventaba a ojo, con más solapamiento entre clases
+# del que el modelo había visto nunca, y el panel acababa enseñando un 20 % de
+# precisión y un 59 % de detección — un modelo mucho peor de lo que es, por un
+# tráfico que nadie había justificado. Copiar los parámetros de un sitio a otro
+# sería el mismo error, así que se leen de `ml/dataset.py`.
+#
+# El supuesto que esto introduce hay que declararlo en la memoria: las cifras
+# operativas valen bajo un tráfico que se comporta como el del entrenamiento.
+# Con clientes reales podría ser otro, y por eso el modelo se remide con los
+# pedidos de la tienda en cuanto haya bastantes etiquetados.
+PERFILES = {
+    # (monto_mu, monto_sigma, riesgo_lambda, dur_mu, dur_sigma, p_direccion_nueva)
+    False: (450.0, 1.00, 0.50, 200.0, 0.85, 0.20),
+    True: (2200.0, 0.90, 2.00, 50.0, 0.85, 0.72),
+}
+
+# Ni todo fraude se denuncia ni toda denuncia es real. Es el mismo ruido de
+# etiqueta que lleva el conjunto de entrenamiento, y sin él las clases quedan
+# casi separables y la banda de revisión manual no se activa nunca.
+RUIDO_DE_ETIQUETA = 0.015
 
 
-def _perfil_arriesgado(rng: random.Random) -> dict:
-    """Caro, concentrado en componentes de reventa, rápido y a estrenar."""
+def _muestra(es_fraude: bool, rng) -> dict:
+    """
+    Una compra sacada de la misma distribución que vio el modelo al entrenarse.
+
+    Devuelve la intención —cuánto se pretende gastar, en cuántos componentes de
+    reventa fácil, con cuánta prisa y a qué dirección—; el carrito de verdad se
+    arma después con productos del catálogo.
+    """
+    monto_mu, monto_sigma, riesgo_lambda, dur_mu, dur_sigma, p_dir = PERFILES[es_fraude]
+
     return {
-        "articulos_de_riesgo": rng.choices([1, 2, 3], weights=[3, 4, 3])[0],
-        "articulos_normales": rng.choices([0, 1], weights=[7, 3])[0],
-        "cantidad_maxima": rng.choice([1, 2, 2, 3]),
-        "segundos": max(5.0, rng.lognormvariate(3.6, 0.9)),
-        "direccion_nueva": rng.random() < 0.85,
+        "monto_objetivo": float(
+            np.clip(rng.lognormal(np.log(monto_mu), monto_sigma), 40, 30000)
+        ),
+        "articulos_de_riesgo": int(np.clip(rng.poisson(riesgo_lambda), 0, 12)),
+        "segundos": float(
+            np.clip(rng.lognormal(np.log(dur_mu), dur_sigma), 4, 3600)
+        ),
+        "direccion_nueva": bool(rng.binomial(1, p_dir)),
     }
 
 
-def _perfil_corriente(rng: random.Random) -> dict:
-    """Barato, sin prisa y a una dirección de siempre."""
-    return {
-        "articulos_de_riesgo": rng.choices([0, 1], weights=[82, 18])[0],
-        "articulos_normales": rng.choices([1, 2, 3], weights=[5, 3, 2])[0],
-        "cantidad_maxima": rng.choice([1, 1, 1, 2]),
-        "segundos": max(15.0, rng.lognormvariate(5.5, 0.7)),
-        "direccion_nueva": rng.random() < 0.10,
-    }
-
-
-def _comportamiento(es_fraude: bool, rng: random.Random) -> dict:
+def _armar_carrito(muestra: dict, caros: list, normales: list, rng):
     """
-    Cómo se comporta una compra, dado lo que realmente era.
+    Convierte la intención de compra en un carrito de productos reales.
 
-    Primero la clase y después el comportamiento condicionado a ella: es el
-    orden que hace que el problema sea estadístico. Y las dos clases pueden
-    producir los dos perfiles, solo que con probabilidades distintas — un
-    defraudador con paciencia compra despacio y a una dirección conocida, y un
-    cliente honesto puede llevarse dos tarjetas de video de madrugada.
-
-    Ese cruce es lo que deja fraudes sin detectar y compras buenas frenadas,
-    que es lo que hace que las métricas signifiquen algo.
+    Se ponen primero los componentes de reventa fácil que pedía la muestra y
+    después se completa con producto corriente hasta acercarse al importe. El
+    total que se registra es el del carrito, no el de la muestra: un pedido
+    cuyas líneas no suman su propio total es lo primero que delata que los
+    datos están inventados.
     """
-    if es_fraude:
-        camuflado = rng.random() < FRAUDES_CAMUFLADOS
-        return _perfil_corriente(rng) if camuflado else _perfil_arriesgado(rng)
-
-    parece_sospechosa = rng.random() < COMPRAS_BUENAS_QUE_PARECEN_MALAS
-    return _perfil_arriesgado(rng) if parece_sospechosa else _perfil_corriente(rng)
-
-
-def _armar_carrito(comportamiento: dict, caros: list, normales: list, rng: random.Random):
-    """Elige productos reales del catálogo según el comportamiento sorteado."""
     lineas = []
+    total = 0.0
 
-    for fuente, cuantos in (
-        (caros, comportamiento["articulos_de_riesgo"]),
-        (normales, comportamiento["articulos_normales"]),
-    ):
-        if not fuente or cuantos <= 0:
-            continue
-        for producto in rng.sample(fuente, min(cuantos, len(fuente))):
-            lineas.append(
-                {
-                    "producto": producto,
-                    "cantidad": rng.randint(1, comportamiento["cantidad_maxima"]),
-                }
-            )
+    for _ in range(min(muestra["articulos_de_riesgo"], 4)):
+        if not caros:
+            break
+        producto = caros[rng.integers(len(caros))]
+        lineas.append({"producto": producto, "cantidad": 1})
+        total += producto.price
 
-    # Un pedido vacío no existe: si el sorteo no eligió nada, va un artículo.
+    objetivo = muestra["monto_objetivo"]
+    fuente = normales or caros
+    intentos = 0
+    while total < objetivo * 0.8 and intentos < 12 and fuente:
+        producto = fuente[rng.integers(len(fuente))]
+        # No se pasa de largo del objetivo por añadir un artículo caro de más.
+        if total + producto.price > objetivo * 1.35 and lineas:
+            break
+        lineas.append({"producto": producto, "cantidad": 1})
+        total += producto.price
+        intentos += 1
+
     if not lineas:
-        producto = rng.choice(normales or caros)
+        producto = (fuente or caros)[rng.integers(len(fuente or caros))]
         lineas.append({"producto": producto, "cantidad": 1})
 
     return lineas
@@ -206,9 +212,7 @@ def _armar_carrito(comportamiento: dict, caros: list, normales: list, rng: rando
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _fechas(
-    cuantas: int, desde: date, hasta: date, corte: date, antes: int, rng: random.Random
-):
+def _fechas(cuantas: int, desde: date, hasta: date, corte: date, antes: int, rng):
     """
     Reparte las compras en el calendario.
 
@@ -223,14 +227,18 @@ def _fechas(
     momentos = []
     for indice in range(cuantas):
         if indice < antes:
-            dia = desde + timedelta(days=rng.randrange(dias_antes))
+            dia = desde + timedelta(days=int(rng.integers(dias_antes)))
         else:
-            dia = corte + timedelta(days=rng.randrange(dias_despues))
+            dia = corte + timedelta(days=int(rng.integers(dias_despues)))
 
         momentos.append(
             datetime.combine(
                 dia,
-                time(hour=rng.randint(8, 22), minute=rng.randint(0, 59), second=rng.randint(0, 59)),
+                time(
+                    hour=int(rng.integers(8, 23)),
+                    minute=int(rng.integers(0, 60)),
+                    second=int(rng.integers(0, 60)),
+                ),
                 tzinfo=timezone.utc,
             )
         )
@@ -239,7 +247,7 @@ def _fechas(
     return momentos
 
 
-def _ya_se_sabe(dias: float, rng: random.Random) -> bool:
+def _ya_se_sabe(dias: float, rng) -> bool:
     """
     Si a día de hoy ya se sabe lo que pasó con una compra de hace `dias`.
 
@@ -312,7 +320,9 @@ async def _catalogo(sesion):
 async def construir(
     cuantas: int, antes: int, desde: date, hasta: date, corte: date, semilla: int
 ) -> dict:
-    rng = random.Random(semilla)
+    # El mismo generador que `ml/dataset.py`: si el tráfico ha de venir de la
+    # misma distribución, también el sorteo.
+    rng = np.random.default_rng(semilla)
 
     fraud_service.load_model()
     if not fraud_service.is_loaded():
@@ -344,24 +354,29 @@ async def construir(
         caros, normales = await _catalogo(sesion)
 
         for momento in momentos:
-            es_fraude = rng.random() < TASA_DE_FRAUDE
-            comportamiento = _comportamiento(es_fraude, rng)
-            lineas = _armar_carrito(comportamiento, caros, normales, rng)
+            es_fraude = bool(rng.random() < TASA_DE_FRAUDE)
+            muestra = _muestra(es_fraude, rng)
+            lineas = _armar_carrito(muestra, caros, normales, rng)
+
+            # El ruido de etiqueta va después de generar el comportamiento: la
+            # compra se comportó como su clase, pero lo que acabó constando es
+            # lo contrario. Es lo que pasa cuando un fraude no se denuncia o
+            # cuando alguien reclama un cargo que sí hizo.
+            if rng.random() < RUIDO_DE_ETIQUETA:
+                es_fraude = not es_fraude
 
             total = sum(l["producto"].price * l["cantidad"] for l in lineas)
-            de_riesgo = sum(
-                l["cantidad"] for l in lineas if l["producto"] in caros
-            )
-            direccion = rng.choice(
-                DIRECCIONES_NUEVAS if comportamiento["direccion_nueva"] else DIRECCIONES_HABITUALES
-            )
+            de_riesgo = sum(l["cantidad"] for l in lineas if l["producto"] in caros)
+            direccion = DIRECCIONES_NUEVAS[rng.integers(len(DIRECCIONES_NUEVAS))] if muestra[
+                "direccion_nueva"
+            ] else DIRECCIONES_HABITUALES[rng.integers(len(DIRECCIONES_HABITUALES))]
 
             # El modelo de verdad, evaluando esta compra.
             evaluacion = fraud_service.evaluar(
                 total_amount=total,
                 high_risk_items_count=de_riesgo,
-                checkout_duration_seconds=comportamiento["segundos"],
-                is_new_shipping_address=1 if comportamiento["direccion_nueva"] else 0,
+                checkout_duration_seconds=muestra["segundos"],
+                is_new_shipping_address=1 if muestra["direccion_nueva"] else 0,
             )
 
             tramo = "antes" if momento.date() < corte else "despues"
@@ -400,7 +415,7 @@ async def construir(
             # nunca en el futuro.
             revisado_el = momento + timedelta(
                 days=min(
-                    rng.expovariate(1 / DIAS_MEDIOS_HASTA_SABERLO),
+                    float(rng.exponential(DIAS_MEDIOS_HASTA_SABERLO)),
                     max(dias_transcurridos, 0.0),
                 )
             )
@@ -412,8 +427,8 @@ async def construir(
                     feature_vector={
                         "total_amount": round(total, 2),
                         "high_risk_items_count": de_riesgo,
-                        "checkout_duration_seconds": round(comportamiento["segundos"], 1),
-                        "is_new_shipping_address": 1 if comportamiento["direccion_nueva"] else 0,
+                        "checkout_duration_seconds": round(muestra["segundos"], 1),
+                        "is_new_shipping_address": 1 if muestra["direccion_nueva"] else 0,
                     },
                     decision=decision,
                     risk_level=evaluacion.nivel_de_riesgo,
