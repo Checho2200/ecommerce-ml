@@ -62,7 +62,7 @@ from collections import Counter
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
@@ -553,6 +553,47 @@ def _informe(resumen: dict, desde: date, hasta: date) -> str:
     return "\n".join(lineas)
 
 
+async def limpiar() -> int:
+    """
+    Borra todo lo que dejó el simulador y nada más.
+
+    Existe porque sin ella meter el historial en la base de producción sería
+    una decisión sin vuelta atrás, y eso convierte una demostración en un
+    riesgo. Todo lo que crea el script cuelga de un único cliente ficticio, así
+    que basta con seguir esa cuerda: se borran sus evaluaciones, las líneas de
+    sus pedidos y sus pedidos. Ninguna fila de un cliente real entra en el
+    filtro, porque ninguna cuelga de ese usuario.
+
+    El usuario ficticio se queda: volver a poblar reutiliza el mismo, y su
+    presencia deja constancia de que esos pedidos fueron simulados.
+    """
+    async with AsyncSessionLocal() as sesion:
+        resultado = await sesion.execute(
+            select(User).where(User.email == CORREO_DEL_CLIENTE)
+        )
+        usuario = resultado.scalar_one_or_none()
+        if usuario is None:
+            print("No hay nada que limpiar: el cliente simulado no existe.")
+            return 0
+
+        pedidos = (
+            (await sesion.execute(select(Order.id).where(Order.user_id == usuario.id)))
+            .scalars()
+            .all()
+        )
+        if not pedidos:
+            print("El cliente simulado no tiene pedidos. Nada que borrar.")
+            return 0
+
+        await sesion.execute(delete(FraudLog).where(FraudLog.order_id.in_(pedidos)))
+        await sesion.execute(delete(OrderItem).where(OrderItem.order_id.in_(pedidos)))
+        await sesion.execute(delete(Order).where(Order.id.in_(pedidos)))
+        await sesion.commit()
+
+    print(f"Borrados {len(pedidos)} pedidos simulados y sus evaluaciones.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cuantas", type=int, default=1000)
@@ -572,11 +613,26 @@ def main() -> int:
     )
     parser.add_argument("--semilla", type=int, default=2026)
     parser.add_argument(
+        "--limpiar",
+        action="store_true",
+        help="Borra el historial simulado en vez de crearlo, y no toca nada más",
+    )
+    parser.add_argument(
         "--acepto-datos-simulados-en-esta-base",
         action="store_true",
         help="Necesario para correr contra una base que no sea SQLite.",
     )
     args = parser.parse_args()
+
+    if args.limpiar:
+        url_actual = get_settings().DATABASE_URL
+        if not url_actual.startswith("sqlite") and not args.acepto_datos_simulados_en_esta_base:
+            print(
+                "Vas a borrar en una base que no es SQLite. Repite con "
+                "--acepto-datos-simulados-en-esta-base si es lo que quieres."
+            )
+            return 1
+        return asyncio.run(limpiar())
 
     if args.desde >= args.hasta:
         print("--desde tiene que ser anterior a --hasta.")
