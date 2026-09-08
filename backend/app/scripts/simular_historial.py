@@ -111,6 +111,28 @@ DIRECCIONES_NUEVAS = [
     "Av. Húsares de Junín 880, Trujillo",
 ]
 
+# Medios de pago, con el reparto aproximado de una tienda peruana pequeña.
+MEDIOS_DE_PAGO = (("visa", 55), ("master", 30), ("amex", 5), ("yape", 10))
+
+# Cada cuánto la tarjeta está a nombre de otra persona. En una compra honesta
+# pasa —se paga con la tarjeta de la pareja o de un familiar— y en un fraude es
+# la norma. Es la señal que el modelo NO ve, porque no está entre sus cuatro
+# variables, y por eso el administrador tiene que poder verla en el panel.
+TITULAR_DISTINTO = {False: 0.12, True: 0.80}
+
+# Cómo figura el titular cuando la tarjeta es de quien compra. En una tarjeta
+# real va la inicial y el apellido, no el nombre completo de la cuenta.
+TITULAR_DE_LA_CUENTA = "H. SIMULADO"
+
+NOMBRES_DE_TITULARES = (
+    "M. QUISPE",
+    "J. RODRIGUEZ",
+    "L. FERNANDEZ",
+    "C. VARGAS",
+    "R. HUAMAN",
+    "A. CASTILLO",
+)
+
 DIRECTORIO_INFORMES = Path(__file__).resolve().parent.parent.parent / "ml" / "informes"
 
 
@@ -245,6 +267,48 @@ def _fechas(cuantas: int, desde: date, hasta: date, corte: date, antes: int, rng
 
     momentos.sort()
     return momentos
+
+
+def _cobro(es_fraude: bool, nombre_del_titular: str, momento: datetime, rng) -> dict:
+    """
+    Con qué se pagó una compra que el sistema dejó pasar.
+
+    Son datos simulados, como el resto del tráfico, pero con la misma forma que
+    los que deja un cobro real: medio, cuatro últimos dígitos, titular y hora.
+    Sin ellos, mil pedidos completados aparecerían en el panel como «sin
+    cobrar», que es una incoherencia que salta a la vista.
+
+    Solo cuatro dígitos, igual que en producción: aquí tampoco existe un número
+    de tarjeta completo que pudiera acabar guardado por descuido.
+    """
+    medios = [m for m, _ in MEDIOS_DE_PAGO]
+    pesos = np.array([p for _, p in MEDIOS_DE_PAGO], dtype=float)
+    medio = medios[int(rng.choice(len(medios), p=pesos / pesos.sum()))]
+
+    if medio == "yape":
+        # Un monedero no tiene tarjeta ni titular que enseñar.
+        return {
+            "payment_id": f"SIM-{int(rng.integers(10**9, 10**10))}",
+            "payment_method": medio,
+            "card_last_four": None,
+            "card_holder": None,
+            "paid_at": momento + timedelta(minutes=float(rng.exponential(6))),
+        }
+
+    otra_persona = rng.random() < TITULAR_DISTINTO[es_fraude]
+    titular = (
+        NOMBRES_DE_TITULARES[int(rng.integers(len(NOMBRES_DE_TITULARES)))]
+        if otra_persona
+        else nombre_del_titular
+    )
+
+    return {
+        "payment_id": f"SIM-{int(rng.integers(10**9, 10**10))}",
+        "payment_method": medio,
+        "card_last_four": f"{int(rng.integers(0, 10000)):04d}",
+        "card_holder": titular,
+        "paid_at": momento + timedelta(minutes=float(rng.exponential(6))),
+    }
 
 
 def _ya_se_sabe(dias: float, rng) -> bool:
@@ -438,6 +502,14 @@ async def construir(
                 shipping_city="Trujillo",
                 created_at=momento,
             )
+            # Solo se cobra lo que el sistema dejó pasar. Un pedido bloqueado o
+            # retenido nunca llegó a la pasarela, así que no puede tener
+            # tarjeta: enseñarle una sería la incoherencia más fácil de pillar.
+            if decision == "APPROVED":
+                for campo, valor in _cobro(
+                    es_fraude, TITULAR_DE_LA_CUENTA, momento, rng
+                ).items():
+                    setattr(orden, campo, valor)
             sesion.add(orden)
             await sesion.flush()
 
@@ -614,6 +686,15 @@ def _informe(resumen: dict, desde: date, hasta: date) -> str:
         "vencido. Aparecen en el panel como evaluadas pero sin confirmar, que "
         "es como se ve una tienda de verdad — los indicadores del mes pasado "
         "están completos y los de esta semana se siguen llenando.\n"
+    )
+
+    lineas.append(
+        "\nLas compras que el sistema dejó pasar llevan además datos de cobro "
+        "simulados —medio de pago, cuatro últimos dígitos y titular—, con la "
+        "misma forma que los que deja un pago real. En una parte de ellas el "
+        "titular no coincide con el de la cuenta: es la señal más común de "
+        "tarjeta robada, y ninguna de las cuatro variables del modelo la ve, "
+        "así que solo puede verla la persona que revisa.\n"
     )
 
     lineas.append(
