@@ -40,6 +40,36 @@ def leer_notificacion(query: dict, body: dict) -> tuple:
     return payment_id, es_de_pago
 
 
+def datos_del_pago(pago: dict) -> dict:
+    """
+    Saca de la respuesta de MercadoPago lo que la tienda puede guardar.
+
+    Con qué tarjeta se pagó es información de seguimiento: ante un contracargo
+    hay que poder decir qué pago fue y a nombre de quién sin ir a buscarlo al
+    panel de la pasarela. Y el titular delata el caso más común de tarjeta
+    robada, que es que la cuenta sea de una persona y la tarjeta de otra.
+
+    Lo que se extrae son **los cuatro últimos dígitos y nada más**. Ni el
+    número completo, ni el código de seguridad, ni la caducidad: PCI-DSS
+    permite conservar los cuatro últimos porque no sirven para cobrar, y
+    guardar el resto convertiría esta base en un objetivo que una tienda
+    pequeña no tiene por qué ser. Tampoco se guardan los seis primeros —el BIN
+    del emisor—, que no hacen falta para el seguimiento.
+
+    Un pago por otro medio (Yape, efectivo) no trae tarjeta: los campos salen
+    nulos y el panel lo enseña como lo que es.
+    """
+    tarjeta = pago.get("card") or {}
+    titular = (tarjeta.get("cardholder") or {}).get("name")
+
+    return {
+        "payment_id": str(pago["id"]) if pago.get("id") is not None else None,
+        "payment_method": pago.get("payment_method_id"),
+        "card_last_four": tarjeta.get("last_four_digits"),
+        "card_holder": titular,
+    }
+
+
 class PaymentService:
     def __init__(self):
         self.access_token = get_settings().MERCADOPAGO_ACCESS_TOKEN

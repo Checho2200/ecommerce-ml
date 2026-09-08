@@ -430,7 +430,10 @@ class ResultadoDelPago:
 
 
 async def registrar_resultado_del_pago(
-    db: AsyncSession, referencia_externa: str, estado_en_mercadopago: str
+    db: AsyncSession,
+    referencia_externa: str,
+    estado_en_mercadopago: str,
+    datos_del_pago: dict | None = None,
 ) -> ResultadoDelPago:
     """
     Aplica al pedido lo que MercadoPago dice que pasó con su pago.
@@ -450,6 +453,12 @@ async def registrar_resultado_del_pago(
 
     if estado_en_mercadopago == "approved":
         orden.status = OrderStatus.COMPLETED
+        # Con qué se pagó, para poder seguirle la pista al cobro después. Son
+        # los cuatro últimos dígitos y el titular; el resto de la tarjeta no
+        # llega hasta aquí ni debe hacerlo.
+        for campo, valor in (datos_del_pago or {}).items():
+            setattr(orden, campo, valor)
+        orden.paid_at = datetime.now(timezone.utc)
         await db.commit()
         print(f"Order {orden.id} marcada como COMPLETED por el webhook.")
         return ResultadoDelPago("completada", orden)

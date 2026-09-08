@@ -134,10 +134,10 @@ export default function OrdersPage() {
         <Table>
           <TableHead sx={{ bgcolor: "background.default" }}>
             <TableRow>
-              {["ID", "Total", "Estado", "Fraude", "Ciudad", "Fecha", ""].map((h, i) => (
+              {["ID", "Cliente", "Total", "Estado", "Fraude", "Pago", "Ciudad", "Fecha", ""].map((h, i) => (
                 <TableCell
                   key={i}
-                  align={i === 6 ? "right" : "left"}
+                  align={i === 8 ? "right" : "left"}
                   sx={{ fontWeight: 700, fontSize: "0.75rem", textTransform: "uppercase", color: "text.secondary" }}
                 >
                   {h}
@@ -156,7 +156,7 @@ export default function OrdersPage() {
               ))
             ) : orders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 6, color: "text.disabled" }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 6, color: "text.disabled" }}>
                   No hay órdenes
                 </TableCell>
               </TableRow>
@@ -172,6 +172,17 @@ export default function OrdersPage() {
                         sx={{ color: "primary.main", fontSize: "0.75rem", bgcolor: "action.hover", px: 0.5, borderRadius: 0.5 }}
                       >
                         {o.id.slice(0, 8)}...
+                      </Typography>
+                    </TableCell>
+                    {/* Quién compró. Sin esto, seguirle la pista a un pedido
+                        obligaba a cruzar el user_id a mano contra la tabla de
+                        usuarios. */}
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                        {o.user_name || "—"}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {o.user_email || ""}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -193,6 +204,29 @@ export default function OrdersPage() {
                         />
                       ) : (
                         <Chip label="N/A" size="small" variant="outlined" sx={{ fontWeight: 700, fontSize: "0.7rem" }} />
+                      )}
+                    </TableCell>
+                    {/* Con qué se pagó. Solo hay algo que enseñar si hubo
+                        cobro, y son los cuatro últimos dígitos: el número
+                        completo no llega a la tienda ni debe hacerlo. */}
+                    <TableCell>
+                      {o.card_last_four ? (
+                        <>
+                          <Typography
+                            variant="body2"
+                            sx={{ fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}
+                          >
+                            •••• {o.card_last_four}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ textTransform: "capitalize" }}>
+                            {o.payment_method || ""}
+                            {o.card_holder ? ` · ${o.card_holder}` : ""}
+                          </Typography>
+                        </>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: "text.disabled", fontSize: "0.8rem" }}>
+                          {o.payment_method || "sin cobrar"}
+                        </Typography>
                       )}
                     </TableCell>
                     <TableCell>

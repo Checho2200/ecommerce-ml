@@ -59,8 +59,18 @@ export interface OrderResponse {
   fraud_log_id: string | null;
   payment_url?: string;
   created_at: string;
+  user_email: string | null;
+  user_name: string | null;
+  payment_id: string | null;
+  payment_method: string | null;
+  card_last_four: string | null;
+  card_holder: string | null;
+  paid_at: string | null;
 }
 
+// Quién compró y con qué pagó. Los datos de tarjeta solo existen si hubo
+// cobro, y son los cuatro últimos dígitos: el número completo nunca llega a la
+// tienda, lo maneja MercadoPago.
 export interface OrderItemResponse {
   id: number;
   product_id: string;

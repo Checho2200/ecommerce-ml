@@ -137,7 +137,56 @@ export default function ColaDeRevision({
                       </Typography>
                     )}
 
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                    {/* Quién compra y con qué paga. Es lo que hace que la
+                        decisión se pueda tomar y, sobre todo, seguir después:
+                        ante un contracargo hay que saber qué pago fue. El
+                        titular de la tarjeta importa por sí solo — que la
+                        cuenta sea de una persona y la tarjeta de otra es la
+                        señal más común de tarjeta robada. */}
+                    <Stack
+                      direction="row"
+                      spacing={2}
+                      sx={{ mt: 1.5, flexWrap: "wrap", rowGap: 1 }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="caption" sx={{ color: "text.disabled", display: "block" }}>
+                          Cliente
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {p.user_name || "—"}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {p.user_email || ""}
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="caption" sx={{ color: "text.disabled", display: "block" }}>
+                          Tarjeta
+                        </Typography>
+                        {p.card_last_four ? (
+                          <>
+                            <Typography variant="body2" sx={{ fontWeight: 700, fontFamily: "monospace" }}>
+                              •••• {p.card_last_four}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ textTransform: "capitalize" }}
+                            >
+                              {p.payment_method || ""}
+                              {p.card_holder ? ` · ${p.card_holder}` : ""}
+                            </Typography>
+                          </>
+                        ) : (
+                          <Typography variant="body2" sx={{ color: "text.disabled" }}>
+                            aún sin cobrar
+                          </Typography>
+                        )}
+                      </Box>
+                    </Stack>
+
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
                       {p.items.length} {p.items.length === 1 ? "artículo" : "artículos"}
                       {p.shipping_city ? ` · ${p.shipping_city}` : ""}
                     </Typography>

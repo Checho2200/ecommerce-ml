@@ -32,7 +32,11 @@ from app.schemas.order import (
     OrderSummaryResponse,
 )
 from app.services import email_service, order_service, webhook_security
-from app.services.payment_service import leer_notificacion, payment_service
+from app.services.payment_service import (
+    datos_del_pago,
+    leer_notificacion,
+    payment_service,
+)
 
 router = APIRouter(prefix="/orders", tags=["Órdenes"])
 
@@ -89,6 +93,15 @@ def _a_respuesta(
         fraud_explanation=orden.fraud_log.explanation if orden.fraud_log else None,
         fraud_log_id=orden.fraud_log.id if orden.fraud_log else None,
         payment_url=url_de_pago,
+        # `orden.user` viene cargado con la orden (lazy="selectin"), así que
+        # esto no dispara una consulta por fila del listado.
+        user_email=orden.user.email if orden.user else None,
+        user_name=orden.user.full_name if orden.user else None,
+        payment_id=orden.payment_id,
+        payment_method=orden.payment_method,
+        card_last_four=orden.card_last_four,
+        card_holder=orden.card_holder,
+        paid_at=orden.paid_at,
         created_at=orden.created_at,
     )
 
@@ -255,7 +268,10 @@ async def mercadopago_webhook(
             return {"status": "no order reference"}
 
         resultado = await order_service.registrar_resultado_del_pago(
-            db, referencia, pago.get("status")
+            db,
+            referencia,
+            pago.get("status"),
+            datos_del_pago(pago),
         )
 
         if resultado.estado == "orden no encontrada":

@@ -51,6 +51,29 @@ class Order(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # ── Con qué se pagó ──────────────────────────────────────────────────
+    #
+    # Lo rellena el webhook con lo que responde MercadoPago cuando el cobro se
+    # aprueba. Sirve para el seguimiento: ante un contracargo hay que poder
+    # decir qué pago fue, con qué tarjeta y a nombre de quién, sin entrar al
+    # panel de la pasarela.
+    #
+    # Se guardan **los cuatro últimos dígitos y nada más**. El número completo,
+    # el código de seguridad y la fecha de caducidad no se reciben, no se
+    # guardan y no se registran en ningún log: PCI-DSS permite conservar los
+    # cuatro últimos precisamente porque no sirven para cobrar, y guardar el
+    # resto convertiría esta base en un objetivo que la tienda no tiene por qué
+    # ser. La tarjeta la maneja MercadoPago de principio a fin.
+    payment_id: Mapped[str] = mapped_column(String(50), nullable=True)
+    payment_method: Mapped[str] = mapped_column(String(30), nullable=True)
+    card_last_four: Mapped[str] = mapped_column(String(4), nullable=True)
+    # El titular tal como lo devuelve la pasarela. Es el dato que delata el
+    # caso clásico: la cuenta es de una persona y la tarjeta de otra.
+    card_holder: Mapped[str] = mapped_column(String(150), nullable=True)
+    paid_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Relationships
     user = relationship("User", back_populates="orders", lazy="selectin")
     items = relationship("OrderItem", back_populates="order", lazy="selectin")

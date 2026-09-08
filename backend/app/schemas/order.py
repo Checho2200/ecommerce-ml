@@ -53,6 +53,21 @@ class OrderResponse(BaseModel):
     fraud_explanation: Optional[str] = None
     fraud_log_id: Optional[str] = None
     payment_url: Optional[str] = None
+
+    # ── Quién compró y con qué pagó ───────────────────────────────────────
+    #
+    # El correo y el nombre salen de la cuenta; los datos de tarjeta, del
+    # cobro, y solo cuando lo hubo. Son los cuatro últimos dígitos y el
+    # titular: el número completo y el código de seguridad nunca llegan a la
+    # tienda, los maneja MercadoPago.
+    user_email: Optional[str] = None
+    user_name: Optional[str] = None
+    payment_id: Optional[str] = None
+    payment_method: Optional[str] = None
+    card_last_four: Optional[str] = None
+    card_holder: Optional[str] = None
+    paid_at: Optional[datetime] = None
+
     created_at: datetime
 
     model_config = {"from_attributes": True}
