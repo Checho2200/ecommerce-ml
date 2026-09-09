@@ -1,11 +1,28 @@
 """
 Script de inicialización de datos de prueba.
-Crea un usuario admin, categorías de ejemplo, productos de muestra, órdenes y reseñas.
-Ejecutar: python -m app.seed
+
+Crea un usuario admin, categorías de ejemplo, productos de muestra, órdenes y
+reseñas. Ejecutar: `python -m app.seed`.
+
+**Este script borra la base entera.** Empieza por `drop_all`, así que se lleva
+por delante los pedidos, las evaluaciones del antifraude con sus etiquetas, las
+cuentas de los clientes y las imágenes que subió el panel. Es el más
+destructivo de todos los scripts del proyecto y era el único sin la guarda que
+los demás sí tienen: `simular_compras`, `simular_revisiones` y
+`simular_historial` se niegan a correr contra una base que no sea SQLite.
+
+Faltaba aquí, y costó caro: `backend/.env` apunta a la base de producción en
+Neon, así que ejecutarlo desde `backend/` sin mirar borra la tienda en vivo.
+Ahora hace falta pedirlo a mano con `--acepto-borrar-esta-base`.
+
+Para cambiar la contraseña de una cuenta que ya existe, sin borrar nada, está
+`app/scripts/reset_admin_password.py`.
 """
 
+import argparse
 import asyncio
 import os
+import sys
 
 from app.core.database import AsyncSessionLocal, create_tables, engine
 from app.core.security import hash_password
@@ -184,5 +201,51 @@ async def seed():
         print(f"   Productos: {len(products)}")
 
 
-if __name__ == "__main__":
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Puebla la base con datos de ejemplo. BORRA todo lo que haya."
+    )
+    parser.add_argument(
+        "--acepto-borrar-esta-base",
+        action="store_true",
+        help=(
+            "Autoriza el borrado en una base que no es SQLite. Sin esto el "
+            "script se niega: la de producción está a una variable de entorno "
+            "de distancia."
+        ),
+    )
+    argumentos = parser.parse_args()
+
+    from app.core.config import get_settings
+
+    url = get_settings().DATABASE_URL
+    if not url.startswith("sqlite") and not argumentos.acepto_borrar_esta_base:
+        # El nombre del servidor se enseña y la contraseña no: hay que poder
+        # ver contra qué base se iba a ejecutar sin filtrar la credencial en la
+        # terminal ni en un log.
+        servidor = url.split("@")[-1].split("/")[0] if "@" in url else "(desconocido)"
+        print(
+            "\n".join(
+                [
+                    "ABORTADO: la base configurada no es SQLite.",
+                    "",
+                    f"  Servidor: {servidor}",
+                    "",
+                    "Este script empieza borrando TODAS las tablas: pedidos,",
+                    "evaluaciones del antifraude, etiquetas, clientes e imágenes.",
+                    "En la base de producción eso se lleva la evidencia de la tesis.",
+                    "",
+                    "Si de verdad quieres poblar ESA base, vuelve a ejecutarlo con",
+                    "--acepto-borrar-esta-base.",
+                ]
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
     asyncio.run(seed())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
