@@ -96,25 +96,6 @@ export default function Hero() {
               >
                 Ver catálogo
               </Button>
-              <Button
-                component={Link}
-                href="/services"
-                variant="outlined"
-                sx={{
-                  px: 3.5,
-                  py: 1.35,
-                  fontWeight: 700,
-                  fontSize: "0.95rem",
-                  color: "#FFFFFF",
-                  borderColor: "rgba(255,255,255,0.45)",
-                  "@media (hover: hover)": {
-                    "&:hover": { borderColor: "#FFFFFF", bgcolor: "rgba(255,255,255,0.08)" },
-                  },
-                  "&:active": { transform: "scale(0.98)" },
-                }}
-              >
-                Servicio técnico
-              </Button>
             </Stack>
 
             {/* Los tres datos que deciden una compra, en letra pequeña: apoyan

@@ -33,7 +33,6 @@ import HomeIcon from "@mui/icons-material/Home";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
 import SettingsIcon from "@mui/icons-material/Settings";
-import BuildIcon from "@mui/icons-material/Build";
 import PsychologyIcon from "@mui/icons-material/Psychology";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
@@ -79,7 +78,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     // juntarlas daba una pantalla que no se acababa nunca.
     { href: "/admin/fraud", icon: <PsychologyIcon />, label: "Antifraude" },
     { href: "/admin/fraud/modelo", icon: <InsightsOutlinedIcon />, label: "Modelo e indicadores" },
-    { href: "/admin/services", icon: <BuildIcon />, label: "Servicios" },
     // La tienda dependía de un único administrador creado con un script al
     // desplegar. Desde aquí se puede nombrar a otro sin tocar el servidor.
     { href: "/admin/users", icon: <GroupOutlinedIcon />, label: "Usuarios" },

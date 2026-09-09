@@ -36,7 +36,6 @@ import { keyframes } from "@mui/system";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import LabelIcon from "@mui/icons-material/Label";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
-import BuildIcon from "@mui/icons-material/Build";
 import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -53,7 +52,6 @@ interface Cifras {
   productos: number;
   categorias: number;
   ordenes: number;
-  servicios: number;
 }
 
 export default function AdminDashboard() {
@@ -62,7 +60,6 @@ export default function AdminDashboard() {
     productos: 0,
     categorias: 0,
     ordenes: 0,
-    servicios: 0,
   });
   const [resumen, setResumen] = useState<OrderSummaryResponse | null>(null);
   const [salud, setSalud] = useState<{ status: string } | null>(null);
@@ -109,7 +106,6 @@ export default function AdminDashboard() {
       ]);
 
       let ordenes = 0;
-      let servicios = 0;
 
       if (isAdmin) {
         // Una sola consulta agrupada trae el total y el desglose por estado;
@@ -119,9 +115,6 @@ export default function AdminDashboard() {
           setResumen(datos);
           ordenes = datos.total;
         }
-
-        const listaDeServicios = await pedir(() => api.serviceOrders.list({ page: 1 }));
-        if (listaDeServicios) servicios = listaDeServicios.total;
 
         // Sobre los últimos doce meses: en el Dashboard interesa la foto del
         // año, no la del día.
@@ -145,7 +138,6 @@ export default function AdminDashboard() {
           productos: productos?.total ?? 0,
           categorias: categorias?.length ?? 0,
           ordenes,
-          servicios,
         });
         setIncompleto(fallo);
         setCargando(false);
@@ -162,7 +154,6 @@ export default function AdminDashboard() {
     { valor: cifras.productos, etiqueta: "Productos", icono: <InventoryIcon />, color: "#6366f1", href: "/admin/products" },
     { valor: cifras.categorias, etiqueta: "Categorías", icono: <LabelIcon />, color: "#06b6d4", href: "/admin/categories" },
     { valor: cifras.ordenes, etiqueta: "Órdenes", icono: <ShoppingCartIcon />, color: "#10b981", href: "/admin/orders" },
-    { valor: cifras.servicios, etiqueta: "Servicios", icono: <BuildIcon />, color: "#f59e0b", href: "/admin/services" },
   ];
 
   const porEstado = Object.entries(resumen?.by_status ?? {}).sort((a, b) => b[1] - a[1]);

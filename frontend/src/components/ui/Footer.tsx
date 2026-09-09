@@ -17,7 +17,6 @@ import PersonOutlinedIcon from "@mui/icons-material/PersonOutlined";
 
 const TIENDA = [
   { label: "Catálogo", href: "/catalog" },
-  { label: "Servicio técnico", href: "/services" },
   { label: "Mi carrito", href: "/cart" },
 ];
 

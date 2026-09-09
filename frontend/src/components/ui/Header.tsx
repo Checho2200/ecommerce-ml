@@ -49,7 +49,6 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutlined";
-import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
 
 const AVISOS = [
   "Envíos a todo el Perú",
@@ -303,24 +302,6 @@ export default function Header() {
                     {c.name}
                   </Typography>
                 ))}
-                <Box sx={{ flexGrow: 1 }} />
-                <Typography
-                  component={Link}
-                  href="/services"
-                  sx={{
-                    py: 1.5,
-                    fontSize: 14,
-                    fontWeight: 700,
-                    color: "error.main",
-                    textDecoration: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.7,
-                  }}
-                >
-                  <BuildOutlinedIcon sx={{ fontSize: 17 }} />
-                  Servicio técnico
-                </Typography>
               </Stack>
             </Container>
           </Box>
@@ -386,13 +367,6 @@ export default function Header() {
             <ListItem disablePadding>
               <ListItemButton onClick={() => go("/catalog")}>
                 <ListItemText primary={<Typography sx={{ fontWeight: 700 }}>Todo el catálogo</Typography>} />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton onClick={() => go("/services")}>
-                <ListItemText
-                  primary={<Typography sx={{ fontWeight: 700, color: "error.main" }}>Servicio técnico</Typography>}
-                />
               </ListItemButton>
             </ListItem>
           </List>

@@ -12,7 +12,6 @@
  * ni servicios que no presta.
  */
 
-import Link from "next/link";
 import { Box, Button, Container, Grid, Stack, Typography } from "@mui/material";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
@@ -108,11 +107,15 @@ export default function AboutSection() {
             spacing={1.5}
             sx={{ mt: 3.5 }}
           >
-            {/* Los dos botones se pintan con `acento` y no con `primary`: en
-                modo oscuro el navy se confunde con el fondo de la página. */}
+            {/* Se pinta con `acento` y no con `primary`: en modo oscuro el
+                navy se confunde con el fondo de la página. Al retirarse el
+                servicio técnico este botón se quedó solo, así que pasa a
+                `contained`: es la única llamada a la acción del bloque. */}
             <Button
-              component={Link}
-              href="/services"
+              component="a"
+              href={WHATSAPP}
+              target="_blank"
+              rel="noopener noreferrer"
               variant="contained"
               endIcon={<ArrowForwardIcon />}
               sx={{
@@ -122,23 +125,6 @@ export default function AboutSection() {
                 bgcolor: "acento.main",
                 color: "acento.contrastText",
                 "&:hover": { bgcolor: "acento.dark" },
-              }}
-            >
-              Solicitar servicio técnico
-            </Button>
-            <Button
-              component="a"
-              href={WHATSAPP}
-              target="_blank"
-              rel="noopener noreferrer"
-              variant="outlined"
-              sx={{
-                px: 3,
-                py: 1.25,
-                fontWeight: 700,
-                color: "acento.main",
-                borderColor: "acento.main",
-                "&:hover": { borderColor: "acento.dark", bgcolor: "action.hover" },
               }}
             >
               Cotizar por WhatsApp

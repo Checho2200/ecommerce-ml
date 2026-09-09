@@ -31,10 +31,8 @@ El sistema está desplegado y funcionando:
 - **Detección de fraude.** Cada pedido pasa por un modelo LightGBM que devuelve
   una probabilidad de fraude; según esa probabilidad la orden se aprueba, se
   manda a revisión o se rechaza. Todas las evaluaciones quedan registradas.
-- **Servicio técnico.** Los clientes registran equipos a reparar y siguen su
-  diagnóstico y costo estimado.
-- **Panel de administración.** Productos, categorías, órdenes, servicios,
-  métricas del modelo y reentrenamiento.
+- **Panel de administración.** Productos, categorías, órdenes, indicadores del
+  modelo y reentrenamiento.
 
 ---
 
@@ -62,7 +60,7 @@ PostgreSQL / SQLite
 backend/
   app/
     api/v1/        Un router por recurso: auth, products, categories, orders,
-                   service_orders, reviews, fraud, upload
+                   reviews, fraud, upload
     core/          Configuración, base de datos, seguridad, límite de peticiones
     models/        Tablas y relaciones (SQLAlchemy)
     schemas/       Contratos de entrada y salida (Pydantic)
@@ -265,7 +263,7 @@ cd backend
 python -m pytest
 ```
 
-Son 106 pruebas y cubren lo que duele si se rompe:
+Son 236 pruebas y cubren lo que duele si se rompe:
 
 - **Inventario.** Que comprar descuente stock, que un pedido rechazado no lo
   toque, y que cancelar —el cliente o el administrador— lo devuelva.

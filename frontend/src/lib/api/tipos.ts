@@ -79,19 +79,6 @@ export interface OrderItemResponse {
   unit_price: number;
 }
 
-export interface ServiceOrderResponse {
-  id: string;
-  user_id: string;
-  user_name: string | null;
-  device_type: string;
-  brand: string | null;
-  issue_description: string;
-  diagnosis: string | null;
-  status: string;
-  estimated_cost: number | null;
-  created_at: string;
-}
-
 export interface ProductReviewResponse {
   id: string;
   user_id: string;

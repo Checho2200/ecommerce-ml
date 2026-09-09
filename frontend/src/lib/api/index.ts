@@ -11,7 +11,6 @@ import { auth } from "./auth";
 import { products } from "./products";
 import { categories } from "./categories";
 import { orders } from "./orders";
-import { serviceOrders } from "./servicios";
 import { reviews } from "./reviews";
 import { upload } from "./upload";
 import { fraud } from "./fraud";
@@ -23,7 +22,6 @@ export const api = {
   products,
   categories,
   orders,
-  serviceOrders,
   reviews,
   upload,
   fraud,

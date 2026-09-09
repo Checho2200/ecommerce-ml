@@ -7,7 +7,6 @@ from app.models.user import User, UserRole
 from app.models.product import Product, Category
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.fraud_log import FraudLog, FraudDecision
-from app.models.service_order import ServiceOrder, ServiceStatus
 from app.models.review import ProductReview
 from app.models.uploaded_image import UploadedImage
 
@@ -21,8 +20,6 @@ __all__ = [
     "OrderStatus",
     "FraudLog",
     "FraudDecision",
-    "ServiceOrder",
-    "ServiceStatus",
     "ProductReview",
     "UploadedImage",
 ]

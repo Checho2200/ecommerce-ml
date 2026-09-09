@@ -45,7 +45,6 @@ class User(Base):
     # cuatro consultas por petición en lugar de una. Quien de verdad necesite
     # estas colecciones puede pedirlas con selectinload() en su propia consulta.
     orders = relationship("Order", back_populates="user")
-    service_orders = relationship("ServiceOrder", back_populates="user")
     reviews = relationship("ProductReview", back_populates="user")
 
     def __repr__(self) -> str:
