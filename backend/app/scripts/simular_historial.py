@@ -63,7 +63,7 @@ from collections import Counter
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
@@ -79,8 +79,41 @@ from app.services.fraud_service import (
     fraud_service,
 )
 
-CORREO_DEL_CLIENTE = "historial.simulado@ejemplo.com"
+# Todas las cuentas simuladas usan este dominio. Sirve para dos cosas: que
+# cualquiera que mire el listado de usuarios vea de un vistazo que no son
+# clientes reales, y que `--limpiar` pueda encontrarlas sin tocar ninguna otra.
+# Los nombres sí son verosímiles —una tienda de Trujillo—, porque un panel
+# lleno de «Cliente 0417» no se parece a nada.
+DOMINIO_SIMULADO = "cliente.simulado"
 CLAVE_DEL_CLIENTE = "historial-simulado-2026"
+
+# La primera versión de este script colgaba todo el historial de una sola
+# cuenta con esta dirección. Se conserva en la limpieza para poder retirar lo
+# que dejó: un script que no sabe borrar lo que él mismo escribió ayer obliga a
+# entrar a la base a mano, que es justo lo que `--limpiar` viene a evitar.
+CORREO_DEL_CLIENTE_ANTIGUO = "historial.simulado@ejemplo.com"
+
+NOMBRES = (
+    "María", "José", "Ana", "Luis", "Rosa", "Carlos", "Carmen", "Jorge",
+    "Elena", "Miguel", "Lucía", "Pedro", "Sofía", "Víctor", "Paola", "Iván",
+    "Gabriela", "Álvaro", "Diana", "Renzo", "Milagros", "Fernando",
+)
+APELLIDOS = (
+    "Quispe", "Rodríguez", "Fernández", "Vargas", "Huamán", "Castillo",
+    "Chávez", "Ramírez", "Salazar", "Mendoza", "Paredes", "Reyes", "Alva",
+    "Sánchez", "Rojas", "Gutiérrez", "Ibáñez", "Zavaleta", "Cabrera",
+)
+
+# Cuántas compras hace cada cliente. La mayoría compra una vez y no vuelve;
+# unos pocos son habituales. Repartir el tráfico a partes iguales daría una
+# tienda donde todo el mundo compra exactamente lo mismo, que no existe.
+COMPRAS_POR_CLIENTE = ((1, 55), (2, 22), (3, 12), (5, 7), (9, 4))
+
+# Cuántos días lleva abierta la cuenta cuando llega la compra. El fraude suele
+# venir de cuentas recién hechas; un cliente honesto puede serlo también, pero
+# lo normal es que lleve tiempo. Es otra señal que el modelo no ve —no está
+# entre sus cuatro variables— y que sí puede usar quien revisa.
+ANTIGUEDAD_MEDIA_DIAS = {False: 240, True: 9}
 
 # Proporción de compras que son fraude. Es la misma que usa el generador del
 # conjunto de entrenamiento, para que el tráfico simulado y el que vio el
@@ -119,10 +152,6 @@ MEDIOS_DE_PAGO = (("visa", 55), ("master", 30), ("amex", 5), ("yape", 10))
 # la norma. Es la señal que el modelo NO ve, porque no está entre sus cuatro
 # variables, y por eso el administrador tiene que poder verla en el panel.
 TITULAR_DISTINTO = {False: 0.12, True: 0.80}
-
-# Cómo figura el titular cuando la tarjeta es de quien compra. En una tarjeta
-# real va la inicial y el apellido, no el nombre completo de la cuenta.
-TITULAR_DE_LA_CUENTA = "H. SIMULADO"
 
 NOMBRES_DE_TITULARES = (
     "M. QUISPE",
@@ -370,22 +399,78 @@ ESTADO_SEGUN_DECISION = {
 }
 
 
-async def _cliente_simulado(sesion) -> User:
-    resultado = await sesion.execute(select(User).where(User.email == CORREO_DEL_CLIENTE))
-    usuario = resultado.scalar_one_or_none()
-    if usuario:
-        return usuario
+def _titular_de(usuario) -> str:
+    """
+    Cómo figura el nombre en la tarjeta de esa persona.
 
-    usuario = User(
-        email=CORREO_DEL_CLIENTE,
-        hashed_password=hash_password(CLAVE_DEL_CLIENTE),
-        full_name="Historial Simulado (no es un cliente real)",
-        phone="900000000",
-        role=UserRole.CLIENTE,
-    )
-    sesion.add(usuario)
+    En una tarjeta va la inicial y el apellido en mayúsculas, no el nombre
+    completo de la cuenta. Importa para que la comparación con el titular
+    tenga sentido visual: si el panel enseñara «María Quispe» en la cuenta y
+    «MARIA QUISPE» en la tarjeta, parecerían distintos sin serlo.
+    """
+    partes = usuario.full_name.split()
+    if len(partes) < 2:
+        return usuario.full_name.upper()
+    return f"{partes[0][0]}. {partes[-1]}".upper()
+
+
+def _cuantas_compras(rng) -> int:
+    """Cuántas veces compra un cliente, según el reparto declarado arriba."""
+    valores = [v for v, _ in COMPRAS_POR_CLIENTE]
+    pesos = np.array([p for _, p in COMPRAS_POR_CLIENTE], dtype=float)
+    return int(valores[int(rng.choice(len(valores), p=pesos / pesos.sum()))])
+
+
+async def _crear_clientes(sesion, compras_totales: int, rng) -> list:
+    """
+    Crea tantas cuentas como hagan falta para repartir las compras.
+
+    Devuelve una lista con una entrada por compra —el cliente al que le toca—,
+    ya barajada. Así el bucle principal solo tiene que ir sacando de ahí y las
+    compras de un mismo cliente quedan repartidas en el tiempo, que es como
+    ocurre de verdad: nadie hace sus nueve pedidos el mismo martes.
+
+    Antes todo el historial colgaba de un único usuario ficticio. Mil
+    cuatrocientas compras de la misma persona no se sostienen ni un segundo en
+    una pantalla, y además dejaban sin sentido cualquier señal que dependa del
+    cliente: cuántas veces ha comprado antes o cuándo abrió la cuenta.
+    """
+    reparto: list = []
+    clientes: list = []
+    usados: set = set()
+
+    while len(reparto) < compras_totales:
+        nombre = NOMBRES[int(rng.integers(len(NOMBRES)))]
+        apellido = APELLIDOS[int(rng.integers(len(APELLIDOS)))]
+        base = f"{nombre}.{apellido}".lower()
+        base = (
+            base.replace("á", "a").replace("é", "e").replace("í", "i")
+            .replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+        )
+
+        correo = f"{base}@{DOMINIO_SIMULADO}"
+        sufijo = 1
+        while correo in usados:
+            sufijo += 1
+            correo = f"{base}{sufijo}@{DOMINIO_SIMULADO}"
+        usados.add(correo)
+
+        cliente = User(
+            email=correo,
+            hashed_password=hash_password(CLAVE_DEL_CLIENTE),
+            full_name=f"{nombre} {apellido}",
+            phone=f"9{int(rng.integers(10**8)):08d}",
+            role=UserRole.CLIENTE,
+        )
+        sesion.add(cliente)
+        clientes.append(cliente)
+
+        for _ in range(min(_cuantas_compras(rng), compras_totales - len(reparto))):
+            reparto.append(cliente)
+
     await sesion.flush()
-    return usuario
+    rng.shuffle(reparto)
+    return reparto
 
 
 async def _catalogo(sesion):
@@ -447,10 +532,13 @@ async def construir(
     }
 
     async with AsyncSessionLocal() as sesion:
-        usuario = await _cliente_simulado(sesion)
+        reparto = await _crear_clientes(sesion, len(momentos), rng)
         caros, normales = await _catalogo(sesion)
+        resumen["clientes"] = len({c.email for c in reparto})
+        cuentas_fechadas: set = set()
 
-        for momento in momentos:
+        for indice, momento in enumerate(momentos):
+            usuario = reparto[indice]
             es_fraude = bool(rng.random() < TASA_DE_FRAUDE)
             muestra = _muestra(es_fraude, rng)
             lineas = _armar_carrito(muestra, caros, normales, rng)
@@ -494,6 +582,27 @@ async def construir(
                 decision = _decidir(evaluacion.puntaje, aprobar, bloquear)
                 explicacion = evaluacion.explicacion
 
+            # Cuándo abrió la cuenta este cliente. Se decide una sola vez, la
+            # primera vez que aparece, y como los momentos vienen ordenados esa
+            # primera vez es su compra más antigua: la cuenta queda abierta
+            # justo antes de estrenarla.
+            #
+            # La antigüedad depende de esa primera compra. Quien entra a
+            # defraudar suele hacerlo con una cuenta recién creada; quien
+            # compra de verdad lleva meses. Es otra señal que el modelo no ve
+            # —no está entre sus cuatro variables— y que sí puede usar quien
+            # revisa.
+            #
+            # Fijarla en cada compra, como hacía la primera versión, daba lo
+            # contrario de lo que se pretendía: un cliente con nueve pedidos
+            # acababa con la fecha más antigua de las nueve, y las cuentas de
+            # los defraudadores salían más viejas que las de los clientes
+            # honestos.
+            if usuario.id not in cuentas_fechadas:
+                antiguedad = float(rng.exponential(ANTIGUEDAD_MEDIA_DIAS[es_fraude]))
+                usuario.created_at = momento - timedelta(days=antiguedad + 0.2)
+                cuentas_fechadas.add(usuario.id)
+
             orden = Order(
                 user_id=usuario.id,
                 total_amount=round(total, 2),
@@ -507,7 +616,7 @@ async def construir(
             # tarjeta: enseñarle una sería la incoherencia más fácil de pillar.
             if decision == "APPROVED":
                 for campo, valor in _cobro(
-                    es_fraude, TITULAR_DE_LA_CUENTA, momento, rng
+                    es_fraude, _titular_de(usuario), momento, rng
                 ).items():
                     setattr(orden, campo, valor)
             sesion.add(orden)
@@ -714,38 +823,54 @@ async def limpiar() -> int:
 
     Existe porque sin ella meter el historial en la base de producción sería
     una decisión sin vuelta atrás, y eso convierte una demostración en un
-    riesgo. Todo lo que crea el script cuelga de un único cliente ficticio, así
-    que basta con seguir esa cuerda: se borran sus evaluaciones, las líneas de
-    sus pedidos y sus pedidos. Ninguna fila de un cliente real entra en el
-    filtro, porque ninguna cuelga de ese usuario.
+    riesgo.
 
-    El usuario ficticio se queda: volver a poblar reutiliza el mismo, y su
-    presencia deja constancia de que esos pedidos fueron simulados.
+    Todo lo que crea el script cuelga de cuentas con el dominio de correo
+    reservado para la simulación, así que basta con seguir esa cuerda: sus
+    evaluaciones, las líneas de sus pedidos, sus pedidos y por último las
+    propias cuentas. Ninguna fila de un cliente real entra en el filtro, porque
+    ningún cliente real tiene ese dominio.
     """
     async with AsyncSessionLocal() as sesion:
-        resultado = await sesion.execute(
-            select(User).where(User.email == CORREO_DEL_CLIENTE)
-        )
-        usuario = resultado.scalar_one_or_none()
-        if usuario is None:
-            print("No hay nada que limpiar: el cliente simulado no existe.")
-            return 0
-
-        pedidos = (
-            (await sesion.execute(select(Order.id).where(Order.user_id == usuario.id)))
+        simulados = (
+            (
+                await sesion.execute(
+                    select(User.id).where(
+                        or_(
+                            User.email.like(f"%@{DOMINIO_SIMULADO}"),
+                            User.email == CORREO_DEL_CLIENTE_ANTIGUO,
+                        )
+                    )
+                )
+            )
             .scalars()
             .all()
         )
-        if not pedidos:
-            print("El cliente simulado no tiene pedidos. Nada que borrar.")
+        if not simulados:
+            print("No hay nada que limpiar: no existe ninguna cuenta simulada.")
             return 0
 
-        await sesion.execute(delete(FraudLog).where(FraudLog.order_id.in_(pedidos)))
-        await sesion.execute(delete(OrderItem).where(OrderItem.order_id.in_(pedidos)))
-        await sesion.execute(delete(Order).where(Order.id.in_(pedidos)))
+        pedidos = (
+            (
+                await sesion.execute(
+                    select(Order.id).where(Order.user_id.in_(simulados))
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        if pedidos:
+            await sesion.execute(delete(FraudLog).where(FraudLog.order_id.in_(pedidos)))
+            await sesion.execute(delete(OrderItem).where(OrderItem.order_id.in_(pedidos)))
+            await sesion.execute(delete(Order).where(Order.id.in_(pedidos)))
+        await sesion.execute(delete(User).where(User.id.in_(simulados)))
         await sesion.commit()
 
-    print(f"Borrados {len(pedidos)} pedidos simulados y sus evaluaciones.")
+    print(
+        f"Borrados {len(pedidos)} pedidos simulados, sus evaluaciones y "
+        f"{len(simulados)} cuentas."
+    )
     return 0
 
 

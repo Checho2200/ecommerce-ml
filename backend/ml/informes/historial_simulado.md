@@ -7,21 +7,21 @@ El tramo antiguo decide con una regla fija sin modelo (bloquear si el monto pasa
 | | Antes | Después |
 | :--- | ---: | ---: |
 | Compras evaluadas | 700 | 700 |
-| Aprobadas | 457 | 472 |
-| A revisión | 169 | 144 |
-| Bloqueadas | 74 | 84 |
-| Fraudes confirmados | 51 | 42 |
-| Fraudes detectados | 41 | 37 |
-| **Tasa de detección** | **80.4%** | **88.1%** |
-| Compras buenas bloqueadas | 37 | 28 |
-| Fraude que pasó (S/) | 9,326.00 | 3,812.00 |
-| Margen perdido por frenar de más (S/) | 14,032.20 | 9,998.40 |
-| **Costo total (S/)** | **23,358.20** | **13,810.40** |
+| Aprobadas | 480 | 511 |
+| A revisión | 156 | 105 |
+| Bloqueadas | 64 | 84 |
+| Fraudes confirmados | 53 | 47 |
+| Fraudes detectados | 39 | 39 |
+| **Tasa de detección** | **73.6%** | **83.0%** |
+| Compras buenas bloqueadas | 33 | 30 |
+| Fraude que pasó (S/) | 10,918.00 | 10,186.00 |
+| Margen perdido por frenar de más (S/) | 12,007.35 | 13,578.30 |
+| **Costo total (S/)** | **22,925.35** | **23,764.30** |
 
-Por compra evaluada, el costo de los errores baja de **S/ 33.37** a **S/ 19.73** (40.9%).
+Por compra evaluada, el costo de los errores sube de **S/ 32.75** a **S/ 33.95** (3.7%).
 
 
-Quedan 240 compras sin etiquetar, casi todas recientes: el contracargo todavía no ha llegado o el plazo no ha vencido. Aparecen en el panel como evaluadas pero sin confirmar, que es como se ve una tienda de verdad — los indicadores del mes pasado están completos y los de esta semana se siguen llenando.
+Quedan 248 compras sin etiquetar, casi todas recientes: el contracargo todavía no ha llegado o el plazo no ha vencido. Aparecen en el panel como evaluadas pero sin confirmar, que es como se ve una tienda de verdad — los indicadores del mes pasado están completos y los de esta semana se siguen llenando.
 
 
 Las compras que el sistema dejó pasar llevan además datos de cobro simulados —medio de pago, cuatro últimos dígitos y titular—, con la misma forma que los que deja un pago real. En una parte de ellas el titular no coincide con el de la cuenta: es la señal más común de tarjeta robada, y ninguna de las cuatro variables del modelo la ve, así que solo puede verla la persona que revisa.
