@@ -32,6 +32,7 @@ export const api = {
 
 export { ApiError, getToken, setToken, removeToken } from "./cliente";
 export type { ProductSort } from "./products";
+export type { RangoDelHistorial } from "./fraud";
 export type { CambiosDeCuenta } from "./users";
 export * from "./tipos";
 export default api;

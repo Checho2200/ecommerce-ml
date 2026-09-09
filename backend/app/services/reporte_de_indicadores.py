@@ -57,6 +57,19 @@ _AZUL = "0C3A6E"
 _BORDE = Border(bottom=Side(style="thin", color="D0D7E2"))
 
 
+def _rango_legible(datos: FraudHistoryResponse) -> str:
+    """
+    El tramo que cubre el reporte, escrito para una persona.
+
+    Un rango de un solo día se dice como un día y no como «del 8 al 8»: el
+    caso de mirar una fecha concreta es justo para el que existen las dos
+    fechas, y verlo repetido parece un error del programa.
+    """
+    inicio = datos.range_start.strftime("%d/%m/%Y")
+    fin = datos.range_end.strftime("%d/%m/%Y")
+    return inicio if inicio == fin else f"del {inicio} al {fin}"
+
+
 def _encabezado(hoja, fila: int, titulos: list[str]) -> None:
     for columna, titulo in enumerate(titulos, start=1):
         celda = hoja.cell(row=fila, column=columna, value=titulo)
@@ -81,17 +94,29 @@ def _hoja_portada(libro: Workbook, datos: FraudHistoryResponse) -> None:
     hoja["A2"].font = Font(size=10, color="5A6878")
 
     escala, unidad = ESCALAS.get(datos.granularity, ("—", "períodos"))
-    hoja["A4"] = "Escala del reporte"
-    hoja["B4"] = escala
-    hoja["A5"] = "Períodos incluidos"
-    hoja["B5"] = f"{len(datos.periods)} {unidad}"
-    hoja["A6"] = "Generado el"
-    hoja["B6"] = datetime.now().strftime("%d/%m/%Y %H:%M")
-    for fila in range(4, 7):
-        hoja.cell(row=fila, column=1).font = Font(bold=True, size=10)
+
+    # La ficha se numera con un cursor y no con celdas escritas a mano ("A4",
+    # "A5"…): añadir una línea aquí obligaba a correr a mano las veinte
+    # posiciones de abajo, y basta olvidar una para que el reporte salga
+    # pisándose.
+    fila = 4
+    for etiqueta, valor in (
+        ("Escala del reporte", escala),
+        # El rango va primero de todo lo demás porque es lo que responde la
+        # pregunta con la que alguien abre este archivo: ¿de qué fechas son
+        # estos números? Antes solo constaba «24 meses», que no dice cuáles.
+        ("Rango medido", _rango_legible(datos)),
+        ("Períodos incluidos", f"{len(datos.periods)} {unidad}"),
+        ("Generado el", datetime.now().strftime("%d/%m/%Y %H:%M")),
+    ):
+        hoja.cell(row=fila, column=1, value=etiqueta).font = Font(bold=True, size=10)
+        hoja.cell(row=fila, column=2, value=valor)
+        fila += 1
 
     # ── Los tres indicadores ────────────────────────────────────────────────
-    _encabezado(hoja, 8, ["Indicador", "Qué mide", "Valor", "Dirección deseada"])
+    fila += 1
+    encabezado_indicadores = fila
+    _encabezado(hoja, fila, ["Indicador", "Qué mide", "Valor", "Dirección deseada"])
 
     tasa_deteccion = (
         f"{datos.detection_rate * 100:.1f} %" if datos.detection_rate is not None else "sin datos"
@@ -102,7 +127,7 @@ def _hoja_portada(libro: Workbook, datos: FraudHistoryResponse) -> None:
     valores = [tasa_deteccion, tasa_no_deteccion, f"{datos.average_detection_time_ms:.1f} ms"]
 
     for i, ((nombre, descripcion, direccion), valor) in enumerate(zip(INDICADORES, valores)):
-        fila = 9 + i
+        fila = encabezado_indicadores + 1 + i
         hoja.cell(row=fila, column=1, value=nombre).font = Font(bold=True, size=10)
         hoja.cell(row=fila, column=2, value=descripcion).alignment = Alignment(wrap_text=True)
         celda = hoja.cell(row=fila, column=3, value=valor)
@@ -114,8 +139,10 @@ def _hoja_portada(libro: Workbook, datos: FraudHistoryResponse) -> None:
         hoja.row_dimensions[fila].height = 30
 
     # ── Sobre qué se midieron ───────────────────────────────────────────────
-    hoja["A14"] = "Base de cálculo"
-    hoja["A14"].font = Font(bold=True, size=11, color=_AZUL)
+    fila = encabezado_indicadores + len(INDICADORES) + 2
+    celda = hoja.cell(row=fila, column=1, value="Base de cálculo")
+    celda.font = Font(bold=True, size=11, color=_AZUL)
+    primera_de_la_base = fila + 1
 
     base = [
         ("Compras evaluadas", datos.total_evaluations),
@@ -132,13 +159,13 @@ def _hoja_portada(libro: Workbook, datos: FraudHistoryResponse) -> None:
         ),
     ]
     for i, (etiqueta, valor) in enumerate(base):
-        fila = 15 + i
+        fila = primera_de_la_base + i
         hoja.cell(row=fila, column=1, value=etiqueta).font = Font(size=10)
         hoja.cell(row=fila, column=2, value=valor).font = Font(bold=True, size=10)
 
     # La advertencia va en el archivo y no solo en la pantalla, porque el
     # archivo es lo que acaba pegado en el documento de la tesis.
-    fila = 15 + len(base) + 1
+    fila = primera_de_la_base + len(base) + 1
     hoja.cell(
         row=fila,
         column=1,

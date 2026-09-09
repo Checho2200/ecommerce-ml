@@ -229,6 +229,12 @@ def _a_respuesta_de_historial(
 
     return FraudHistoryResponse(
         granularity=granularidad,
+        # El rango se deduce de la serie y no se arrastra desde los parámetros:
+        # el servicio ya redondeó las fechas al período que las contiene y
+        # recortó lo que caía en el futuro, así que esto es lo que de verdad
+        # cubren los números de abajo.
+        range_start=serie[0].inicio,
+        range_end=fraud_metrics_service.fin_del_periodo(serie[-1].inicio, granularidad),
         periods=[
             FraudHistoryPeriod(
                 period_start=p.inicio,
@@ -272,6 +278,12 @@ def _a_respuesta_de_historial(
 async def get_fraud_history(
     granularity: str = Query("day", pattern="^(day|week|month|bimester|quarter|semester|year)$"),
     periods: int | None = Query(None, ge=1, le=366),
+    start_date: date | None = Query(
+        None, description="Primer día del rango (AAAA-MM-DD). Sin él, la ventana termina hoy."
+    ),
+    end_date: date | None = Query(
+        None, description="Último día del rango (AAAA-MM-DD). Sin él, hoy."
+    ),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
@@ -283,11 +295,19 @@ async def get_fraud_history(
     dispararon la semana pasada, y esa es justo la lectura que sirve para
     decidir si hay que revisar el umbral.
 
+    `start_date` y `end_date` acotan el tramo de calendario. Sirven para
+    preguntar por un día concreto —el de una demostración, el del pico de
+    bloqueos— sin tener que contar períodos hacia atrás desde hoy. Las dos se
+    redondean al período que las contiene, y la respuesta trae en
+    `range_start` / `range_end` el tramo que de verdad cubre.
+
     Devuelve la ventana completa, incluidos los períodos sin evaluaciones: una
     gráfica a la que le faltan los días tranquilos une dos picos con una recta
     y hace parecer sostenido lo que fue puntual.
     """
-    serie = await fraud_metrics_service.historial(db, granularity, periods)
+    serie = await fraud_metrics_service.historial(
+        db, granularity, periods, desde=start_date, hasta=end_date
+    )
     return _a_respuesta_de_historial(granularity, serie)
 
 
@@ -295,22 +315,34 @@ async def get_fraud_history(
 async def download_fraud_report(
     granularity: str = Query("month", pattern="^(day|week|month|bimester|quarter|semester|year)$"),
     periods: int | None = Query(None, ge=1, le=366),
+    start_date: date | None = Query(None, description="Primer día del rango (AAAA-MM-DD)."),
+    end_date: date | None = Query(None, description="Último día del rango (AAAA-MM-DD)."),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
     """
     El reporte de indicadores en un archivo de Excel (solo admin).
 
-    Devuelve exactamente los mismos números que `/history`: el archivo se arma
-    desde la misma función, así que no puede desviarse de lo que enseña el
-    panel. Un reporte que no cuadra con la pantalla de la que sale es peor que
-    no tener reporte.
+    Devuelve exactamente los mismos números que `/history`, con los mismos
+    parámetros —escala y rango de fechas incluidos—: el archivo se arma desde
+    la misma función, así que no puede desviarse de lo que enseña el panel. Un
+    reporte que no cuadra con la pantalla de la que sale es peor que no tener
+    reporte, y por eso el rango tiene que llegar hasta aquí en vez de quedarse
+    en la pantalla.
     """
-    serie = await fraud_metrics_service.historial(db, granularity, periods)
+    serie = await fraud_metrics_service.historial(
+        db, granularity, periods, desde=start_date, hasta=end_date
+    )
     datos = _a_respuesta_de_historial(granularity, serie)
     libro = reporte_de_indicadores.construir(datos)
 
-    nombre = f"indicadores-antifraude-{granularity}-{date.today().isoformat()}.xlsx"
+    # El rango va en el nombre del archivo y no la fecha de descarga: quien
+    # acumula varios reportes en una carpeta necesita distinguirlos por lo que
+    # miden, no por el día en que le dio al botón.
+    nombre = (
+        f"indicadores-antifraude-{granularity}"
+        f"-{datos.range_start.isoformat()}_a_{datos.range_end.isoformat()}.xlsx"
+    )
     return StreamingResponse(
         libro,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -1,17 +1,22 @@
 "use client";
 
 /**
- * Antifraude · Modelo e indicadores: cómo decide y qué tan bien le va.
+ * Antifraude · Modelo e indicadores: qué tan bien le va al modelo.
  *
  * Es la mitad analítica de lo que antes era una sola pantalla larguísima. Se
  * separó de la cola de revisión porque son dos usos distintos: la cola se
  * atiende hoy, y esto se consulta cuando alguien pregunta —un jurado, un
- * gerente— por qué el sistema bloqueó una compra o cuánto fraude está
- * frenando de verdad.
+ * gerente— cuánto fraude está frenando el sistema de verdad.
  *
- * El orden sigue el de esas preguntas: primero cómo llega el modelo a una
- * decisión, luego qué prometió medir, después cómo le está yendo, y al final
- * cómo ha ido en el tiempo.
+ * Quedan tres bloques y el orden sigue el de esas preguntas: por qué este
+ * algoritmo y no otro, qué indicadores prometió mover, y cómo han ido en el
+ * tiempo con su reporte descargable.
+ *
+ * La pantalla llegó a llevar también la aritmética de una decisión concreta
+ * —el reparto SHAP de un pedido— y una tabla de precisión y exhaustividad.
+ * Se retiraron a pedido: explicaban el método en vez de medirlo, que es para
+ * lo que se abre esta pantalla. La explicación de cada pedido sigue donde se
+ * necesita, guardada con su evaluación y a la vista en la cola de revisión.
  */
 
 import { useEffect, useState } from "react";
@@ -26,69 +31,57 @@ import {
 } from "@mui/material";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 
-import ComoDecideElModelo from "@/components/admin/ComoDecideElModelo";
 import PorQueLightGBM from "@/components/admin/PorQueLightGBM";
-import MetricasDelModelo from "@/components/admin/MetricasDelModelo";
 import TarjetasDeIndicadores from "@/components/admin/TarjetasDeIndicadores";
 import HistorialAntifraude, { type Granularidad } from "@/components/admin/HistorialAntifraude";
 import {
   api,
   type FraudHistoryResponse,
-  type FraudLogResponse,
-  type FraudMetricsResponse,
   type FraudModelInfo,
   type ModelComparisonResponse,
 } from "@/lib/api";
 
 export default function AdminFraudModelPage() {
-  const [metricas, setMetricas] = useState<FraudMetricsResponse | null>(null);
   const [modelo, setModelo] = useState<FraudModelInfo | null>(null);
-  // Una evaluación reciente con la que enseñar la aritmética de una decisión.
-  // Se prefiere una que el modelo no haya aprobado: en un pedido bloqueado los
-  // aportes son grandes y el reparto se lee de un vistazo, mientras que en uno
-  // aprobado son todos pequeños y negativos.
-  const [ejemplo, setEjemplo] = useState<FraudLogResponse | null>(null);
   const [comparacion, setComparacion] = useState<ModelComparisonResponse | null>(null);
   const [granularidad, setGranularidad] = useState<Granularidad>("month");
+  // El tramo de calendario, en AAAA-MM-DD. Vacío es «la ventana que termina
+  // hoy», que es con lo que abre la pantalla.
+  const [rango, setRango] = useState({ desde: "", hasta: "" });
   const [cargando, setCargando] = useState(true);
   const [aviso, setAviso] = useState<{ texto: string; tipo: "success" | "error" } | null>(null);
   const [exportando, setExportando] = useState(false);
 
-  // El historial se guarda junto a la escala con la que se pidió. Así "está
+  // Qué se está pidiendo, en una sola cadena. Sirve para saber si lo que hay
+  // en pantalla corresponde a lo que el usuario acaba de elegir; con la escala
+  // sola no bastaba desde que además se puede acotar por fechas.
+  const consulta = `${granularidad}|${rango.desde}|${rango.hasta}`;
+
+  // El historial se guarda junto a la consulta con la que se pidió. Así "está
   // cargando" es algo que se deduce —lo que hay en pantalla todavía no es de
-  // la escala elegida— en lugar de un estado aparte que hay que encender a
+  // la consulta elegida— en lugar de un estado aparte que hay que encender a
   // mano dentro del efecto, que es lo que encadena un render de más en cada
-  // cambio de escala.
+  // cambio.
   const [historial, setHistorial] = useState<{
     datos: FraudHistoryResponse | null;
-    escala: Granularidad | null;
-    fallo: boolean;
-  }>({ datos: null, escala: null, fallo: false });
+    consulta: string | null;
+    fallo: string | null;
+  }>({ datos: null, consulta: null, fallo: null });
 
-  const cargandoHistorial = historial.escala !== granularidad;
+  const cargandoHistorial = historial.consulta !== consulta;
 
   const avisar = (texto: string, tipo: "success" | "error" = "success") =>
     setAviso({ texto, tipo });
 
-  // Las métricas y la ficha del modelo no dependen de la escala elegida; el
+  // La ficha del modelo y la comparación no dependen de la escala elegida; el
   // historial sí. Separarlos evita volver a pedirlo todo al cambiar de escala.
   useEffect(() => {
     let vigente = true;
-    Promise.all([
-      api.fraud.getMetrics(),
-      api.fraud.model(),
-      api.fraud.getLogs(),
-      api.fraud.comparison(),
-    ])
-      .then(([m, info, registros, tabla]) => {
+    Promise.all([api.fraud.model(), api.fraud.comparison()])
+      .then(([info, tabla]) => {
         if (!vigente) return;
-        setMetricas(m);
         setModelo(info);
         setComparacion(tabla);
-        const conCuenta = registros.filter((r) => r.contributions);
-        setEjemplo(
-          conCuenta.find((r) => r.decision !== "APPROVED") ?? conCuenta[0] ?? null
-        );
       })
       .catch(() => {
         if (vigente) avisar("No se pudieron cargar los datos del modelo", "error");
@@ -104,31 +97,54 @@ export default function AdminFraudModelPage() {
   useEffect(() => {
     let vigente = true;
     api.fraud
-      .history({ granularity: granularidad })
-      .then((datos) => {
-        if (vigente) setHistorial({ datos, escala: granularidad, fallo: false });
+      .history({
+        granularity: granularidad,
+        startDate: rango.desde || undefined,
+        endDate: rango.hasta || undefined,
       })
-      .catch(() => {
-        // La escala se anota igual: si no, la pantalla se quedaría cargando
-        // para siempre después de un fallo.
-        if (vigente) setHistorial({ datos: null, escala: granularidad, fallo: true });
+      .then((datos) => {
+        if (vigente) setHistorial({ datos, consulta, fallo: null });
+      })
+      .catch((error: unknown) => {
+        // La consulta se anota igual: si no, la pantalla se quedaría cargando
+        // para siempre después de un fallo. Y se guarda el mensaje del
+        // servidor en vez de uno genérico: cuando el rango pedido no cabe en
+        // la escala, ese mensaje dice exactamente qué hacer.
+        if (vigente)
+          setHistorial({
+            datos: null,
+            consulta,
+            fallo:
+              error instanceof Error
+                ? error.message
+                : "No se pudo cargar el historial.",
+          });
       });
     return () => {
       vigente = false;
     };
-  }, [granularidad]);
+    // `consulta` resume la escala y las dos fechas, que es todo lo que cambia
+    // la petición.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consulta]);
 
   /**
    * Descarga el reporte de indicadores.
    *
    * Lo arma el backend a partir de los mismos números que se ven en pantalla,
-   * y en la escala que esté seleccionada: el archivo y el panel no pueden
-   * decir cosas distintas.
+   * con la escala y el rango que estén seleccionados: el archivo y el panel no
+   * pueden decir cosas distintas. Mandar aquí solo la escala, como se hacía
+   * antes de que hubiera fechas, haría que quien exporta mirando un día
+   * concreto se llevara los últimos doce meses sin enterarse.
    */
   const exportar = async () => {
     setExportando(true);
     try {
-      await api.fraud.downloadReport({ granularity: granularidad });
+      await api.fraud.downloadReport({
+        granularity: granularidad,
+        startDate: rango.desde || undefined,
+        endDate: rango.hasta || undefined,
+      });
       avisar("Reporte descargado");
     } catch (error: unknown) {
       avisar(
@@ -169,10 +185,8 @@ export default function AdminFraudModelPage() {
       <Stack spacing={3}>
         <PorQueLightGBM datos={comparacion} cargando={cargando} />
 
-        <ComoDecideElModelo modelo={modelo} ejemplo={ejemplo} cargando={cargando} />
-
-        {/* Los tres indicadores de la tesis van antes que el detalle: son lo
-            que el sistema promete mover, y el resto explica cómo lo consigue. */}
+        {/* Los tres indicadores de la tesis: son lo que el sistema promete
+            mover, y el historial de abajo enseña cómo se han movido. */}
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5 }}>
             Indicadores del sistema
@@ -190,11 +204,9 @@ export default function AdminFraudModelPage() {
           />
         </Box>
 
-        <MetricasDelModelo metricas={metricas} cargando={cargando} />
-
         {historial.fallo && (
           <Alert severity="error" sx={{ borderRadius: 2 }}>
-            No se pudo cargar el historial. Vuelve a elegir una escala para reintentarlo.
+            {historial.fallo}
           </Alert>
         )}
 
@@ -203,6 +215,9 @@ export default function AdminFraudModelPage() {
           cargando={cargandoHistorial}
           granularidad={granularidad}
           onGranularidad={setGranularidad}
+          desde={rango.desde}
+          hasta={rango.hasta}
+          onRango={(desde, hasta) => setRango({ desde, hasta })}
           onExportar={exportar}
           exportando={exportando}
         />

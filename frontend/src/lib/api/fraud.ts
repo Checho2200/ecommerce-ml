@@ -10,6 +10,32 @@ import type {
   FraudModelInfo,
 } from "./tipos";
 
+/** Escala y tramo de calendario con los que se consulta el historial. */
+export interface RangoDelHistorial {
+  granularity?: EscalaDelHistorial;
+  // Fechas en ISO (AAAA-MM-DD), tal como las devuelve un <input type="date">.
+  // Vacías significa «la ventana que termina hoy», que es el comportamiento de
+  // siempre.
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * Arma la cadena de consulta del historial.
+ *
+ * Está en una función y no repetida en cada método porque `history` y
+ * `downloadReport` tienen que mandar exactamente los mismos parámetros: el
+ * archivo que se descarga no puede cubrir un tramo distinto del que se está
+ * viendo en pantalla.
+ */
+function consultaDelHistorial(params?: RangoDelHistorial): URLSearchParams {
+  const qs = new URLSearchParams();
+  if (params?.granularity) qs.set("granularity", params.granularity);
+  if (params?.startDate) qs.set("start_date", params.startDate);
+  if (params?.endDate) qs.set("end_date", params.endDate);
+  return qs;
+}
+
 export const fraud = {
   // Por qué LightGBM y no otro clasificador. Sale del informe que escribe el
   // entrenamiento, así que no puede desviarse del modelo que está sirviendo.
@@ -23,12 +49,8 @@ export const fraud = {
   // Las mismas decisiones repartidas en el tiempo. `getMetrics` dice cómo va
   // el modelo; esto dice cómo ha ido, que es lo que distingue una tendencia de
   // un mal día.
-  async history(params?: {
-    granularity?: EscalaDelHistorial;
-    periods?: number;
-  }) {
-    const qs = new URLSearchParams();
-    if (params?.granularity) qs.set("granularity", params.granularity);
+  async history(params?: RangoDelHistorial & { periods?: number }) {
+    const qs = consultaDelHistorial(params);
     if (params?.periods) qs.set("periods", String(params.periods));
     const cadena = qs.toString();
     return request<FraudHistoryResponse>(`/fraud/history${cadena ? `?${cadena}` : ""}`);
@@ -41,11 +63,11 @@ export const fraud = {
     return request<FraudModelInfo>("/fraud/model");
   },
 
-  // El mismo reporte que enseña el panel, en un archivo de Excel.
-  async downloadReport(params?: { granularity?: EscalaDelHistorial }) {
-    const qs = new URLSearchParams();
-    if (params?.granularity) qs.set("granularity", params.granularity);
-    const cadena = qs.toString();
+  // El mismo reporte que enseña el panel, en un archivo de Excel. Recibe los
+  // mismos parámetros que `history` a propósito: si el rango se quedara en la
+  // pantalla, quien exporta mirando un día concreto se llevaría otra cosa.
+  async downloadReport(params?: RangoDelHistorial) {
+    const cadena = consultaDelHistorial(params).toString();
     return descargar(
       `/fraud/report.xlsx${cadena ? `?${cadena}` : ""}`,
       "indicadores-antifraude.xlsx"

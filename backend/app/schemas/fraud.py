@@ -129,6 +129,12 @@ class FraudHistoryResponse(BaseModel):
     """El historial completo, más el total de la ventana consultada."""
 
     granularity: str
+    # El tramo de calendario que cubren estos números, de verdad y no el que se
+    # pidió: una fecha final en el futuro se recorta al período en curso, y las
+    # dos se redondean al período que las contiene. Sin decirlo, nadie que lea
+    # el panel o el Excel puede saber sobre qué días está mirando un 83 %.
+    range_start: date
+    range_end: date
     periods: list[FraudHistoryPeriod]
     total_evaluations: int
     total_approved: int

@@ -193,6 +193,12 @@ export interface FraudHistoryPeriod {
 
 export interface FraudHistoryResponse {
   granularity: EscalaDelHistorial;
+  // El tramo que estos números cubren de verdad, en ISO (AAAA-MM-DD). No es
+  // necesariamente el que se pidió: las fechas se redondean al período que las
+  // contiene y una final futura se recorta a hoy. Se enseña en pantalla para
+  // que nadie tenga que adivinar sobre qué días está leyendo un porcentaje.
+  range_start: string;
+  range_end: string;
   periods: FraudHistoryPeriod[];
   total_evaluations: number;
   total_approved: number;

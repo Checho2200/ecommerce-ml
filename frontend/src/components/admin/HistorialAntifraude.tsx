@@ -13,6 +13,13 @@
  * revisión" y "bloqueada", con los montos, está en la tabla de abajo. Y la
  * tabla no es un extra: un color por sí solo nunca debe ser la única forma de
  * leer un dato.
+ *
+ * La escala sola no alcanzaba. Respondía "los últimos treinta días" pero no
+ * "el 14 de agosto" ni "el trimestre que voy a citar", que es justo lo que se
+ * pregunta cuando alguien tiene delante una fecha concreta. De ahí los dos
+ * calendarios: acotan el tramo, y el mismo tramo se lleva el Excel, porque un
+ * archivo que cubre otras fechas que la pantalla de la que salió no sirve como
+ * evidencia de nada.
  */
 
 import { useState } from "react";
@@ -34,6 +41,7 @@ import {
   useTheme,
 } from "@mui/material";
 import DownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import type {
   EscalaDelHistorial,
   FraudHistoryPeriod,
@@ -70,6 +78,35 @@ const COLORES = {
 
 const soles = (monto: number) =>
   `S/ ${monto.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Hoy según el reloj de la tienda, en AAAA-MM-DD.
+ *
+ * Se pide en la zona de Lima y no la del navegador porque es el tope de los
+ * dos calendarios: un administrador que abra el panel desde otro huso vería
+ * habilitado un día que para la tienda todavía no ha empezado, elegiría ese
+ * rango y recibiría un período vacío sin entender por qué. El formato "en-CA"
+ * es el atajo estándar para que `toLocaleDateString` devuelva ISO.
+ */
+function hoyEnLaTienda(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+}
+
+/**
+ * Una fecha ISO escrita para leer.
+ *
+ * Se parte a mano en vez de pasarla por `new Date(cadena)`, por lo mismo que
+ * `etiquetaDePeriodo`: ese constructor la interpreta como UTC y en Perú la
+ * mostraría corrida un día hacia atrás.
+ */
+function fechaLegible(iso: string): string {
+  const [anio, mes, dia] = iso.split("-").map(Number);
+  return new Date(anio, mes - 1, dia).toLocaleDateString("es-PE", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
 
 /**
  * Cómo se nombra un período según la escala que se esté mirando.
@@ -296,6 +333,9 @@ export default function HistorialAntifraude({
   cargando,
   granularidad,
   onGranularidad,
+  desde,
+  hasta,
+  onRango,
   onExportar,
   exportando,
 }: {
@@ -303,12 +343,19 @@ export default function HistorialAntifraude({
   cargando: boolean;
   granularidad: Granularidad;
   onGranularidad: (g: Granularidad) => void;
+  // El rango elegido, en AAAA-MM-DD. Cadenas vacías significan "sin acotar",
+  // que es la ventana que termina hoy.
+  desde: string;
+  hasta: string;
+  onRango: (desde: string, hasta: string) => void;
   onExportar: () => void;
   exportando: boolean;
 }) {
   const tema = useTheme();
   const color = tema.palette.mode === "dark" ? COLORES.oscuro : COLORES.claro;
   const periodos = datos?.periods ?? [];
+  const hoy = hoyEnLaTienda();
+  const hayRango = Boolean(desde || hasta);
 
   // La tabla solo repite los períodos con algo dentro: una fila de ceros por
   // cada día tranquilo enterraría a los que sí tienen datos. El gráfico sí los
@@ -323,9 +370,9 @@ export default function HistorialAntifraude({
     <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 3 }}>
       <CardContent sx={{ p: 3 }}>
         <Stack
-          direction={{ xs: "column", sm: "row" }}
+          direction={{ xs: "column", lg: "row" }}
           spacing={2}
-          sx={{ justifyContent: "space-between", alignItems: { sm: "center" }, mb: 1.5 }}
+          sx={{ justifyContent: "space-between", alignItems: { lg: "flex-end" }, mb: 1.5 }}
         >
           <Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
@@ -336,7 +383,47 @@ export default function HistorialAntifraude({
             </Typography>
           </Box>
 
-          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+          {/* Los controles envuelven en varias líneas en vez de encogerse: en
+              un teléfono, cuatro campos en una fila dejan cada uno demasiado
+              estrecho para leer la fecha que tiene dentro. */}
+          <Stack
+            direction="row"
+            sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5 }}
+          >
+            {/* Los dos calendarios son <input type="date">: abren el selector
+                nativo del sistema —también en el teléfono— y devuelven la
+                fecha ya en AAAA-MM-DD, que es como la espera la API. Traer una
+                librería de calendarios para esto sería sumar una dependencia
+                entera al proyecto por dos campos. */}
+            <TextField
+              type="date"
+              size="small"
+              label="Desde"
+              value={desde}
+              onChange={(e) => onRango(e.target.value, hasta)}
+              // Sin esto la etiqueta se monta encima de la fecha mientras el
+              // campo está vacío: un input de fecha nunca se ve vacío del todo.
+              slotProps={{
+                inputLabel: { shrink: true },
+                // No se puede empezar después de donde se termina, ni elegir
+                // un día que para la tienda todavía no ha llegado.
+                htmlInput: { max: hasta || hoy },
+              }}
+              sx={{ minWidth: 155 }}
+            />
+            <TextField
+              type="date"
+              size="small"
+              label="Hasta"
+              value={hasta}
+              onChange={(e) => onRango(desde, e.target.value)}
+              slotProps={{
+                inputLabel: { shrink: true },
+                htmlInput: { min: desde || undefined, max: hoy },
+              }}
+              sx={{ minWidth: 155 }}
+            />
+
             {/* Una lista y no una fila de botones: con siete escalas, los
                 botones se salen de la tarjeta en un teléfono. */}
             <TextField
@@ -345,7 +432,7 @@ export default function HistorialAntifraude({
               label="Escala"
               value={granularidad}
               onChange={(e) => onGranularidad(e.target.value as Granularidad)}
-              sx={{ minWidth: 150 }}
+              sx={{ minWidth: 140 }}
             >
               {OPCIONES.map((o) => (
                 <MenuItem key={o.valor} value={o.valor} sx={{ fontWeight: 600 }}>
@@ -354,8 +441,8 @@ export default function HistorialAntifraude({
               ))}
             </TextField>
 
-            {/* El archivo lo arma el backend con los mismos números que se ven
-                en pantalla, así que no puede desviarse de ellos. */}
+            {/* El archivo lo arma el backend con los mismos números y el mismo
+                rango que se ven en pantalla, así que no puede desviarse. */}
             <Button
               size="small"
               variant="outlined"
@@ -367,6 +454,34 @@ export default function HistorialAntifraude({
               {exportando ? "Generando…" : "Exportar a Excel"}
             </Button>
           </Stack>
+        </Stack>
+
+        {/* Qué tramo se está mirando de verdad. No siempre es el que se pidió:
+            las fechas se redondean al período que las contiene —del 14 al 20 de
+            agosto, en escala mensual, es agosto entero— y una fecha final
+            futura se recorta a hoy. Decirlo evita la lectura equivocada de un
+            porcentaje, que es el error caro en una pantalla como ésta. */}
+        <Stack
+          direction="row"
+          sx={{ alignItems: "center", flexWrap: "wrap", gap: 1, mb: 2 }}
+        >
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+            {datos
+              ? datos.range_start === datos.range_end
+                ? `Mostrando ${fechaLegible(datos.range_start)}`
+                : `Mostrando del ${fechaLegible(datos.range_start)} al ${fechaLegible(datos.range_end)}`
+              : " "}
+          </Typography>
+          {hayRango && (
+            <Button
+              size="small"
+              startIcon={<RestartAltIcon />}
+              onClick={() => onRango("", "")}
+              sx={{ textTransform: "none", fontWeight: 700, py: 0, minWidth: 0 }}
+            >
+              Quitar el rango
+            </Button>
+          )}
         </Stack>
 
         {/* Con dos series la leyenda va siempre: el color no puede ser lo único

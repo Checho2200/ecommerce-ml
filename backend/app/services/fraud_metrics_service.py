@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fraud_log import FraudLog
 from app.models.order import Order
+from app.services.errors import OperacionNoPermitida
 
 # Proporción del precio que es ganancia. Sirve para poner en soles lo que cuesta
 # bloquear una compra legítima: no se pierde el pedido entero, se pierde lo que
@@ -297,14 +298,18 @@ def _ahora() -> datetime:
     return datetime.now(ZONA_DE_LA_TIENDA)
 
 
-def _inicio_del_periodo(momento: datetime, granularidad: str) -> date:
+def _periodo_de(dia: date, granularidad: str) -> date:
     """
-    Lleva un instante al comienzo del período que lo contiene.
+    Lleva un día al comienzo del período que lo contiene.
 
     El día para "day", el lunes para "week", el 1 de enero para "year" y, para
     las escalas de meses, el primer mes de su bloque contado desde enero.
+
+    Trabaja sobre un `date` y no sobre un instante porque las fechas que elige
+    una persona en el calendario del panel ya vienen sin hora: convertirlas a
+    medianoche solo para volver a quitarles la hora aquí abre la puerta a que
+    la conversión de zona las corra un día.
     """
-    dia = momento.astimezone(ZONA_DE_LA_TIENDA).date()
     if granularidad == "week":
         return dia - timedelta(days=dia.weekday())
     if granularidad == "year":
@@ -316,6 +321,34 @@ def _inicio_del_periodo(momento: datetime, granularidad: str) -> date:
         return dia.replace(month=primer_mes, day=1)
 
     return dia
+
+
+def _inicio_del_periodo(momento: datetime, granularidad: str) -> date:
+    """El comienzo del período que contiene ese instante, en hora de la tienda."""
+    return _periodo_de(momento.astimezone(ZONA_DE_LA_TIENDA).date(), granularidad)
+
+
+def fin_del_periodo(inicio: date, granularidad: str) -> date:
+    """
+    El último día que todavía cae dentro del período que empieza en `inicio`.
+
+    Hace falta para dos cosas: poner el límite superior de la consulta, y poder
+    decir en la pantalla y en el reporte «del 1 al 30 de junio» en vez de «el
+    período que empieza el 1 de junio», que es lo mismo pero no se entiende.
+    """
+    if granularidad == "week":
+        return inicio + timedelta(days=6)
+    if granularidad == "year":
+        return inicio.replace(month=12, day=31)
+
+    meses = MESES_POR_PERIODO.get(granularidad)
+    if meses:
+        # Se salta al primer día del período siguiente y se retrocede uno: así
+        # los meses de 28, 30 y 31 días salen bien sin casos especiales.
+        absoluto = (inicio.year * 12 + inicio.month - 1) + meses
+        return date(absoluto // 12, absoluto % 12 + 1, 1) - timedelta(days=1)
+
+    return inicio
 
 
 def _periodo_anterior(inicio: date, granularidad: str) -> date:
@@ -335,14 +368,93 @@ def _periodo_anterior(inicio: date, granularidad: str) -> date:
     return inicio - timedelta(days=1)
 
 
+def _cuantos_periodos(primero: date, ultimo: date, granularidad: str) -> int:
+    """
+    Cuántos períodos hay entre dos comienzos, contando los dos extremos.
+
+    Se cuenta retrocediendo con `_periodo_anterior` en lugar de dividir la
+    diferencia en días: un bimestre no son «61 días» y la división se
+    equivocaría cada vez que el rango cruzara febrero. El bucle se corta en
+    cuanto pasa del máximo, para que pedir «desde el año 1900» no cueste un
+    millón de vueltas antes de rechazarse.
+    """
+    cuantos = 1
+    cursor = ultimo
+    while cursor > primero and cuantos <= PERIODOS_MAXIMOS:
+        cursor = _periodo_anterior(cursor, granularidad)
+        cuantos += 1
+    return cuantos
+
+
+def _ventana(
+    granularidad: str,
+    periodos: int | None,
+    desde: date | None,
+    hasta: date | None,
+) -> tuple[date, date, int]:
+    """
+    Decide qué tramo de calendario se va a mirar: (primero, último, cuántos).
+
+    Sin fechas se mira lo de siempre: los últimos N períodos hasta hoy. Con
+    ellas manda el calendario, que es lo que hace falta para responder «cómo
+    fue el 14 de agosto» o «cómo fue el mes pasado» sin contar períodos hacia
+    atrás a mano.
+
+    Las fechas se redondean al período que las contiene, no se parten por la
+    mitad: si alguien pide del 14 al 20 de agosto en escala mensual, la
+    respuesta es agosto entero. Devolver un trozo de mes rotulado «agosto»
+    daría un porcentaje que no es el de agosto.
+    """
+    if desde and hasta and desde > hasta:
+        raise OperacionNoPermitida(
+            "La fecha inicial del rango no puede ser posterior a la final."
+        )
+
+    hoy = _inicio_del_periodo(_ahora(), granularidad)
+
+    # Un rango que se mete en el futuro se recorta al período en curso. No hay
+    # compras por venir, y dibujar meses vacíos por delante haría parecer que
+    # la tienda dejó de vender.
+    ultimo = min(_periodo_de(hasta, granularidad), hoy) if hasta else hoy
+
+    if desde is None:
+        cuantos = periodos or PERIODOS_POR_DEFECTO[granularidad]
+        cuantos = max(1, min(cuantos, PERIODOS_MAXIMOS))
+        # Se retrocede contando, no restando días, para que los meses de 28 y
+        # de 31 días cuenten lo mismo.
+        primero = ultimo
+        for _ in range(cuantos - 1):
+            primero = _periodo_anterior(primero, granularidad)
+        return primero, ultimo, cuantos
+
+    primero = min(_periodo_de(desde, granularidad), ultimo)
+    cuantos = _cuantos_periodos(primero, ultimo, granularidad)
+    if cuantos > PERIODOS_MAXIMOS:
+        # Se dice en vez de recortar en silencio: un reporte que dice cubrir
+        # cinco años y trae los últimos 366 días es peor que un error.
+        raise OperacionNoPermitida(
+            f"El rango pedido no cabe en un solo reporte: son más de "
+            f"{PERIODOS_MAXIMOS} períodos en esta escala. Acorta el rango o "
+            f"elige una escala más amplia."
+        )
+    return primero, ultimo, cuantos
+
+
 async def historial(
     db: AsyncSession,
     granularidad: str = "day",
     periodos: int | None = None,
+    desde: date | None = None,
+    hasta: date | None = None,
 ) -> list[PeriodoDelHistorial]:
     """
     Las decisiones del modelo agrupadas por día, semana, mes o año, de la más
     antigua a la más reciente.
+
+    Con `desde` y `hasta` se pide un tramo concreto del calendario —un día
+    suelto, la semana pasada, el trimestre que se va a citar en la tesis— en
+    lugar de la ventana que termina hoy. Ver `_ventana` para cómo se combinan
+    con `periodos`.
 
     El agrupamiento se hace en Python y no con `date_trunc` porque la tienda
     corre sobre PostgreSQL en producción y sobre SQLite en desarrollo, y cada
@@ -356,16 +468,8 @@ async def historial(
     """
     if granularidad not in GRANULARIDADES:
         granularidad = "day"
-    cuantos = periodos or PERIODOS_POR_DEFECTO[granularidad]
-    cuantos = max(1, min(cuantos, PERIODOS_MAXIMOS))
 
-    ultimo = _inicio_del_periodo(_ahora(), granularidad)
-
-    # El primer período de la ventana: se retrocede contando, no restando días,
-    # para que los meses de 28 y de 31 días cuenten lo mismo.
-    primero = ultimo
-    for _ in range(cuantos - 1):
-        primero = _periodo_anterior(primero, granularidad)
+    primero, ultimo, cuantos = _ventana(granularidad, periodos, desde, hasta)
 
     filas = (
         await db.execute(
@@ -379,11 +483,24 @@ async def historial(
                 Order.total_amount,
             )
             .join(Order, Order.id == FraudLog.order_id)
-            # El filtro sale en UTC porque así están guardadas las fechas; el
-            # límite es la medianoche peruana del primer período.
+            # Los dos límites son medianoches peruanas: la del primer día de
+            # la ventana y la del día siguiente al último, que se deja fuera.
+            # El tope superior no estaba antes porque la ventana siempre
+            # terminaba hoy y no había nada más reciente que traer; con un
+            # rango elegido a mano sí lo hay, y sin este filtro la consulta se
+            # traería toda la vida posterior de la tienda para descartarla
+            # después en Python.
             .where(
                 FraudLog.evaluated_at
                 >= datetime.combine(primero, time.min, tzinfo=ZONA_DE_LA_TIENDA)
+            )
+            .where(
+                FraudLog.evaluated_at
+                < datetime.combine(
+                    fin_del_periodo(ultimo, granularidad) + timedelta(days=1),
+                    time.min,
+                    tzinfo=ZONA_DE_LA_TIENDA,
+                )
             )
         )
     ).all()
