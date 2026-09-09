@@ -185,10 +185,31 @@ async def _reservar_articulos(db: AsyncSession, datos: OrderCreate) -> Articulos
 
 
 async def _es_direccion_nueva(db: AsyncSession, user_id: str, direccion: str) -> int:
-    """1 si el cliente nunca antes envió a esa dirección. Es una de las variables del modelo."""
+    """
+    1 si el cliente nunca antes envió a esa dirección. Es una de las cuatro
+    variables del modelo.
+
+    Los pedidos que el propio antifraude rechazó no cuentan. Antes sí contaban
+    —la consulta miraba cualquier pedido, en cualquier estado— y eso abría un
+    agujero que se recorre solo: al intentar de nuevo la misma compra que
+    acababa de bloquearse, la dirección ya constaba «conocida», el puntaje
+    bajaba y la segunda vez pasaba. El sistema aprendía a confiar en una
+    dirección justo por el pedido que había decidido no fiarse de ella.
+
+    Se nota además al probar la tienda: dos intentos idénticos daban
+    decisiones distintas, que desde fuera parece que el modelo responde al
+    azar.
+
+    Un pedido en PENDING o en revisión sí cuenta: son compras que el sistema
+    dejó vivir. Lo que no puede contar es aquello que rechazó.
+    """
     resultado = await db.execute(
         select(Order)
-        .where(Order.user_id == user_id, Order.shipping_address == direccion)
+        .where(
+            Order.user_id == user_id,
+            Order.shipping_address == direccion,
+            Order.status != OrderStatus.REJECTED,
+        )
         .limit(1)
     )
     return 0 if resultado.scalar_one_or_none() else 1
