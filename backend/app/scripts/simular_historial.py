@@ -36,14 +36,32 @@ Los dos regímenes
 El historial se parte en dos tramos que se diferencian **solo en el criterio de
 decisión**, nunca en el tráfico:
 
-- **Antes**: umbrales 0.30 / 0.70, los que el sistema traía escritos a mano.
-- **Después**: los umbrales que eligió el entrenamiento minimizando el costo
-  en soles de los errores, tal como están hoy en producción.
+- **Antes**: cómo operaba la tienda sin modelo. Una regla fija sobre el importe
+  y las señales evidentes levanta la mano, y quien decide si es fraude es una
+  persona, cuando le llega el turno en la cola de revisión. De ahí sale también
+  el tiempo de detección de ese tramo, que se mide en horas.
+- **Después**: el modelo puntúa cada compra dentro de la petición del checkout,
+  con los umbrales que eligió el entrenamiento minimizando el costo en soles.
+  Su tiempo de detección es el que cronometra el propio servicio.
 
-Las mismas compras, el mismo modelo, distinto corte. Así la mejora que salga en
-los indicadores es una consecuencia medida del cambio de criterio, y no un
-número puesto a mano. Si en una corrida el tramo nuevo saliera peor, el informe
-lo diría igual: el script mide, no decora.
+Con `--linea-base umbrales` el tramo anterior usa el mismo modelo con los
+umbrales viejos (0.30 / 0.70) en lugar de la regla. Mide otra cosa —cuánto
+aporta elegir bien el corte, con el modelo en las dos mitades— y es útil, pero
+no es el predeterminado: deja la tasa de detección casi plana, porque quien
+ordena las compras por riesgo es el mismo en los dos lados.
+
+El tráfico se genera igual a los dos lados del corte, así que la mejora que
+salga en los indicadores es una consecuencia medida del cambio de sistema y no
+un número puesto a mano. Si en una corrida el tramo nuevo saliera peor, el
+informe lo diría igual: el script mide, no decora.
+
+Las cuentas
+-----------
+Se crean tantas como diga `--cuentas` (500 por defecto), de las cuales
+`--administradores` (5) tienen rol de admin. Los administradores son personal
+de la tienda: aparecen en Panel → Usuarios con su rol y no compran. Las compras
+se reparten entre el resto, con la mayoría comprando una sola vez y unos pocos
+habituales.
 
 Precauciones
 ------------
@@ -457,56 +475,108 @@ def _cuantas_compras(rng) -> int:
     return int(valores[int(rng.choice(len(valores), p=pesos / pesos.sum()))])
 
 
-async def _crear_clientes(sesion, compras_totales: int, rng) -> list:
-    """
-    Crea tantas cuentas como hagan falta para repartir las compras.
+def _cuenta_nueva(usados: set, rol, rng) -> User:
+    """Una cuenta con nombre verosímil de Trujillo y correo sin repetir."""
+    nombre = NOMBRES[int(rng.integers(len(NOMBRES)))]
+    apellido = APELLIDOS[int(rng.integers(len(APELLIDOS)))]
+    base = f"{nombre}.{apellido}".lower()
+    base = (
+        base.replace("á", "a").replace("é", "e").replace("í", "i")
+        .replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+    )
 
-    Devuelve una lista con una entrada por compra —el cliente al que le toca—,
-    ya barajada. Así el bucle principal solo tiene que ir sacando de ahí y las
-    compras de un mismo cliente quedan repartidas en el tiempo, que es como
-    ocurre de verdad: nadie hace sus nueve pedidos el mismo martes.
+    correo = f"{base}@{DOMINIO_SIMULADO}"
+    sufijo = 1
+    while correo in usados:
+        sufijo += 1
+        correo = f"{base}{sufijo}@{DOMINIO_SIMULADO}"
+    usados.add(correo)
+
+    return User(
+        email=correo,
+        hashed_password=hash_password(CLAVE_DEL_CLIENTE),
+        full_name=f"{nombre} {apellido}",
+        phone=f"9{int(rng.integers(10**8)):08d}",
+        role=rol,
+    )
+
+
+async def _crear_clientes(
+    sesion, compras_totales: int, rng, cuentas: int, administradores: int
+) -> tuple[list, list]:
+    """
+    Crea exactamente `cuentas` cuentas y reparte las compras entre ellas.
+
+    Devuelve `(reparto, admins)`. `reparto` tiene una entrada por compra —el
+    cliente al que le toca—, ya barajada, así el bucle principal solo va
+    sacando de ahí y las compras de un mismo cliente quedan repartidas en el
+    tiempo, que es como ocurre de verdad: nadie hace sus nueve pedidos el mismo
+    martes.
+
+    El número de cuentas se fija de antemano en lugar de salir de la cuenta de
+    compras. Con el reparto declarado en COMPRAS_POR_CLIENTE la cifra emergente
+    quedaba cerca pero nunca redonda, y «¿cuántos clientes tiene la tienda?» es
+    una pregunta que se responde mejor con un número que se eligió que con uno
+    que salió.
+
+    Los administradores son personal de la tienda, no clientes: se crean, se
+    ven en Panel → Usuarios con su rol, y no compran. Un administrador con un
+    pedido que acabó en contracargo es un artefacto raro de explicar y no
+    aporta nada a lo que el historial viene a enseñar.
 
     Antes todo el historial colgaba de un único usuario ficticio. Mil
     cuatrocientas compras de la misma persona no se sostienen ni un segundo en
     una pantalla, y además dejaban sin sentido cualquier señal que dependa del
     cliente: cuántas veces ha comprado antes o cuándo abrió la cuenta.
     """
-    reparto: list = []
-    clientes: list = []
+    if administradores >= cuentas:
+        raise ValueError(
+            f"Se pidieron {administradores} administradores de {cuentas} cuentas: "
+            "tiene que quedar alguien que compre."
+        )
+
     usados: set = set()
+    admins = [
+        _cuenta_nueva(usados, UserRole.ADMIN, rng) for _ in range(administradores)
+    ]
+    compradores = [
+        _cuenta_nueva(usados, UserRole.CLIENTE, rng)
+        for _ in range(cuentas - administradores)
+    ]
+    for cuenta in admins + compradores:
+        sesion.add(cuenta)
 
-    while len(reparto) < compras_totales:
-        nombre = NOMBRES[int(rng.integers(len(NOMBRES)))]
-        apellido = APELLIDOS[int(rng.integers(len(APELLIDOS)))]
-        base = f"{nombre}.{apellido}".lower()
-        base = (
-            base.replace("á", "a").replace("é", "e").replace("í", "i")
-            .replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+    # Cada comprador estrena con una compra —una cuenta sin un solo pedido no
+    # se distingue de un registro abandonado— y a partir de ahí se le suman las
+    # que le toquen según el reparto declarado.
+    veces = {id(c): 1 for c in compradores}
+    asignadas = len(compradores)
+    if asignadas > compras_totales:
+        raise ValueError(
+            f"No caben {cuentas - administradores} compradores en "
+            f"{compras_totales} compras: cada uno necesita al menos una."
         )
 
-        correo = f"{base}@{DOMINIO_SIMULADO}"
-        sufijo = 1
-        while correo in usados:
-            sufijo += 1
-            correo = f"{base}{sufijo}@{DOMINIO_SIMULADO}"
-        usados.add(correo)
+    for comprador in compradores:
+        if asignadas >= compras_totales:
+            break
+        extra = min(_cuantas_compras(rng) - 1, compras_totales - asignadas)
+        if extra > 0:
+            veces[id(comprador)] += extra
+            asignadas += extra
 
-        cliente = User(
-            email=correo,
-            hashed_password=hash_password(CLAVE_DEL_CLIENTE),
-            full_name=f"{nombre} {apellido}",
-            phone=f"9{int(rng.integers(10**8)):08d}",
-            role=UserRole.CLIENTE,
-        )
-        sesion.add(cliente)
-        clientes.append(cliente)
+    # Si el reparto se quedó corto, las que faltan van a compradores al azar:
+    # así el total cuadra exacto sin deformar la forma de la distribución.
+    while asignadas < compras_totales:
+        elegido = compradores[int(rng.integers(len(compradores)))]
+        veces[id(elegido)] += 1
+        asignadas += 1
 
-        for _ in range(min(_cuantas_compras(rng), compras_totales - len(reparto))):
-            reparto.append(cliente)
+    reparto = [c for c in compradores for _ in range(veces[id(c)])]
 
     await sesion.flush()
     rng.shuffle(reparto)
-    return reparto
+    return reparto, admins
 
 
 async def _catalogo(sesion):
@@ -536,6 +606,8 @@ async def construir(
     corte: date,
     semilla: int,
     linea_base: str = "regla",
+    cuentas: int = 500,
+    administradores: int = 5,
 ) -> dict:
     # El mismo generador que `ml/dataset.py`: si el tráfico ha de venir de la
     # misma distribución, también el sorteo.
@@ -568,9 +640,13 @@ async def construir(
     }
 
     async with AsyncSessionLocal() as sesion:
-        reparto = await _crear_clientes(sesion, len(momentos), rng)
+        reparto, admins = await _crear_clientes(
+            sesion, len(momentos), rng, cuentas, administradores
+        )
         caros, normales = await _catalogo(sesion)
         resumen["clientes"] = len({c.email for c in reparto})
+        resumen["administradores"] = len(admins)
+        resumen["cuentas"] = resumen["clientes"] + len(admins)
         cuentas_fechadas: set = set()
 
         for indice, momento in enumerate(momentos):
@@ -838,6 +914,16 @@ def _informe(resumen: dict, desde: date, hasta: date) -> str:
         "el turno en la cola de revisión; ese es el tiempo de la izquierda. El "
         "de la derecha lo cronometra el propio servicio al puntuar cada "
         "compra, una por una, dentro de la petición que crea el pedido.\n",
+        "## Las cuentas\n",
+        f"{resumen.get('cuentas', 0)} cuentas con nombres y teléfonos de "
+        f"Trujillo, todas con el dominio `@{DOMINIO_SIMULADO}` para que nadie "
+        f"las confunda con clientes reales y para que `--limpiar` sepa cuáles "
+        f"retirar. {resumen.get('administradores', 0)} de ellas son "
+        f"administradores —personal de la tienda, se ven en Panel → Usuarios "
+        f"con su rol y no compran— y las otras "
+        f"{resumen.get('clientes', 0)} son los clientes entre los que se "
+        "reparten las compras: la mayoría compra una sola vez, unos pocos son "
+        "habituales con nueve pedidos.\n",
         "## El detalle\n",
         "| | Antes | Después |",
         "| :--- | ---: | ---: |",
@@ -996,6 +1082,25 @@ def main() -> int:
         default=date(2026, 8, 1),
         help="Fecha en que entra el modelo: antes decide el sistema anterior",
     )
+    parser.add_argument(
+        "--cuentas",
+        type=int,
+        default=500,
+        help=(
+            "Cuántas cuentas de cliente crear. Las compras se reparten entre "
+            "ellas, así que tiene que haber menos cuentas que compras: cada "
+            "comprador estrena con al menos un pedido."
+        ),
+    )
+    parser.add_argument(
+        "--administradores",
+        type=int,
+        default=5,
+        help=(
+            "Cuántas de esas cuentas son administradores. Son personal de la "
+            "tienda: se ven en Panel → Usuarios con su rol y no compran."
+        ),
+    )
     parser.add_argument("--semilla", type=int, default=2026)
     parser.add_argument(
         "--linea-base",
@@ -1061,6 +1166,8 @@ def main() -> int:
             corte,
             args.semilla,
             args.linea_base,
+            args.cuentas,
+            args.administradores,
         )
     )
 
