@@ -7,7 +7,8 @@ menos sirve mirar esa variable por separado.
 
 | Variable | Legítimas | Fraudulentas | Solapamiento |
 | --- | --- | --- | ---: |
-| monto del pedido | 742.7 (446.32) | 2616.82 (1694.14) | 0.2387 |
-| artículos de alto riesgo | 0.52 (0.0) | 1.73 (2.0) | 0.4098 |
-| duración del checkout | 292.86 (204.27) | 114.8 (62.3) | 0.2643 |
-| dirección de envío nueva | 0.2 (0.0) | 0.61 (1.0) | — |
+| monto del pedido | 738.47 (444.49) | 3300.25 (2116.75) | 0.1512 |
+| artículos de alto riesgo | 0.51 (0.0) | 1.91 (2.0) | 0.4094 |
+| duración del checkout | 293.81 (204.68) | 77.22 (50.07) | 0.1712 |
+| dirección de envío nueva | 0.2 (0.0) | 0.7 (1.0) | — |
+| antigüedad de la cuenta | 105.38 (82.68) | 20.03 (10.4) | 0.1269 |

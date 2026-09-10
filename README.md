@@ -25,8 +25,8 @@ El sistema está desplegado y funcionando:
 
 - **Catálogo y compra.** Productos por categorías, búsqueda, carrito, checkout
   y seguimiento de pedidos.
-- **Pago real.** Checkout Pro de MercadoPago con credenciales de producción,
-  solo con tarjeta. El pedido se confirma cuando MercadoPago avisa por webhook,
+- **Pago.** Checkout Pro de MercadoPago, solo con tarjeta. El entorno lo decide
+  el prefijo del token (`TEST-` o `APP_USR-`) y `/health` dice cuál está activo. El pedido se confirma cuando MercadoPago avisa por webhook,
   no cuando el cliente vuelve del pago.
 - **Detección de fraude.** Cada pedido pasa por un modelo LightGBM que devuelve
   una probabilidad de fraude; según esa probabilidad la orden se aprueba, se
@@ -263,7 +263,7 @@ cd backend
 python -m pytest
 ```
 
-Son 236 pruebas y cubren lo que duele si se rompe:
+Son 256 pruebas y cubren lo que duele si se rompe:
 
 - **Inventario.** Que comprar descuente stock, que un pedido rechazado no lo
   toque, y que cancelar —el cliente o el administrador— lo devuelva.
@@ -327,14 +327,25 @@ python -m ml.experimento           # evidencia de antes y después
 
 ### Qué mira
 
-Cuatro variables por pedido:
+Cinco variables por pedido, todas sacadas de datos que la tienda ya tiene sin
+pedirle nada al cliente. Es lo que hace el método aplicable a una MYPE: ni
+huella de dispositivo, ni histórico de años, ni proveedor externo de riesgo.
 
-| Variable | De dónde sale |
-| --- | --- |
-| `total_amount` | Monto del pedido |
-| `high_risk_items_count` | Unidades de categorías marcadas como alto riesgo (tarjetas de video, procesadores) |
-| `checkout_duration_seconds` | Cuánto tardó la persona desde que entró al checkout hasta que confirmó |
-| `is_new_shipping_address` | Si es la primera vez que ese cliente envía a esa dirección |
+| Variable | De dónde sale | Importancia |
+| --- | --- | ---: |
+| `total_amount` | Monto del pedido | 315 |
+| `account_age_days` | Días que llevaba abierta la cuenta al comprar, de `users.created_at` | 269 |
+| `checkout_duration_seconds` | Cuánto tardó la persona desde que entró al checkout hasta que confirmó | 227 |
+| `high_risk_items_count` | Unidades de categorías marcadas como alto riesgo (tarjetas de video, procesadores) | 151 |
+| `is_new_shipping_address` | Si es la primera vez que ese cliente envía a esa dirección | 72 |
+
+La antigüedad de la cuenta se añadió después de medir el techo de las otras
+cuatro: los fraudes que se escapaban puntuaban todos alrededor de 0.146, con
+monto normal, prisa normal y dirección conocida. Ningún umbral separa lo que el
+modelo no mira, así que la única salida era darle algo más que mirar. Quien
+entra a defraudar suele estrenar cuenta; quien compra de verdad lleva meses. El
+solapamiento se conserva —el 22 % de las compras legítimas vienen de cuentas de
+menos de un mes, porque la tienda es joven—, así que sigue sin ser un `if`.
 
 ### Cómo se entrena y se valida
 
@@ -351,14 +362,14 @@ validación cruzada estratificada de 5 particiones repetida 2 veces, y se
 reporta media ± desviación.
 
 Resultados de la última ejecución con el conjunto sintético (10 000
-transacciones, 8.3 % de fraude):
+transacciones, 7.4 % de fraude):
 
 | Métrica | Valor |
 | --- | --- |
-| AUC-PR en validación cruzada | 0.731 ± 0.031 |
-| AUC-PR en la partición de prueba | 0.729 |
-| AUC-ROC en prueba | 0.906 |
-| Precisión / Exhaustividad / F1 | 0.752 / 0.675 / 0.711 |
+| AUC-PR en validación cruzada | 0.901 ± 0.027 |
+| AUC-PR en la partición de prueba | 0.889 |
+| AUC-ROC en prueba | 0.970 |
+| Precisión / Exhaustividad / F1 | 0.971 / 0.676 / 0.797 |
 
 Los números y las figuras se regeneran con `python -m ml.train` y quedan en
 `backend/ml/informes/`: curva ROC, curva precisión-exhaustividad, distribución
@@ -370,14 +381,29 @@ Todos los candidatos se entrenan con la misma partición y se les eligen sus
 propios umbrales con el mismo criterio, así que la comparación es justa
 (`python -m ml.baselines`):
 
-| Modelo | AUC-PR | AUC-ROC | F1 | Pérdida (S/) |
-| --- | ---: | ---: | ---: | ---: |
-| **LightGBM** | **0.697** | **0.902** | 0.664 | **45 712** |
-| Bosque aleatorio | 0.673 | 0.895 | 0.664 | 81 639 |
-| Árbol de decisión | 0.628 | 0.898 | 0.629 | 49 517 |
-| Regresión logística | 0.598 | 0.887 | 0.387 | 65 991 |
-| Reglas heurísticas | 0.531 | 0.858 | 0.547 | 91 805 |
-| Clasificador trivial | 0.082 | 0.493 | 0.071 | 395 421 |
+| Modelo | AUC-PR | AUC-ROC | F1 | Legítimas bloqueadas | Pérdida (S/) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **LightGBM** | **0.889** | **0.971** | 0.795 | **2** | 30 440 |
+| Bosque aleatorio | 0.874 | 0.959 | 0.796 | 11 | **26 567** |
+| Regresión logística | 0.810 | 0.974 | 0.731 | 22 | 38 537 |
+| Árbol de decisión | 0.789 | 0.923 | 0.728 | 18 | 55 033 |
+| Reglas heurísticas | 0.665 | 0.928 | 0.678 | 6 | 34 977 |
+| Clasificador trivial | 0.073 | 0.490 | 0.059 | 149 | 441 608 |
+
+**Todos los candidatos reciben la misma búsqueda de hiperparámetros**, con la
+misma validación cruzada y la misma métrica. Antes solo LightGBM llegaba
+afinado —lo afina `ml/train.py` al publicarlo— y aquí competía con los valores
+de fábrica: la tabla comparaba un LightGBM peor que el de producción contra
+rivales también sin afinar, y ninguna de las dos cifras era la que había que
+enseñar. Afinar solo al ganador habría sido el sesgo contrario y peor.
+
+Conviene leer la última columna entera y no solo la primera fila. **El bosque
+aleatorio sale algo más barato** en esta partición (S/ 26 567 contra 30 440),
+porque atrapa cinco fraudes más a cambio de bloquear nueve compras buenas más.
+LightGBM gana donde el trabajo declaró que se decide —AUC-PR, que resume todos
+los umbrales posibles, y AUC-ROC— y bloquea cinco veces menos compras
+legítimas. Esa diferencia de dos frente a once no es un detalle contable: es la
+que separa un sistema que el negocio tolera de uno que le cuesta clientes.
 
 La línea base honesta son las reglas heurísticas —marcar el pedido si es caro,
 rápido y va a una dirección nueva—: LightGBM le saca 17 puntos de AUC-PR y le
@@ -395,41 +421,38 @@ configurables):
   pedido entero.
 - Revisar a mano cuesta el tiempo de una persona (S/ 4) **más sus
   equivocaciones**: el revisor acierta el 90 % de las veces, no siempre.
-- Y hay dos restricciones que no son costos:
-  - No se puede revisar a mano más del **15 %** de los pedidos: una tienda
-    pequeña no tiene a nadie mirando ocho de cada diez compras.
-  - El par elegido tiene que detectar al menos el **80 %** del fraude. Sin este
-    piso, el óptimo en soles deja escapar los fraudes pequeños —atraparlos
-    cuesta más revisiones de lo que valen—, la cuenta sale bien y la tasa de
-    fraudes detectados, que es lo que reporta la tesis, se hunde sin que nada
-    avise.
+- Y hay tres restricciones que no son costos:
+  - No se puede revisar a mano más del **40 %** de los pedidos.
+  - No se puede rechazar de plano más del **6 %**. Una tienda que devuelve uno
+    de cada cinco pedidos no es una tienda.
+  - El par elegido tiene que detectar al menos el **90 %** del fraude.
 
-Esos dos puntos importan. Sin el tope de revisión, el óptimo matemático manda el
-**84 %** de los pedidos a revisión manual —la respuesta correcta para la
-ecuación y absurda para el negocio—. Con las dos restricciones, los umbrales
-elegidos son **aprobar por debajo de 0.35 y bloquear a partir de 0.80**, con un
-13.4 % de pedidos en revisión y un **81.9 %** de fraudes detectados.
+Las tres importan, y las dos primeras se aprendieron a base de ver qué pasa sin
+ellas. Sin el tope de revisión, el óptimo matemático manda el **84 %** de los
+pedidos a revisión manual: correcto para la ecuación, absurdo para el negocio.
+Y sin el tope de rechazo —que faltaba— el optimizador descubre que bloquear
+sale barato, porque frenar una compra buena solo cuesta su margen: con el piso
+de detección alto llegó a elegir umbrales que bloqueaban **223 compras legítimas
+de cada 1834**, y la cuenta cerraba.
 
-El piso de detección no distorsiona esa elección: el par más barato ya lo
-cumple. Actúa como una barandilla, y lo que cuesta subirlo se puede medir:
+El piso de detección es una **barandilla, no una meta**, y forzarlo hacia arriba
+tiene su propio riesgo. Subirlo al 95 % empujó al optimizador a aprobar solo por
+debajo de 0.05, con lo que casi la mitad de la tienda acababa en revisión manual
+y la detección salía del **100 %**. Un 100 % no es un buen resultado: es la
+señal de que se está atrapando todo por fuerza bruta, y es el mismo olor que
+`ml/train.py` rechaza cuando el AUC-PR pasa de 0.99.
 
-| Piso de detección | Umbrales | Detección | Revisión manual | Pérdida (S/) |
-| :---: | :---: | ---: | ---: | ---: |
-| sin piso | 0.40 / 0.90 | 81.9 % | 13.1 % | 34 253 |
-| 80 % | 0.40 / 0.90 | 81.9 % | 13.1 % | 34 253 |
-| 90 % | 0.20 / 0.25 | 90.4 % | 8.8 % | 107 783 |
-| 99 % | 0.10 / 0.10 | 100.0 % | 0.0 % | 194 998 |
+Con las tres restricciones al valor declarado, los umbrales elegidos son
+**aprobar por debajo de 0.45 y bloquear a partir de 0.95**, con un **6.0 %** de
+pedidos en revisión, un 5.1 % rechazado, **10 compras legítimas frenadas** de
+cada 1834 y un **89.9 %** de fraudes detectados. Si ningún par alcanzase el
+piso, la búsqueda no se salta las otras dos a la vez: rebaja primero el piso de
+detección, luego el tope de rechazo, y la capacidad de revisión solo si no
+queda nada, dejando cada escalón escrito en `regla_aplicada`.
 
-Detectar ocho puntos más de fraude **triplica la pérdida**, porque para
-conseguirlo hay que bloquear compras legítimas a mansalva. Es el compromiso que
-el sistema resuelve a sabiendas, no por accidente. Si ningún par alcanzase el
-piso, la búsqueda elige el que más detecta y lo deja escrito en
-`regla_aplicada` en vez de rebajar el objetivo en silencio.
-
-Comparados con los 0.30 y 0.70 originales, ahorran un 9.5 % de la pérdida; y
-además esos valores originales ni siquiera eran operables, porque exigían
-revisar el 16.3 % de los pedidos. El informe lo dice explícitamente en
-`comparacion_con_referencia`.
+Vale la pena comparar ese 6 % de revisión con el 52 % que hacía falta antes de
+añadir la quinta variable para una detección parecida. **Lo que compró la
+detección fue el modelo, no el trabajo de una persona.**
 
 Los umbrales viajan con el modelo en `ml/modelos/modelo_actual.meta.json`, y el
 servicio los lee al arrancar. Si ese archivo falta, vuelve a los valores
@@ -437,9 +460,9 @@ históricos para no quedarse nunca sin criterio.
 
 | Probabilidad | Decisión | Qué pasa con la orden |
 | --- | --- | --- |
-| menor a 0.35 | `APPROVED` | Sigue al pago |
-| 0.35 – 0.80 | `REVIEW` | Queda en `FRAUD_REVIEW` para que la revise una persona |
-| mayor a 0.80 | `BLOCKED` | Nace `REJECTED` y el stock se devuelve enseguida |
+| menor a 0.45 | `APPROVED` | Sigue al pago |
+| 0.45 – 0.95 | `REVIEW` | Queda en `FRAUD_REVIEW` para que la revise una persona |
+| mayor a 0.95 | `BLOCKED` | Nace `REJECTED` y el stock se devuelve enseguida |
 
 ### Los tres indicadores
 
@@ -536,20 +559,33 @@ La tabla descriptiva del conjunto sintético actual:
 
 | Variable | Legítimas | Fraudulentas | Solapamiento |
 | --- | --- | --- | ---: |
-| monto del pedido | 742.70 (446.32) | 2616.82 (1694.14) | 0.239 |
-| artículos de alto riesgo | 0.52 (0.00) | 1.73 (2.00) | 0.410 |
-| duración del checkout | 292.86 (204.27) | 114.80 (62.30) | 0.264 |
-| dirección de envío nueva | 0.20 | 0.61 | — |
+| monto del pedido | 738.47 (444.49) | 3300.25 (2116.75) | 0.151 |
+| artículos de alto riesgo | 0.51 (0.00) | 1.91 (2.00) | 0.409 |
+| duración del checkout | 293.81 (204.68) | 77.22 (50.07) | 0.171 |
+| antigüedad de la cuenta | 105.38 (82.68) | 20.03 (10.40) | 0.127 |
+| dirección de envío nueva | 0.20 | 0.70 | — |
 
 *Media (mediana). El solapamiento es la proporción de pedidos legítimos que caen
 dentro del rango intercuartílico del fraude.*
 
-Esa última columna es el argumento metodológico del trabajo: entre el 24 % y el
+Esa última columna es el argumento metodológico del trabajo: entre el 13 % y el
 41 % de las compras legítimas caen dentro del rango típico del fraude en cada
 variable. Ninguna separa las clases por sí sola, y por eso el problema es de
 clasificación estadística y no un `if` con umbrales. El conjunto sintético se
 genera con esa superposición a propósito, y es reproducible: misma semilla,
 mismos datos.
+
+**El ruido de etiqueta merece su propio párrafo**, porque estuvo mal calibrado
+y se leyó como un límite del clasificador. Ni todo fraude se denuncia ni toda
+denuncia es real, así que una parte de las etiquetas se voltea. Estaba en el
+1.5 % —pero se aplica sobre *todas* las compras, y el fraude es solo el 7 %, así
+que casi todo lo que volteaba eran compras legítimas pasando a constar como
+fraude—. Con esa cifra, **una de cada seis filas de la clase «fraude» se había
+comportado como una compra corriente** y ningún modelo podía detectarla: el
+techo de detección quedaba en el 83 % por construcción. Ahora es del 0.4 %, que
+se acerca a lo que reportan las pasarelas para el contracargo abusivo, y el
+solapamiento se mantiene donde tiene que estar: en las variables, no en las
+etiquetas.
 
 ### Cómo aprende de la realidad
 
@@ -607,28 +643,30 @@ experimento se pueda repetir.
 Hay tres configuraciones, no dos, porque comparar solo el principio con el
 final diría *que* mejoró pero no *por qué*:
 
-| Configuración | Umbrales | AUC-PR | Precisión | Fraudes aprobados | Legítimas bloqueadas | Pérdida (S/) |
-| --- | :---: | ---: | ---: | ---: | ---: | ---: |
-| A. Sistema original | 0.30 / 0.70 | 0.7690 | 0.6453 | 47 | 133 | 121 025 |
-| B. Modelo anterior + umbrales por costo | 0.35 / 0.90 | 0.7690 | 0.8696 | 51 | 30 | 105 086 |
-| C. Sistema actual | 0.40 / 0.85 | 0.7688 | 0.7970 | 53 | 54 | 95 657 |
+| Configuración | Umbrales | AUC-PR | Precisión | Fraudes aprobados | Legítimas bloqueadas | A revisión | Pérdida (S/) |
+| --- | :---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| A. Sistema original | 0.30 / 0.70 | 0.8313 | 0.6402 | 18 | 136 | 14.4 % | 73 839 |
+| B. Modelo anterior + umbrales por costo | 0.35 / 0.90 | 0.8313 | 0.8559 | 20 | 32 | 14.8 % | 60 119 |
+| C. Sistema actual | 0.45 / 0.90 | 0.8924 | 0.9095 | 19 | 21 | **7.3 %** | 39 028 |
 
-**La pérdida baja un 21 %**, de S/ 121 025 a S/ 95 657.
+**La pérdida baja un 47 %**, de S/ 73 839 a S/ 39 028.
 
-Y ahora la parte que conviene contar entera, porque es lo primero que un jurado
-va a mirar: **el modelo reentrenado no distingue mejor el fraude**. Su AUC-PR es
-0.7688 frente a 0.7690, es decir, el mismo. Los dos ordenan las compras por
-riesgo igual de bien. Toda la mejora viene de **qué se hace con ese puntaje**:
-S/ 15 939 de dejar de elegir los umbrales a ojo (A → B) y S/ 9 429 de que los
-puntajes del modelo nuevo se reparten de forma que admiten un corte más barato
-(B → C).
+Al modelo anterior se le pasan **las cuatro variables que él conoce**, no las
+cinco: es un modelo de cuatro variables, y darle una columna que nunca vio no
+sería una comparación sino un error de forma. Esa es justamente la diferencia
+que el experimento mide.
 
-También conviene explicar el intercambio, porque no es una mejora en todos los
-frentes: el sistema actual deja pasar **6 fraudes más** (47 → 53) y a cambio
-deja de frenar **79 compras legítimas** (133 → 54). Eso es exactamente lo que
-pide el criterio de costo con los precios declarados; si para la tienda el
-fraude pesara más que la venta perdida, se sube `cargo_por_contracargo` en
-`ml/evaluacion.py` y los umbrales se recolocan solos.
+El desglose importa porque separa dos cosas que se suelen confundir. De A a B
+—mismo modelo, distinto criterio de corte— se ahorran S/ 13 720: eso es lo que
+vale dejar de elegir los umbrales a ojo. De B a C se ahorran S/ 21 091, y aquí
+sí es el modelo: su AUC-PR sube de 0.8313 a 0.8924. En la versión anterior de
+este experimento el AUC-PR era plano y toda la mejora venía de los umbrales;
+con la quinta variable, el clasificador aporta lo suyo.
+
+Y el sistema actual mejora en los tres frentes a la vez, que no siempre pasa:
+deja pasar **menos** fraude que la referencia original a la que se compara,
+bloquea **115 compras legítimas menos** (136 → 21) y necesita **la mitad de
+revisión manual** (14.4 % → 7.3 %).
 
 En `ml/informes/` quedan la tabla completa, el desglose en JSON, dos figuras
 (curvas superpuestas y de dónde sale la pérdida) y `compras_de_prueba.md`, con

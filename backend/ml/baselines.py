@@ -36,6 +36,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from lightgbm import LGBMClassifier
 
 from ml import evaluacion
@@ -76,25 +77,75 @@ class ReglasHeuristicas:
 
 
 def _candidatos() -> dict:
+    """
+    Cada candidato con la rejilla de hiperparámetros que se le va a buscar.
+
+    Todos los que tienen algo que ajustar lo ajustan, con la misma validación
+    cruzada y la misma métrica. Antes solo LightGBM salía de la comparación con
+    sus hiperparámetros elegidos —los buscaba `ml/train.py` para publicarlo— y
+    aquí competía con los valores de fábrica: la tabla comparaba un LightGBM
+    peor que el de producción contra unos rivales también sin afinar, y ninguna
+    de las dos cifras era la que se quería enseñar.
+
+    Afinar solo al ganador sería el sesgo contrario y todavía peor. Se afina a
+    todos o a ninguno; se afina a todos, que es lo que hace comparable la
+    tabla.
+
+    Las reglas heurísticas y el clasificador trivial no tienen nada que
+    ajustar, y van con la rejilla vacía.
+    """
     return {
-        "Reglas heurísticas": ReglasHeuristicas(),
-        "Clasificador trivial": DummyClassifier(strategy="stratified", random_state=RANDOM_SEED),
-        "Regresión logística": make_pipeline(
-            StandardScaler(),
-            LogisticRegression(
-                class_weight="balanced", max_iter=1000, random_state=RANDOM_SEED
+        "Reglas heurísticas": (ReglasHeuristicas(), {}),
+        "Clasificador trivial": (
+            DummyClassifier(strategy="stratified", random_state=RANDOM_SEED),
+            {},
+        ),
+        "Regresión logística": (
+            make_pipeline(
+                StandardScaler(),
+                LogisticRegression(
+                    class_weight="balanced", max_iter=2000, random_state=RANDOM_SEED
+                ),
             ),
+            {"logisticregression__C": [0.01, 0.1, 1.0, 10.0]},
         ),
-        "Árbol de decisión": DecisionTreeClassifier(
-            class_weight="balanced", max_depth=5, random_state=RANDOM_SEED
+        "Árbol de decisión": (
+            DecisionTreeClassifier(class_weight="balanced", random_state=RANDOM_SEED),
+            {"max_depth": [3, 5, 7, None], "min_samples_leaf": [1, 5, 20]},
         ),
-        "Bosque aleatorio": RandomForestClassifier(
-            n_estimators=200, class_weight="balanced", random_state=RANDOM_SEED, n_jobs=-1
+        "Bosque aleatorio": (
+            RandomForestClassifier(
+                class_weight="balanced", random_state=RANDOM_SEED, n_jobs=-1
+            ),
+            {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
         ),
-        "LightGBM": LGBMClassifier(
-            class_weight="balanced", random_state=RANDOM_SEED, verbose=-1
+        # La misma rejilla que usa `ml/train.py` para publicar el modelo, para
+        # que el LightGBM de esta tabla sea el que de verdad está sirviendo.
+        "LightGBM": (
+            LGBMClassifier(class_weight="balanced", random_state=RANDOM_SEED, verbose=-1),
+            {
+                "n_estimators": [50, 100, 150],
+                "learning_rate": [0.01, 0.05, 0.1],
+                "max_depth": [3, 5, 7],
+                "num_leaves": [15, 31],
+            },
         ),
     }
+
+
+def _afinado(modelo, rejilla: dict, X, y):
+    """El candidato con sus mejores hiperparámetros, o tal cual si no tiene."""
+    if not rejilla:
+        return modelo, {}
+    busqueda = GridSearchCV(
+        modelo,
+        rejilla,
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED),
+        scoring="average_precision",
+        n_jobs=-1,
+    )
+    busqueda.fit(X, y)
+    return busqueda.best_estimator_, busqueda.best_params_
 
 
 def comparar(preferir_reales: bool = True) -> dict:
@@ -107,7 +158,8 @@ def comparar(preferir_reales: bool = True) -> dict:
     costos = evaluacion.Costos()
 
     filas = []
-    for nombre, modelo in _candidatos().items():
+    for nombre, (candidato, rejilla) in _candidatos().items():
+        modelo, mejores = _afinado(candidato, rejilla, X_entrena, y_entrena)
         modelo.fit(X_entrena, y_entrena)
         prob_valida = modelo.predict_proba(X_valida)[:, 1]
         prob_prueba = modelo.predict_proba(X_prueba)[:, 1]
@@ -128,6 +180,7 @@ def comparar(preferir_reales: bool = True) -> dict:
         filas.append(
             {
                 "modelo": nombre,
+                "hiperparametros": mejores,
                 "average_precision": m["average_precision"],
                 "roc_auc": m["roc_auc"],
                 "precision": m["precision"],

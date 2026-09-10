@@ -6,30 +6,30 @@ transacciones durante su entrenamiento.
 
 | # | Monto | Alto riesgo | Checkout | Dirección | ¿Fue fraude? | Antes | Después |
 | ---: | ---: | ---: | ---: | :---: | :---: | :--- | :--- |
-| 1 | S/ 799 | 2 | 1.4 min | nueva | no | BLOCKED (86%) | REVIEW (85%) |
-| 2 | S/ 2,942 | 1 | 1.4 min | nueva | **sí** | BLOCKED (90%) | REVIEW (85%) |
-| 3 | S/ 2,741 | 3 | 2.4 min | conocida | no | BLOCKED (86%) | REVIEW (84%) |
-| 4 | S/ 447 | 2 | 57 s | nueva | no | BLOCKED (83%) | REVIEW (84%) |
-| 5 | S/ 452 | 2 | 1.0 min | nueva | no | BLOCKED (80%) | REVIEW (84%) |
-| 6 | S/ 1,833 | 2 | 1.5 min | conocida | no | BLOCKED (86%) | REVIEW (84%) |
-| 7 | S/ 5,069 | 5 | 25 s | nueva | **sí** | BLOCKED (100%) | BLOCKED (99%) |
-| 8 | S/ 12,048 | 5 | 13 s | nueva | **sí** | BLOCKED (100%) | BLOCKED (99%) |
-| 9 | S/ 40 | 0 | 10.2 min | conocida | no | APPROVED (2%) | APPROVED (5%) |
-| 10 | S/ 51 | 1 | 6.1 min | nueva | no | APPROVED (3%) | APPROVED (6%) |
+| 1 | S/ 231 | 2 | 50 s | nueva | **sí** | REVIEW (60%) | BLOCKED (95%) |
+| 2 | S/ 325 | 3 | 56 s | nueva | **sí** | REVIEW (70%) | BLOCKED (95%) |
+| 3 | S/ 4,291 | 1 | 2.5 min | conocida | no | REVIEW (69%) | BLOCKED (91%) |
+| 4 | S/ 1,441 | 2 | 2.7 min | nueva | **sí** | BLOCKED (84%) | REVIEW (90%) |
+| 5 | S/ 15,650 | 1 | 11 s | conocida | no | BLOCKED (97%) | REVIEW (90%) |
+| 6 | S/ 1,052 | 3 | 33 s | conocida | no | BLOCKED (94%) | REVIEW (90%) |
+| 7 | S/ 4,012 | 3 | 7 s | nueva | **sí** | BLOCKED (100%) | BLOCKED (100%) |
+| 8 | S/ 19,957 | 4 | 27 s | nueva | **sí** | BLOCKED (100%) | BLOCKED (100%) |
+| 9 | S/ 46 | 0 | 6.9 min | conocida | no | APPROVED (2%) | APPROVED (2%) |
+| 10 | S/ 46 | 1 | 1.3 min | conocida | no | APPROVED (3%) | APPROVED (2%) |
 
 ## La explicación que ve el administrador
 
-Para la compra de S/ 5,069 con 5 artículos de alto riesgo:
+Para la compra de S/ 4,012 con 3 artículos de alto riesgo:
 
 **Antes:**
 
-> Alto riesgo de fraude detectado por IA. Orden rechazada.
+> Riesgo medio de fraude detectado por IA. Se requiere revisión.
 
 *La misma frase para todos los pedidos de ese nivel de riesgo.*
 
 **Después:**
 
-> Riesgo alto (99%); pedido rechazado. Lo que pesó en contra: 5 artículos de alto riesgo, checkout de 25 s, monto de S/ 5,069.19.
+> Riesgo medio (85%); requiere revisión manual. Lo que pesó en contra: monto de S/ 4,012.04, 3 artículos de alto riesgo, checkout de 7 s.
 
 *Los factores son los de este pedido en concreto, calculados con los valores SHAP del propio modelo.*
 

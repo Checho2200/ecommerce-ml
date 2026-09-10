@@ -360,6 +360,21 @@ def _redactar_resumen(informe: dict, resultados: list[dict], n_prueba: int, tasa
     )
 
 
+def _variables_del_modelo(modelo) -> list[str]:
+    """
+    Con qué columnas se entrenó ese modelo, en su orden.
+
+    LightGBM las guarda en el booster. Si no estuvieran, se recurre a cuántas
+    espera y se toman las primeras de FEATURES: la lista solo ha crecido por el
+    final, así que las primeras N son las que existían cuando se entrenó.
+    """
+    nombres = getattr(getattr(modelo, "booster_", None), "feature_name", None)
+    if callable(nombres):
+        return list(nombres())
+    cuantas = getattr(modelo, "n_features_in_", len(FEATURES))
+    return FEATURES[:cuantas]
+
+
 def comparar(n_compras: int = 4000) -> dict:
     DIRECTORIO_MODELOS.mkdir(parents=True, exist_ok=True)
     modelo_anterior = _cargar_modelo(RUTA_MODELO_ANTERIOR)
@@ -376,8 +391,16 @@ def comparar(n_compras: int = 4000) -> dict:
     montos = X_pru["total_amount"]
     costos = evaluacion.Costos()
 
-    prob_val_antes = modelo_anterior.predict_proba(X_val)[:, 1]
-    prob_pru_antes = modelo_anterior.predict_proba(X_pru)[:, 1]
+    # Al modelo anterior se le dan las variables que él conoce, no todas.
+    #
+    # Es un modelo de cuatro variables: la antigüedad de la cuenta se añadió
+    # después, y pasarle una columna que nunca vio no es una comparación, es un
+    # error de forma. Darle las suyas y al nuevo las cinco es exactamente lo
+    # que se quiere medir: cuánto aportó el trabajo, incluida la variable que
+    # se sumó.
+    suyas = _variables_del_modelo(modelo_anterior)
+    prob_val_antes = modelo_anterior.predict_proba(X_val[suyas])[:, 1]
+    prob_pru_antes = modelo_anterior.predict_proba(X_pru[suyas])[:, 1]
     prob_pru_despues = modelo_actual.predict_proba(X_pru)[:, 1]
 
     # A los dos modelos se les eligen sus umbrales con el mismo método y sobre

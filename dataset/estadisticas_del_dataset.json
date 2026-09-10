@@ -1,37 +1,37 @@
 {
   "origen": "sintetico",
-  "detalle": "10000 transacciones generadas (829 fraudulentas, 8.3%)",
+  "detalle": "10000 transacciones generadas (741 fraudulentas, 7.4%)",
   "filas": 10000,
-  "tasa_de_fraude": 0.0829,
+  "tasa_de_fraude": 0.0741,
   "archivo": "dataset_sintetico.csv",
   "por_variable": {
     "total_amount": {
       "legitimas": {
-        "n": 9171,
-        "media": 742.7,
-        "desviacion": 992.38,
+        "n": 9259,
+        "media": 738.47,
+        "desviacion": 978.17,
         "minimo": 40.0,
-        "p25": 228.57,
-        "mediana": 446.32,
-        "p75": 866.31,
+        "p25": 228.54,
+        "mediana": 444.49,
+        "p75": 862.57,
         "maximo": 25211.91
       },
       "fraudulentas": {
-        "n": 829,
-        "media": 2616.82,
-        "desviacion": 2947.42,
-        "minimo": 52.29,
-        "p25": 837.2,
-        "mediana": 1694.14,
-        "p75": 3363.7,
-        "maximo": 24257.27
+        "n": 741,
+        "media": 3300.25,
+        "desviacion": 3963.51,
+        "minimo": 77.26,
+        "p25": 1175.34,
+        "mediana": 2116.75,
+        "p75": 3738.54,
+        "maximo": 30000.0
       },
-      "solapamiento_con_el_fraude": 0.2387
+      "solapamiento_con_el_fraude": 0.1512
     },
     "high_risk_items_count": {
       "legitimas": {
-        "n": 9171,
-        "media": 0.52,
+        "n": 9259,
+        "media": 0.51,
         "desviacion": 0.7,
         "minimo": 0.0,
         "p25": 0.0,
@@ -40,43 +40,43 @@
         "maximo": 4.0
       },
       "fraudulentas": {
-        "n": 829,
-        "media": 1.73,
-        "desviacion": 1.4,
+        "n": 741,
+        "media": 1.91,
+        "desviacion": 1.42,
         "minimo": 0.0,
         "p25": 1.0,
         "mediana": 2.0,
         "p75": 3.0,
-        "maximo": 6.0
+        "maximo": 8.0
       },
-      "solapamiento_con_el_fraude": 0.4098
+      "solapamiento_con_el_fraude": 0.4094
     },
     "checkout_duration_seconds": {
       "legitimas": {
-        "n": 9171,
-        "media": 292.86,
-        "desviacion": 301.18,
+        "n": 9259,
+        "media": 293.81,
+        "desviacion": 302.15,
         "minimo": 5.36,
-        "p25": 113.48,
-        "mediana": 204.27,
-        "p75": 359.71,
+        "p25": 113.64,
+        "mediana": 204.68,
+        "p75": 360.44,
         "maximo": 3600.0
       },
       "fraudulentas": {
-        "n": 829,
-        "media": 114.8,
-        "desviacion": 182.56,
-        "minimo": 4.0,
-        "p25": 32.22,
-        "mediana": 62.3,
-        "p75": 123.0,
-        "maximo": 2138.45
+        "n": 741,
+        "media": 77.22,
+        "desviacion": 90.07,
+        "minimo": 4.6,
+        "p25": 27.63,
+        "mediana": 50.07,
+        "p75": 92.55,
+        "maximo": 1196.53
       },
-      "solapamiento_con_el_fraude": 0.2643
+      "solapamiento_con_el_fraude": 0.1712
     },
     "is_new_shipping_address": {
       "legitimas": {
-        "n": 9171,
+        "n": 9259,
         "media": 0.2,
         "desviacion": 0.4,
         "minimo": 0.0,
@@ -86,9 +86,9 @@
         "maximo": 1.0
       },
       "fraudulentas": {
-        "n": 829,
-        "media": 0.61,
-        "desviacion": 0.49,
+        "n": 741,
+        "media": 0.7,
+        "desviacion": 0.46,
         "minimo": 0.0,
         "p25": 0.0,
         "mediana": 1.0,
@@ -96,42 +96,78 @@
         "maximo": 1.0
       },
       "solapamiento_con_el_fraude": null
+    },
+    "account_age_days": {
+      "legitimas": {
+        "n": 9259,
+        "media": 105.38,
+        "desviacion": 81.84,
+        "minimo": 0.02,
+        "p25": 35.02,
+        "mediana": 82.68,
+        "p75": 166.34,
+        "maximo": 250.0
+      },
+      "fraudulentas": {
+        "n": 741,
+        "media": 20.03,
+        "desviacion": 34.12,
+        "minimo": 0.02,
+        "p25": 4.12,
+        "mediana": 10.4,
+        "p75": 21.67,
+        "maximo": 250.0
+      },
+      "solapamiento_con_el_fraude": 0.1269
     }
   },
   "correlacion_spearman": {
     "total_amount": {
       "total_amount": 1.0,
-      "high_risk_items_count": 0.106,
-      "checkout_duration_seconds": -0.118,
-      "is_new_shipping_address": 0.11,
-      "is_fraud": 0.297
+      "high_risk_items_count": 0.112,
+      "checkout_duration_seconds": -0.125,
+      "is_new_shipping_address": 0.12,
+      "account_age_days": -0.118,
+      "is_fraud": 0.335
     },
     "high_risk_items_count": {
-      "total_amount": 0.106,
+      "total_amount": 0.112,
       "high_risk_items_count": 1.0,
-      "checkout_duration_seconds": -0.096,
-      "is_new_shipping_address": 0.075,
-      "is_fraud": 0.285
+      "checkout_duration_seconds": -0.099,
+      "is_new_shipping_address": 0.08,
+      "account_age_days": -0.101,
+      "is_fraud": 0.311
     },
     "checkout_duration_seconds": {
-      "total_amount": -0.118,
-      "high_risk_items_count": -0.096,
+      "total_amount": -0.125,
+      "high_risk_items_count": -0.099,
       "checkout_duration_seconds": 1.0,
-      "is_new_shipping_address": -0.105,
-      "is_fraud": -0.295
+      "is_new_shipping_address": -0.111,
+      "account_age_days": 0.12,
+      "is_fraud": -0.333
     },
     "is_new_shipping_address": {
-      "total_amount": 0.11,
-      "high_risk_items_count": 0.075,
-      "checkout_duration_seconds": -0.105,
+      "total_amount": 0.12,
+      "high_risk_items_count": 0.08,
+      "checkout_duration_seconds": -0.111,
       "is_new_shipping_address": 1.0,
-      "is_fraud": 0.262
+      "account_age_days": -0.109,
+      "is_fraud": 0.302
+    },
+    "account_age_days": {
+      "total_amount": -0.118,
+      "high_risk_items_count": -0.101,
+      "checkout_duration_seconds": 0.12,
+      "is_new_shipping_address": -0.109,
+      "account_age_days": 1.0,
+      "is_fraud": -0.338
     },
     "is_fraud": {
-      "total_amount": 0.297,
-      "high_risk_items_count": 0.285,
-      "checkout_duration_seconds": -0.295,
-      "is_new_shipping_address": 0.262,
+      "total_amount": 0.335,
+      "high_risk_items_count": 0.311,
+      "checkout_duration_seconds": -0.333,
+      "is_new_shipping_address": 0.302,
+      "account_age_days": -0.338,
       "is_fraud": 1.0
     }
   }

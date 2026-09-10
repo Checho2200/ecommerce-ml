@@ -125,7 +125,16 @@ class Costos:
       era una tienda que rechaza uno de cada cinco pedidos, que no es una
       tienda. Con este tope, un par de umbrales que bloquee de más se descarta
       aunque sea el más barato.
-    - `deteccion_minima`: qué proporción de los fraudes tiene que frenar el
+    - `deteccion_minima`: es un **piso**, no un objetivo, y conviene no
+      confundirlo. Subirlo al 95 % empujó al optimizador a aprobar solo por
+      debajo de 0.05, con lo que casi la mitad de la tienda acababa en revisión
+      manual y la detección salía del 100 %. Un 100 % no es un buen resultado:
+      es la señal de que se está atrapando todo por fuerza bruta, y es el mismo
+      olor que `ml/train.py` rechaza cuando el AUC-PR pasa de 0.99. Al 90 % el
+      criterio de costo vuelve a elegir, y elige un punto que se puede
+      defender.
+
+      Qué proporción de los fraudes tiene que frenar el
       modelo. Tampoco es un costo, y por eso hace falta declararla: el
       optimizador razona en soles, y en soles un fraude pequeño que se escapa
       sale más barato que las revisiones que costaría atraparlo. La cuenta
@@ -140,7 +149,7 @@ class Costos:
     revision_manual: float = 4.0
     acierto_de_la_revision: float = 0.90
     capacidad_de_revision: float = 0.40
-    deteccion_minima: float = 0.95
+    deteccion_minima: float = 0.90
     bloqueo_maximo: float = 0.06
 
 

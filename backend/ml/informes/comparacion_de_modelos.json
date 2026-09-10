@@ -1,7 +1,7 @@
 {
   "datos": {
     "origen": "sintetico",
-    "detalle": "10000 transacciones generadas (829 fraudulentas, 8.3%)"
+    "detalle": "10000 transacciones generadas (741 fraudulentas, 7.4%)"
   },
   "particion_de_prueba": 2000,
   "costos_usados": {
@@ -9,7 +9,9 @@
     "cargo_por_contracargo": 30.0,
     "revision_manual": 4.0,
     "acierto_de_la_revision": 0.9,
-    "capacidad_de_revision": 0.15
+    "capacidad_de_revision": 0.4,
+    "deteccion_minima": 0.9,
+    "bloqueo_maximo": 0.06
   },
   "umbrales_de_referencia": [
     0.3,
@@ -18,93 +20,112 @@
   "resultados": [
     {
       "modelo": "LightGBM",
-      "average_precision": 0.697,
-      "roc_auc": 0.9023,
-      "precision": 0.75,
-      "recall": 0.5964,
-      "f1": 0.6644,
+      "hiperparametros": {
+        "learning_rate": 0.05,
+        "max_depth": 3,
+        "n_estimators": 150,
+        "num_leaves": 15
+      },
+      "average_precision": 0.889,
+      "roc_auc": 0.9712,
+      "precision": 0.9802,
+      "recall": 0.6689,
+      "f1": 0.7952,
       "umbrales": [
-        0.2,
-        0.85
+        0.45,
+        0.95
       ],
-      "fraudes_aprobados": 27,
-      "legitimos_bloqueados": 33,
-      "perdida_total": 45712.35
+      "fraudes_aprobados": 17,
+      "legitimos_bloqueados": 2,
+      "perdida_total": 30439.94
     },
     {
       "modelo": "Bosque aleatorio",
-      "average_precision": 0.6725,
-      "roc_auc": 0.8949,
-      "precision": 0.7698,
-      "recall": 0.5843,
-      "f1": 0.6644,
+      "hiperparametros": {
+        "max_depth": null,
+        "n_estimators": 200
+      },
+      "average_precision": 0.8735,
+      "roc_auc": 0.9588,
+      "precision": 0.9052,
+      "recall": 0.7095,
+      "f1": 0.7955,
       "umbrales": [
-        0.15,
-        0.45
+        0.05,
+        0.6
       ],
-      "fraudes_aprobados": 46,
-      "legitimos_bloqueados": 29,
-      "perdida_total": 81638.95
-    },
-    {
-      "modelo": "Árbol de decisión",
-      "average_precision": 0.6275,
-      "roc_auc": 0.8979,
-      "precision": 0.6985,
-      "recall": 0.5723,
-      "f1": 0.6291,
-      "umbrales": [
-        0.3,
-        0.9
-      ],
-      "fraudes_aprobados": 28,
-      "legitimos_bloqueados": 41,
-      "perdida_total": 49517.13
+      "fraudes_aprobados": 12,
+      "legitimos_bloqueados": 11,
+      "perdida_total": 26567.12
     },
     {
       "modelo": "Regresión logística",
-      "average_precision": 0.5976,
-      "roc_auc": 0.8871,
-      "precision": 0.7679,
-      "recall": 0.259,
-      "f1": 0.3874,
+      "hiperparametros": {
+        "logisticregression__C": 10.0
+      },
+      "average_precision": 0.8098,
+      "roc_auc": 0.9735,
+      "precision": 0.8167,
+      "recall": 0.6622,
+      "f1": 0.7313,
       "umbrales": [
-        0.5,
+        0.25,
+        0.9
+      ],
+      "fraudes_aprobados": 5,
+      "legitimos_bloqueados": 22,
+      "perdida_total": 38536.82
+    },
+    {
+      "modelo": "Árbol de decisión",
+      "hiperparametros": {
+        "max_depth": null,
+        "min_samples_leaf": 20
+      },
+      "average_precision": 0.7893,
+      "roc_auc": 0.923,
+      "precision": 0.8407,
+      "recall": 0.6419,
+      "f1": 0.728,
+      "umbrales": [
+        0.05,
         0.95
       ],
-      "fraudes_aprobados": 35,
-      "legitimos_bloqueados": 13,
-      "perdida_total": 65991.41
+      "fraudes_aprobados": 18,
+      "legitimos_bloqueados": 18,
+      "perdida_total": 55033.27
     },
     {
       "modelo": "Reglas heurísticas",
-      "average_precision": 0.5309,
-      "roc_auc": 0.8581,
-      "precision": 0.8481,
-      "recall": 0.4036,
-      "f1": 0.5469,
+      "hiperparametros": {},
+      "average_precision": 0.6646,
+      "roc_auc": 0.9277,
+      "precision": 0.9294,
+      "recall": 0.5338,
+      "f1": 0.6781,
       "umbrales": [
-        0.3,
+        0.05,
         0.55
       ],
-      "fraudes_aprobados": 49,
-      "legitimos_bloqueados": 12,
-      "perdida_total": 91805.03
+      "fraudes_aprobados": 5,
+      "legitimos_bloqueados": 6,
+      "perdida_total": 34976.65
     },
     {
       "modelo": "Clasificador trivial",
-      "average_precision": 0.082,
-      "roc_auc": 0.4925,
-      "precision": 0.0698,
-      "recall": 0.0723,
-      "f1": 0.071,
+      "hiperparametros": {},
+      "average_precision": 0.073,
+      "roc_auc": 0.4902,
+      "precision": 0.057,
+      "recall": 0.0608,
+      "f1": 0.0588,
       "umbrales": [
         0.05,
         0.05
       ],
-      "fraudes_aprobados": 154,
-      "legitimos_bloqueados": 160,
-      "perdida_total": 395420.8
+      "fraudes_aprobados": 139,
+      "legitimos_bloqueados": 149,
+      "perdida_total": 441608.14
     }
   ]
 }
