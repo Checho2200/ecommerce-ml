@@ -1,6 +1,6 @@
 # Historial simulado de la tienda
 
-1000 compras repartidas entre el 01/01/2026 y el 09/09/2026, evaluadas una por una por el modelo que está en producción.
+1000 compras repartidas entre el 01/01/2026 y el 10/09/2026, evaluadas una por una por el modelo que está en producción.
 
 El tramo antiguo decide con una regla fija sin modelo (bloquear si el monto pasa de S/ 1,500 y la dirección es nueva; revisar si pasa de ese monto o lleva 2 o más artículos de alto riesgo); el nuevo, con el modelo y los umbrales que el entrenamiento eligió minimizando el costo en soles (0.35 / 0.8). El tráfico se genera igual en los dos: lo único que cambia es el criterio de decisión.
 
@@ -41,7 +41,7 @@ El tiempo de detección no compara dos clasificadores: compara **no tener detect
 Por compra evaluada, el costo de los errores baja de **S/ 31.52** a **S/ 21.80** (30.8%).
 
 
-Quedan 178 compras sin etiquetar, casi todas recientes: el contracargo todavía no ha llegado o el plazo no ha vencido. Aparecen en el panel como evaluadas pero sin confirmar, que es como se ve una tienda de verdad — los indicadores del mes pasado están completos y los de esta semana se siguen llenando.
+Quedan 182 compras sin etiquetar, casi todas recientes: el contracargo todavía no ha llegado o el plazo no ha vencido. Aparecen en el panel como evaluadas pero sin confirmar, que es como se ve una tienda de verdad — los indicadores del mes pasado están completos y los de esta semana se siguen llenando.
 
 
 Las compras que el sistema dejó pasar llevan además datos de cobro simulados —medio de pago, cuatro últimos dígitos y titular—, con la misma forma que los que deja un pago real. En una parte de ellas el titular no coincide con el de la cuenta: es la señal más común de tarjeta robada, y ninguna de las cuatro variables del modelo la ve, así que solo puede verla la persona que revisa.

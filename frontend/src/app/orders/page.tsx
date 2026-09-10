@@ -185,13 +185,37 @@ export default function MyOrdersPage() {
                   </Box>
 
                   {/* Footer */}
-                  {(order.shipping_address || order.status === 'COMPLETED') && (
+                  {(order.shipping_address || order.card_last_four || order.status === 'COMPLETED') && (
                     <Box sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'action.hover', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                      {order.shipping_address && (
-                        <Typography variant="caption" color="text.secondary">
-                          📍 {order.shipping_address}, {order.shipping_city}
-                        </Typography>
-                      )}
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: { xs: 0.5, sm: 2 } }}>
+                        {order.shipping_address && (
+                          <Typography variant="caption" color="text.secondary">
+                            📍 {order.shipping_address}, {order.shipping_city}
+                          </Typography>
+                        )}
+                        {/* Con qué se pagó. Son los cuatro últimos dígitos y la
+                            marca: el número completo no llega a la tienda ni
+                            debe hacerlo, lo maneja MercadoPago. Aquí sirve para
+                            que el cliente reconozca el cargo en su estado de
+                            cuenta cuando tiene varias tarjetas. */}
+                        {order.card_last_four && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}
+                          >
+                            💳
+                            <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                              •••• {order.card_last_four}
+                            </Box>
+                            {order.payment_method && (
+                              <Box component="span" sx={{ textTransform: 'capitalize' }}>
+                                · {order.payment_method}
+                              </Box>
+                            )}
+                          </Typography>
+                        )}
+                      </Box>
                       {order.status === 'COMPLETED' && order.items[0] && (
                         <Button
                           component={Link}
