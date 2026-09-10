@@ -263,7 +263,7 @@ cd backend
 python -m pytest
 ```
 
-Son 256 pruebas y cubren lo que duele si se rompe:
+Son 265 pruebas y cubren lo que duele si se rompe:
 
 - **Inventario.** Que comprar descuente stock, que un pedido rechazado no lo
   toque, y que cancelar —el cliente o el administrador— lo devuelva.
@@ -320,6 +320,7 @@ pueden ejecutar y auditar por separado:
 cd backend
 python -m ml.train                 # entrena y, si mejora, reemplaza el modelo
 python -m ml.train --sinteticos    # fuerza el conjunto sintético
+python -m ml.train --solo-umbrales # reelige el punto de operación sin reentrenar
 python -m ml.baselines             # tabla comparativa de modelos
 python -m ml.dataset               # exporta el conjunto de datos y su análisis
 python -m ml.experimento           # evidencia de antes y después

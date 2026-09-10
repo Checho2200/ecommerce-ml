@@ -8,10 +8,11 @@
     "is_new_shipping_address",
     "account_age_days"
   ],
-  "umbral_aprobacion": 0.15,
-  "umbral_bloqueo": 0.95,
+  "umbral_aprobacion": 0.3,
+  "umbral_bloqueo": 0.9,
   "average_precision": 0.82,
   "roc_auc": 0.9201,
-  "tasa_de_deteccion": 0.903,
-  "tiempo_de_deteccion_ms": 1.233
+  "tasa_de_deteccion": 0.9459,
+  "tiempo_de_deteccion_ms": 1.233,
+  "umbrales_reajustados_en": "2026-09-10T20:52:39+00:00"
 }

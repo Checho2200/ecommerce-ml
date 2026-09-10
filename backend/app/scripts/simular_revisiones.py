@@ -57,12 +57,21 @@ def _etiqueta_plausible(vector: dict, rng: random.Random) -> bool:
     riesgo = int(vector.get("high_risk_items_count", 0) or 0)
     duracion = float(vector.get("checkout_duration_seconds", 999) or 999)
     direccion_nueva = int(vector.get("is_new_shipping_address", 0) or 0)
+    # La antigüedad se añadió al modelo después, así que hay registros que no
+    # la traen. Se supone un cliente asentado —no cero— por lo mismo que en el
+    # resto del sistema: un dato que falta no puede convertirse en una
+    # acusación.
+    antiguedad = float(vector.get("account_age_days", 120) or 120)
 
     señales = (
         (monto > 1500)
         + (riesgo >= 2)
         + (duracion < 60)
         + (direccion_nueva == 1)
+        # Cuenta estrenada esta semana. Es la quinta variable del modelo y la
+        # más fuerte de las cinco, así que dejarla fuera de esta regla habría
+        # hecho que las etiquetas simuladas contradijeran al clasificador.
+        + (antiguedad < 7)
     )
     es_fraude = señales >= 3
 

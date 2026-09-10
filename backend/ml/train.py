@@ -534,8 +534,80 @@ def entrenar(preferir_reales: bool = True, forzar: bool = False) -> dict:
     return informe
 
 
+def reajustar_umbrales(preferir_reales: bool = True) -> dict:
+    """
+    Vuelve a elegir el punto de operación del modelo que ya está sirviendo, sin
+    reentrenar nada.
+
+    Existe porque el criterio de costo y el modelo son dos cosas separadas y se
+    pueden desincronizar. Los umbrales se eligen con los precios y las
+    restricciones de `ml/evaluacion.py`, y cuando ésos cambian —subir el piso de
+    detección, añadir un tope de rechazo— el modelo publicado se queda operando
+    en un punto que ya nadie eligió. Pasó: con el piso al 95 % se publicaron
+    unos umbrales que mandaban el 48 % de la tienda a revisión manual, y al
+    bajar el piso otra vez no había forma de corregirlos.
+
+    Reentrenar no servía como arreglo. La guarda de publicación compara el
+    AUC-PR del candidato con el del modelo que sirve y se negaba a reemplazarlo
+    —con razón, porque el que sirve era mejor ordenando las compras—, así que el
+    punto de operación viejo se quedaba pegado a un modelo bueno. Forzar la
+    publicación de un modelo peor para arreglar unos umbrales es exactamente la
+    decisión al revés.
+
+    No toca el `.joblib`: solo reescribe los umbrales del `.meta.json`.
+    """
+    datos = cargar_datos(preferir_reales=preferir_reales)
+    modelo = joblib.load(RUTA_MODELO)
+
+    X_ent, X_tmp, y_ent, y_tmp = train_test_split(
+        datos.X, datos.y, test_size=0.4, stratify=datos.y, random_state=RANDOM_SEED
+    )
+    X_val, _, y_val, _ = train_test_split(
+        X_tmp, y_tmp, test_size=0.5, stratify=y_tmp, random_state=RANDOM_SEED
+    )
+
+    costos = evaluacion.Costos()
+    umbrales, _ = evaluacion.buscar_umbrales(
+        y_val, modelo.predict_proba(X_val)[:, 1], X_val["total_amount"], costos
+    )
+    t_bajo, t_alto = umbrales["t_bajo"], umbrales["t_alto"]
+
+    meta = json.loads(RUTA_UMBRALES.read_text(encoding="utf-8"))
+    anteriores = (meta.get("umbral_aprobacion"), meta.get("umbral_bloqueo"))
+    meta.update(
+        {
+            "umbral_aprobacion": t_bajo,
+            "umbral_bloqueo": t_alto,
+            "tasa_de_deteccion": round(float(umbrales["tasa_de_deteccion"]), 4),
+            "umbrales_reajustados_en": datetime.now(timezone.utc).isoformat(
+                timespec="seconds"
+            ),
+        }
+    )
+    RUTA_UMBRALES.write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    print(f"Umbrales: {anteriores[0]} / {anteriores[1]}  ->  {t_bajo} / {t_alto}")
+    print(f"  Detección:      {umbrales['tasa_de_deteccion']:.1%}")
+    print(f"  A revisión:     {umbrales['proporcion_revisada']:.1%}")
+    print(f"  Rechazados:     {umbrales.get('proporcion_bloqueada', 0):.1%}")
+    print(f"  Regla aplicada: {umbrales['regla_aplicada']}")
+    return umbrales
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Entrena el modelo de fraude.")
+    parser.add_argument(
+        "--solo-umbrales",
+        action="store_true",
+        dest="solo_umbrales",
+        help=(
+            "No reentrena: vuelve a elegir los umbrales del modelo que ya está "
+            "publicado, con los costos y restricciones actuales. Sirve cuando lo "
+            "que cambió fue el criterio y no los datos."
+        ),
+    )
     parser.add_argument(
         "--sinteticos",
         action="store_true",
@@ -547,6 +619,10 @@ def main() -> int:
         help="Reemplaza el modelo en producción aunque el candidato sea peor.",
     )
     args = parser.parse_args()
+
+    if args.solo_umbrales:
+        reajustar_umbrales(preferir_reales=not args.sinteticos)
+        return 0
 
     informe = entrenar(preferir_reales=not args.sinteticos, forzar=args.forzar)
     return 0 if informe["reemplazo_del_modelo"]["reemplaza"] else 0
