@@ -552,6 +552,35 @@ def _cuantas_compras(rng) -> int:
     return int(valores[int(rng.choice(len(valores), p=pesos / pesos.sum()))])
 
 
+class SesionDeEnsayo:
+    """
+    Se traga las escrituras y deja pasar las lecturas.
+
+    Sirve para el ensayo: la generación necesita leer el catálogo de la base,
+    pero no debe escribir nada. Envolver la sesión de verdad —en lugar de
+    sembrar de `if ensayo:` todo el bucle— mantiene una sola versión del código
+    que genera, que es lo que garantiza que el ensayo y la corrida real
+    produzcan exactamente los mismos números.
+    """
+
+    def __init__(self, sesion):
+        self._sesion = sesion
+        self.escrituras = 0
+
+    def add(self, _fila):
+        self.escrituras += 1
+
+    async def flush(self):
+        return None
+
+    async def commit(self):
+        return None
+
+    def __getattr__(self, nombre):
+        # `execute`, `scalars` y demás lecturas van a la sesión de verdad.
+        return getattr(self._sesion, nombre)
+
+
 def _guardar_manifiesto(correos: list[str]) -> Path:
     """
     Deja por escrito qué cuentas creó esta corrida.
@@ -585,7 +614,7 @@ def _leer_manifiesto() -> list[str]:
         return []
 
 
-def _cuenta_nueva(usados: set, rol, rng) -> User:
+def _cuenta_nueva(usados: set, rol, rng, ensayo: bool = False) -> User:
     """Una cuenta con nombre verosímil de Trujillo y correo sin repetir."""
     nombre = NOMBRES[int(rng.integers(len(NOMBRES)))]
     apellido = APELLIDOS[int(rng.integers(len(APELLIDOS)))]
@@ -606,8 +635,19 @@ def _cuenta_nueva(usados: set, rol, rng) -> User:
     usados.add(correo)
 
     return User(
+        # El identificador se fija aquí, igual que en los pedidos. Sin él,
+        # `usuario.id` es None hasta que la sesión hace `flush()`, y el conjunto
+        # que evita refechar una cuenta ya fechada se llenaba de `None`: la
+        # primera compra entraba y todas las demás creían que su cliente ya
+        # tenía fecha. En la corrida real no se notaba porque el `flush()` de
+        # las cuentas ocurre antes del bucle; en cuanto se quitó —para poder
+        # ensayar sin escribir— quedó a la vista.
+        id=str(uuid.uuid4()),
         email=correo,
-        hashed_password=hash_password(CLAVE_DEL_CLIENTE),
+        # En el ensayo no se guarda nada, así que hashear cuesta minutos para
+        # tirarlos: cuatro mil cuentas con bcrypt son casi todo el tiempo de una
+        # corrida. La contraseña solo importa cuando la cuenta va a existir.
+        hashed_password=("(ensayo)" if ensayo else hash_password(CLAVE_DEL_CLIENTE)),
         full_name=f"{nombre} {apellido}",
         phone=f"9{int(rng.integers(10**8)):08d}",
         role=rol,
@@ -615,7 +655,8 @@ def _cuenta_nueva(usados: set, rol, rng) -> User:
 
 
 async def _crear_clientes(
-    sesion, compras_totales: int, rng, cuentas: int, administradores: int
+    sesion, compras_totales: int, rng, cuentas: int, administradores: int,
+    ensayo: bool = False,
 ) -> tuple[list, list]:
     """
     Crea exactamente `cuentas` cuentas y reparte las compras entre ellas.
@@ -650,10 +691,11 @@ async def _crear_clientes(
 
     usados: set = set()
     admins = [
-        _cuenta_nueva(usados, UserRole.ADMIN, rng) for _ in range(administradores)
+        _cuenta_nueva(usados, UserRole.ADMIN, rng, ensayo)
+        for _ in range(administradores)
     ]
     compradores = [
-        _cuenta_nueva(usados, UserRole.CLIENTE, rng)
+        _cuenta_nueva(usados, UserRole.CLIENTE, rng, ensayo)
         for _ in range(cuentas - administradores)
     ]
     for cuenta in admins + compradores:
@@ -721,6 +763,7 @@ async def construir(
     linea_base: str = "regla",
     cuentas: int = 500,
     administradores: int = 5,
+    ensayo: bool = False,
 ) -> dict:
     # El mismo generador que `ml/dataset.py`: si el tráfico ha de venir de la
     # misma distribución, también el sorteo.
@@ -752,9 +795,14 @@ async def construir(
         "sin_etiquetar": 0,
     }
 
-    async with AsyncSessionLocal() as sesion:
+    async with AsyncSessionLocal() as sesion_real:
+        # En el ensayo, la envoltura se traga las escrituras y deja pasar las
+        # lecturas. El código que genera es el mismo en los dos casos, que es
+        # lo que hace que el ensayo prediga la corrida de verdad.
+        sesion = SesionDeEnsayo(sesion_real) if ensayo else sesion_real
+
         reparto, admins = await _crear_clientes(
-            sesion, len(momentos), rng, cuentas, administradores
+            sesion, len(momentos), rng, cuentas, administradores, ensayo
         )
         caros, normales = await _catalogo(sesion)
         resumen["clientes"] = len({c.email for c in reparto})
@@ -763,11 +811,12 @@ async def construir(
         # Se anota antes de empezar a insertar pedidos: si la corrida se
         # interrumpe a mitad, la lista de cuentas creadas ya está en disco y
         # `--limpiar` puede retirarlas.
-        resumen["manifiesto"] = str(
-            _guardar_manifiesto(
-                sorted({c.email for c in reparto} | {a.email for a in admins})
+        if not ensayo:
+            resumen["manifiesto"] = str(
+                _guardar_manifiesto(
+                    sorted({c.email for c in reparto} | {a.email for a in admins})
+                )
             )
-        )
         cuentas_fechadas: set = set()
         # El día que abrió la tienda: el primero del rango pedido.
         apertura = datetime.combine(desde, time.min, tzinfo=timezone.utc)
@@ -1277,6 +1326,17 @@ def main() -> int:
             "tienda: se ven en Panel → Usuarios con su rol y no compran."
         ),
     )
+    parser.add_argument(
+        "--ensayo",
+        action="store_true",
+        help=(
+            "Genera y mide sin escribir nada: mismo tráfico, mismo modelo, "
+            "mismos números, pero sin crear cuentas ni pedidos. Tarda segundos "
+            "en vez de minutos porque se salta el hasheo de contraseñas y los "
+            "viajes a la base. Sirve para ver qué va a producir una "
+            "configuración antes de comprometerla."
+        ),
+    )
     parser.add_argument("--semilla", type=int, default=2026)
     parser.add_argument(
         "--linea-base",
@@ -1344,15 +1404,27 @@ def main() -> int:
             args.linea_base,
             args.cuentas,
             args.administradores,
+            args.ensayo,
         )
     )
 
     informe = _informe(resumen, args.desde, args.hasta)
+    print(informe)
+
+    if args.ensayo:
+        # El informe de un ensayo no se guarda: sobrescribir el del historial
+        # que sí está en la base dejaría el documento describiendo unos datos
+        # que nadie puede consultar.
+        print(
+            "\nEnsayo: no se escribió nada. Estos son los números que dará la "
+            "corrida de verdad con esta misma configuración y semilla."
+        )
+        return 0
+
     DIRECTORIO_INFORMES.mkdir(parents=True, exist_ok=True)
     destino = DIRECTORIO_INFORMES / "historial_simulado.md"
     destino.write_text(informe, encoding="utf-8")
 
-    print(informe)
     print(f"\nInforme escrito en {destino}")
     return 0
 

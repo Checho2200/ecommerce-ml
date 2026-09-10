@@ -263,7 +263,7 @@ cd backend
 python -m pytest
 ```
 
-Son 265 pruebas y cubren lo que duele si se rompe:
+Son 272 pruebas y cubren lo que duele si se rompe:
 
 - **Inventario.** Que comprar descuente stock, que un pedido rechazado no lo
   toque, y que cancelar —el cliente o el administrador— lo devuelva.
@@ -612,6 +612,19 @@ Antes de publicar un modelo nuevo se comprueban dos cosas:
   publicar igual, pero hay que pedirlo.
 
 **Para demostrar el ciclo completo** cuando todavía no hay clientes reales:
+
+Antes de comprometer una corrida conviene **ensayarla**. `--ensayo` genera y
+mide exactamente igual —mismo tráfico, mismo modelo, mismos números— pero sin
+escribir nada, así que tarda medio minuto en vez de trece:
+
+```bash
+python -m app.scripts.simular_historial --ensayo
+```
+
+Sirve para responder «¿qué va a producir esta configuración?» antes de gastar
+el tiempo, que es como se descubre que unos umbrales dan un 100 % de detección
+—y que ese 100 % venía de mandar media tienda a revisión— sin tener que
+esperar a verlo escrito en la base.
 
 ```bash
 python -m app.scripts.simular_revisiones     # etiqueta lo que haya sin revisar
