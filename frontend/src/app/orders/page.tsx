@@ -21,7 +21,10 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 
 const STATUS_MAP: Record<string, { label: string; color: 'warning' | 'info' | 'success' | 'error' | 'default'; icon: React.ReactElement }> = {
   PENDING:      { label: 'Pendiente',   color: 'warning', icon: <HourglassIcon /> },
-  FRAUD_REVIEW: { label: 'En Revisión', color: 'warning', icon: <WarningIcon /> },
+  // El cliente ya pagó cuando su pedido llega a este estado: la retención
+  // ocurre antes de preparar el envío, no antes de cobrar. «En revisión» a
+  // secas le haría pensar que su pago no entró.
+  FRAUD_REVIEW: { label: 'Pagado · verificando', color: 'info', icon: <WarningIcon /> },
   APPROVED:     { label: 'Aprobado',    color: 'info',    icon: <CheckCircleIcon /> },
   COMPLETED:    { label: 'Completado',  color: 'success', icon: <CheckCircleIcon /> },
   REJECTED:     { label: 'Rechazado',   color: 'error',   icon: <CancelIcon /> },

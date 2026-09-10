@@ -264,7 +264,7 @@ cd backend
 python -m pytest
 ```
 
-Son 277 pruebas y cubren lo que duele si se rompe:
+Son 284 pruebas y cubren lo que duele si se rompe:
 
 - **Inventario.** Que comprar descuente stock, que un pedido rechazado no lo
   toque, y que cancelar —el cliente o el administrador— lo devuelva.
@@ -462,9 +462,28 @@ históricos para no quedarse nunca sin criterio.
 
 | Probabilidad | Decisión | Qué pasa con la orden |
 | --- | --- | --- |
-| menor a 0.45 | `APPROVED` | Sigue al pago |
-| 0.45 – 0.95 | `REVIEW` | Queda en `FRAUD_REVIEW` para que la revise una persona |
-| mayor a 0.95 | `BLOCKED` | Nace `REJECTED` y el stock se devuelve enseguida |
+| menor a 0.30 | `APPROVED` | Sigue al pago y, al cobrarse, queda lista para preparar |
+| 0.30 – 0.90 | `REVIEW` | **Sigue al pago igual**, y al cobrarse queda retenida antes de preparar el envío |
+| mayor a 0.90 | `BLOCKED` | Nace `REJECTED` y el stock se devuelve enseguida |
+
+**Dónde se frena, y por qué ahí.** Solo un bloqueo corta el checkout. Lo que el
+modelo manda a revisión se paga con normalidad y se retiene **después del cobro,
+antes de preparar el envío**.
+
+El sistema retenía antes en el checkout, y hacía dos cosas malas a la vez. A un
+cliente legítimo se le pedía esperar sin saber cuánto —y muchos no vuelven—; y
+al revisor se le pedía decidir sin la señal más útil que existe: si el nombre
+del titular de la tarjeta coincide con el de la cuenta, que es la marca clásica
+del fraude con tarjeta robada y que **no existe hasta que se paga**.
+
+Retener antes de enviar es lo que hacen las tiendas, y funciona porque el fraude
+no cuesta la mercadería hasta que sale del almacén: frenar el envío llega a
+tiempo. Si al revisarlo resulta fraudulento, se anula el cargo.
+
+Esto cambia una frase de los indicadores pero no su cuenta: un fraude sigue
+contando como **detectado** si el modelo no lo dejó pasar —lo bloqueó o lo mandó
+a revisión—; lo que cambia es que ahora se frena antes de *enviar* en vez de
+antes de *cobrar*.
 
 ### Los tres indicadores
 
@@ -473,7 +492,7 @@ ellos:
 
 | Indicador | Qué mide | Debe |
 | --- | --- | :---: |
-| Tasa de fraudes detectados | De los fraudes confirmados, qué proporción frenó el modelo antes de cobrar | subir |
+| Tasa de fraudes detectados | De los fraudes confirmados, qué proporción frenó el modelo antes de enviar | subir |
 | Tasa de fraude no detectado | De los fraudes confirmados, qué proporción se aprobó igual | bajar |
 | Tiempo de detección | Cuánto tarda en evaluar una compra, en milisegundos | bajar |
 

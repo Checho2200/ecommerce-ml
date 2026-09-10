@@ -246,10 +246,26 @@ def _antiguedad_de_la_cuenta(cliente: User) -> float:
 # Creación de pedidos
 # ─────────────────────────────────────────────────────────────────────────────
 def _estado_segun_la_decision(decision: str) -> OrderStatus:
-    return {
-        "BLOCKED": OrderStatus.REJECTED,
-        "REVIEW": OrderStatus.FRAUD_REVIEW,
-    }.get(decision, OrderStatus.PENDING)
+    """
+    En qué estado nace el pedido según lo que dijo el modelo.
+
+    Solo un bloqueo impide pagar. Una compra que el modelo manda a revisión
+    nace igual que una aprobada —PENDING, con su enlace de pago— y se retiene
+    **después del cobro**, antes de prepararla.
+
+    Antes se retenía en el checkout: el cliente veía «tu pedido está en
+    revisión» y no podía pagar hasta que alguien lo mirara. Eso hace dos cosas
+    malas a la vez. A un cliente legítimo se le pide que espere sin saber
+    cuánto, y muchos no vuelven. Y al revisor se le pide que decida **sin la
+    señal más útil que hay**: si el nombre del titular de la tarjeta coincide
+    con el de la cuenta, que es la marca clásica del fraude con tarjeta robada
+    y que no existe hasta que se paga.
+
+    Retener antes de enviar es lo que hacen las tiendas, y funciona porque el
+    fraude no cuesta la mercadería hasta que sale del almacén: frenar el envío
+    llega a tiempo. Si al revisarlo resulta fraudulento, se anula el cargo.
+    """
+    return {"BLOCKED": OrderStatus.REJECTED}.get(decision, OrderStatus.PENDING)
 
 
 async def crear_pedido(db: AsyncSession, cliente: User, datos: OrderCreate) -> PedidoCreado:
@@ -398,15 +414,18 @@ async def liberar_de_revision(db: AsyncSession, orden_id: str) -> tuple[Order, O
     """
     Deja seguir una orden que el modelo había retenido.
 
-    No basta con cambiar la etiqueta a PENDING. Una orden retenida nunca llegó
-    a tener enlace de pago —`crear_pedido` solo lo pide para las que aprueba el
-    modelo—, así que sin generarlo aquí el cliente se quedaría con un pedido
-    "pendiente" que no puede pagar por ningún sitio. Y el plazo de caducidad
-    arranca ahora, no cuando se creó la orden.
+    Desde que la retención ocurre después del cobro, una orden en revisión
+    normalmente **ya está pagada**: soltarla es darla por buena y dejar que se
+    prepare, o sea COMPLETED. No hay enlace de pago que generar porque el
+    cliente ya pagó.
 
-    Devuelve la orden y la URL de pago, que puede ser nula si la pasarela falla:
-    igual que al crear el pedido, una caída de MercadoPago no debe deshacer la
-    decisión del administrador.
+    Queda el caso heredado: pedidos retenidos con las reglas anteriores, que
+    nunca llegaron a la pasarela. Ésos sí necesitan volver a PENDING y estrenar
+    enlace de pago, o el cliente se quedaría con un pedido «pendiente» que no
+    puede pagar por ningún sitio. Se distinguen por `paid_at`.
+
+    Devuelve la orden y la URL de pago, nula cuando no hace falta —o cuando la
+    pasarela falla, que tampoco debe deshacer la decisión del administrador.
     """
     orden = await obtener_pedido(db, orden_id)
 
@@ -414,6 +433,12 @@ async def liberar_de_revision(db: AsyncSession, orden_id: str) -> tuple[Order, O
         raise OperacionNoPermitida(
             "Solo se puede liberar una orden que esté en revisión antifraude"
         )
+
+    if orden.paid_at is not None:
+        orden.status = OrderStatus.COMPLETED
+        await db.flush()
+        await db.refresh(orden)
+        return orden, None
 
     orden.status = OrderStatus.PENDING
     orden.payable_since = datetime.now(timezone.utc)
@@ -469,6 +494,23 @@ async def cancelar_pedido_del_cliente(db: AsyncSession, cliente: User, orden_id:
     return orden
 
 
+async def _el_modelo_pidio_revisarla(db: AsyncSession, orden_id: str) -> bool:
+    """
+    Si la evaluación de esa compra terminó en REVIEW.
+
+    Se consulta al confirmarse el pago y no se guarda en la orden porque ya
+    está escrito donde corresponde: en su `fraud_log`, que es el registro de lo
+    que el modelo decidió y por qué. Duplicarlo en `orders` daría dos versiones
+    de la misma verdad y una de las dos acabaría desactualizada.
+    """
+    decision = (
+        await db.execute(
+            select(FraudLog.decision).where(FraudLog.order_id == orden_id)
+        )
+    ).scalar_one_or_none()
+    return getattr(decision, "value", decision) == "REVIEW"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Confirmación del pago
 # ─────────────────────────────────────────────────────────────────────────────
@@ -476,7 +518,9 @@ async def cancelar_pedido_del_cliente(db: AsyncSession, cliente: User, orden_id:
 class ResultadoDelPago:
     """Qué se hizo con la notificación de un pago."""
 
-    estado: str  # "completada" | "cancelada" | "sin cambios" | "orden no encontrada"
+    # "completada" | "retenida" | "cancelada" | "sin cambios" |
+    # "orden no encontrada"
+    estado: str
     orden: Optional[Order] = None
 
 
@@ -503,16 +547,27 @@ async def registrar_resultado_del_pago(
         return ResultadoDelPago("sin cambios", orden)
 
     if estado_en_mercadopago == "approved":
-        orden.status = OrderStatus.COMPLETED
         # Con qué se pagó, para poder seguirle la pista al cobro después. Son
         # los cuatro últimos dígitos y el titular; el resto de la tarjeta no
         # llega hasta aquí ni debe hacerlo.
         for campo, valor in (datos_del_pago or {}).items():
             setattr(orden, campo, valor)
         orden.paid_at = datetime.now(timezone.utc)
+
+        # Aquí es donde se retiene lo que el modelo marcó. El cobro ya está
+        # hecho, así que el revisor tiene delante el titular de la tarjeta —la
+        # señal que antes no podía ver— y decide con eso. El pedido no se
+        # prepara hasta que alguien lo suelte.
+        retener = await _el_modelo_pidio_revisarla(db, orden.id)
+        orden.status = (
+            OrderStatus.FRAUD_REVIEW if retener else OrderStatus.COMPLETED
+        )
         await db.commit()
-        print(f"Order {orden.id} marcada como COMPLETED por el webhook.")
-        return ResultadoDelPago("completada", orden)
+        print(
+            f"Order {orden.id} pagada; queda en {orden.status.value} "
+            f"({'retenida por el modelo' if retener else 'sin observaciones'})."
+        )
+        return ResultadoDelPago("retenida" if retener else "completada", orden)
 
     if estado_en_mercadopago in ("rejected", "cancelled"):
         # Sin esto un pago rechazado dejaba la orden en PENDING para siempre,

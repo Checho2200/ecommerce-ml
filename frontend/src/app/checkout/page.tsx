@@ -121,6 +121,11 @@ export default function CheckoutPage() {
           'detuvo antes de cobrarte. No se realizo ningun cargo. Si crees que es ' +
           'un error, escribenos y lo revisamos.',
       },
+      // Un pedido ya no nace en revision: el modelo solo corta el checkout
+      // cuando bloquea, y lo que marca para revisar se retiene despues del
+      // cobro. Este desenlace queda para los pedidos que quedaron retenidos
+      // con las reglas anteriores y para cualquier caso raro; si desapareciera,
+      // esos clientes verian «Pedido registrado» sin explicacion.
       FRAUD_REVIEW: {
         icono: <HourglassTopIcon sx={{ fontSize: 44 }} />,
         color: 'warning.main',

@@ -24,7 +24,9 @@ export const ESTADOS_DE_PEDIDO: Record<
   { label: string; color: ColorDeEstado }
 > = {
   PENDING: { label: "Pendiente", color: "warning" },
-  FRAUD_REVIEW: { label: "Revisión Fraude", color: "error" },
+  // En el panel se llama por su nombre: es la cola que hay que atender. El
+  // cliente lo ve como «Pagado · verificando», que es lo que le importa a él.
+  FRAUD_REVIEW: { label: "Revisión antifraude", color: "warning" },
   APPROVED: { label: "Aprobada", color: "success" },
   REJECTED: { label: "Rechazada", color: "error" },
   COMPLETED: { label: "Completada", color: "info" },
