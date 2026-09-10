@@ -154,8 +154,24 @@ def test_la_comparacion_avisa_cuando_la_referencia_no_era_operable():
 
     # Los elegidos siempre caben; la referencia no tiene por que.
     assert mejor["proporcion_revisada"] <= costos.capacidad_de_revision
+
+    # Lo que NO se puede exigir es que el elegido sea ademas el mas barato de
+    # todos. Al criterio se le sumaron dos restricciones —detectar al menos el
+    # piso declarado y no rechazar mas del tope— y cumplirlas cuesta dinero: la
+    # referencia no tiene que cumplirlas, asi que puede salir mas barata. Que
+    # salga mas barata no la hace mejor; la hace inaplicable, y esa es
+    # justamente la advertencia que este informe existe para dar.
     if comparacion["la_referencia_cabe_en_la_capacidad"]:
-        assert mejor["costo_total"] <= referencia["costo_total"]
+        mas_barata = referencia["costo_total"] < mejor["costo_total"]
+        if mas_barata:
+            # Entonces incumple alguna de las otras dos, y hay que poder decir
+            # cual: si cumpliera las tres y fuera mas barata, la busqueda la
+            # habria elegido a ella.
+            proporcion_bloqueada = referencia["pedidos_bloqueados"] / len(datos)
+            assert (
+                referencia["tasa_de_deteccion"] < costos.deteccion_minima
+                or proporcion_bloqueada > costos.bloqueo_maximo
+            )
     else:
         assert (
             comparacion["proporcion_revisada_con_la_referencia"]

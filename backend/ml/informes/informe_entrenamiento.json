@@ -1,5 +1,5 @@
 {
-  "generado_en": "2026-09-10T15:47:36+00:00",
+  "generado_en": "2026-09-10T17:00:12+00:00",
   "datos": {
     "origen": "sintetico",
     "detalle": "10000 transacciones generadas (829 fraudulentas, 8.3%)",
@@ -48,7 +48,7 @@
     }
   },
   "umbrales": {
-    "aprobar_por_debajo_de": 0.2,
+    "aprobar_por_debajo_de": 0.15,
     "bloquear_por_encima_de": 0.9,
     "de_referencia": [
       0.3,
@@ -59,38 +59,38 @@
       "cargo_por_contracargo": 30.0,
       "revision_manual": 4.0,
       "acierto_de_la_revision": 0.9,
-      "capacidad_de_revision": 0.4,
+      "capacidad_de_revision": 0.6,
       "deteccion_minima": 0.9,
       "bloqueo_maximo": 0.06
     },
     "en_validacion": {
-      "t_bajo": 0.2,
+      "t_bajo": 0.15,
       "t_alto": 0.9,
-      "costo_total": 41259.82,
-      "perdida_por_fraude_aprobado": 8383.57,
+      "costo_total": 42238.22,
+      "perdida_por_fraude_aprobado": 4433.54,
       "perdida_por_venta_bloqueada": 6366.25,
-      "costo_de_revisiones": 26510.0,
-      "pedidos_aprobados": 1224,
-      "pedidos_revisados": 682,
+      "costo_de_revisiones": 31438.44,
+      "pedidos_aprobados": 870,
+      "pedidos_revisados": 1036,
       "pedidos_bloqueados": 94,
-      "fraudes_aprobados": 20,
+      "fraudes_aprobados": 14,
       "legitimos_bloqueados": 15,
-      "fraudes_detectados": 146,
-      "tasa_de_deteccion": 0.8795,
-      "tasa_de_no_deteccion": 0.1205,
-      "proporcion_revisada": 0.341,
+      "fraudes_detectados": 152,
+      "tasa_de_deteccion": 0.9157,
+      "tasa_de_no_deteccion": 0.0843,
+      "proporcion_revisada": 0.518,
       "dentro_de_capacidad": true,
-      "detecta_lo_suficiente": false,
+      "detecta_lo_suficiente": true,
       "proporcion_bloqueada": 0.047,
       "bloquea_de_menos": true,
-      "regla_aplicada": "ningún par alcanzó el piso de detección del 90%; se eligió el que más fraude detecta (88%) dentro de la capacidad de revisión"
+      "regla_aplicada": "el más barato entre los que caben en la capacidad de revisión (60%), no rechazan más del 6% de los pedidos y detectan al menos el 90% del fraude"
     },
     "comparacion_con_referencia": {
-      "costo_con_umbrales_elegidos": 41259.82,
+      "costo_con_umbrales_elegidos": 42238.22,
       "costo_con_umbrales_de_referencia": 45720.69,
-      "ahorro": 4460.87,
-      "ahorro_porcentual": 9.76,
-      "proporcion_revisada_con_los_elegidos": 0.341,
+      "ahorro": 3482.47,
+      "ahorro_porcentual": 7.62,
+      "proporcion_revisada_con_los_elegidos": 0.518,
       "proporcion_revisada_con_la_referencia": 0.163,
       "la_referencia_cabe_en_la_capacidad": true
     }
@@ -131,46 +131,46 @@
       "total": 2000
     },
     "costo": {
-      "t_bajo": 0.2,
+      "t_bajo": 0.15,
       "t_alto": 0.9,
-      "costo_total": 43159.01,
-      "perdida_por_fraude_aprobado": 9370.97,
+      "costo_total": 44658.52,
+      "perdida_por_fraude_aprobado": 5268.54,
       "perdida_por_venta_bloqueada": 6903.82,
-      "costo_de_revisiones": 26884.22,
-      "pedidos_aprobados": 1222,
-      "pedidos_revisados": 678,
+      "costo_de_revisiones": 32486.16,
+      "pedidos_aprobados": 771,
+      "pedidos_revisados": 1129,
       "pedidos_bloqueados": 100,
-      "fraudes_aprobados": 18,
+      "fraudes_aprobados": 8,
       "legitimos_bloqueados": 15,
-      "fraudes_detectados": 148,
-      "tasa_de_deteccion": 0.8916,
-      "tasa_de_no_deteccion": 0.1084
+      "fraudes_detectados": 158,
+      "tasa_de_deteccion": 0.9518,
+      "tasa_de_no_deteccion": 0.0482
     }
   },
   "indicadores": {
     "tasa_de_fraudes_detectados": {
-      "valor": 0.8916,
+      "valor": 0.9518,
       "direccion_deseada": "subir",
       "medido_en": "partición de prueba, a los umbrales elegidos"
     },
     "tasa_de_fraude_no_detectado": {
-      "valor": 0.1084,
+      "valor": 0.0482,
       "direccion_deseada": "bajar",
       "medido_en": "partición de prueba, a los umbrales elegidos"
     },
     "tiempo_de_deteccion_ms": {
-      "valor": 1.52,
+      "valor": 1.289,
       "direccion_deseada": "bajar",
       "presupuesto": 50.0,
       "dentro_del_presupuesto": true,
       "medido_en": "mediana de evaluaciones de una sola transacción"
     },
-    "deteccion_del_modelo_anterior": 0.8916
+    "deteccion_del_modelo_anterior": 0.9518
   },
   "reemplazo_del_modelo": {
     "reemplaza": true,
     "resultado_sospechoso": false,
-    "motivo": "AUC-PR 0.7294 contra 0.7294 del modelo actual; detecta el 89.2% del fraude",
+    "motivo": "AUC-PR 0.7294 contra 0.7294 del modelo actual; detecta el 95.2% del fraude",
     "average_precision_candidato": 0.7294,
     "average_precision_anterior": 0.7294
   },

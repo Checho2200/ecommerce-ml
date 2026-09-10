@@ -44,6 +44,8 @@ interface Indicador {
    * vista, para que se puedan citar sin que nadie las confunda con el titular.
    */
   formula?: string | null;
+  /** La misma magnitud con el denominador de la tesis (el total). */
+  formulaTesis?: string | null;
   /**
    * Lo que el modelo midió al entrenarse, sobre datos que no había visto.
    *
@@ -88,10 +90,19 @@ export function indicadoresDe(
       // calculando y se enseña debajo, que es donde no se confunde con esto.
       explicacion:
         "De los fraudes confirmados, qué proporción frenó el sistema antes de cobrar.",
+      // La cuenta del número que encabeza la tarjeta, con sus propios
+      // operandos. Tener debajo una fórmula que da otro resultado —DTF, con
+      // otro denominador— obligaba a leer dos veces para entender cuál era
+      // cuál; ahora la primera línea cuadra con el titular y la segunda dice
+      // explícitamente que cambia el denominador.
       formula:
+        datos?.detection_rate == null
+          ? null
+          : `${datos.total_detected_frauds} ÷ ${datos.total_actual_frauds} × 100 = ${(datos.detection_rate * 100).toFixed(1)} %`,
+      formulaTesis:
         datos?.dtf == null
           ? null
-          : `DTF = ${datos.total_detected_frauds} ÷ ${datos.total_evaluations} × 100 = ${(datos.dtf * 100).toFixed(1)} % del total de transacciones`,
+          : `DTF, sobre el total de transacciones: ${datos.total_detected_frauds} ÷ ${datos.total_evaluations} × 100 = ${(datos.dtf * 100).toFixed(1)} %`,
       direccion: "subir",
       icono: ShieldOutlinedIcon,
       medible,
@@ -110,9 +121,13 @@ export function indicadoresDe(
       explicacion:
         "De los fraudes confirmados, qué proporción se aprobó igual y terminó en pérdida.",
       formula:
+        datos?.undetected_rate == null
+          ? null
+          : `${datos.total_undetected_frauds} ÷ ${datos.total_actual_frauds} × 100 = ${(datos.undetected_rate * 100).toFixed(1)} %`,
+      formulaTesis:
         datos?.nfnd == null
           ? null
-          : `NFND = ${datos.total_undetected_frauds} ÷ ${datos.total_evaluations} × 100 = ${(datos.nfnd * 100).toFixed(1)} % del total de transacciones`,
+          : `NFND, sobre el total de transacciones: ${datos.total_undetected_frauds} ÷ ${datos.total_evaluations} × 100 = ${(datos.nfnd * 100).toFixed(1)} %`,
       direccion: "bajar",
       icono: ReportGmailerrorredOutlinedIcon,
       medible,
@@ -275,19 +290,35 @@ export default function TarjetasDeIndicadores({
                   —el total de transacciones— y da una cifra que no se puede
                   comparar con el titular de arriba. */}
               {!cargando && i.formula && (
-                <Typography
-                  variant="caption"
-                  sx={{
-                    mt: 1.5,
-                    display: "block",
-                    color: "text.secondary",
-                    fontFamily: "monospace",
-                    fontSize: "0.68rem",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {i.formula}
-                </Typography>
+                <Box sx={{ mt: 1.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: "block",
+                      color: "text.primary",
+                      fontFamily: "monospace",
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {i.formula}
+                  </Typography>
+                  {i.formulaTesis && (
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: "block",
+                        color: "text.secondary",
+                        fontFamily: "monospace",
+                        fontSize: "0.66rem",
+                        lineHeight: 1.6,
+                        mt: 0.4,
+                      }}
+                    >
+                      {i.formulaTesis}
+                    </Typography>
+                  )}
+                </Box>
               )}
 
               <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>

@@ -1,8 +1,8 @@
 # Historial simulado de la tienda
 
-1000 compras repartidas entre el 01/01/2026 y el 10/09/2026, evaluadas una por una por el modelo que está en producción.
+5000 compras repartidas entre el 01/01/2026 y el 10/09/2026, evaluadas una por una por el modelo que está en producción.
 
-El tramo antiguo decide con una regla fija sin modelo (bloquear si el monto pasa de S/ 1,500 y la dirección es nueva; revisar si pasa de ese monto o lleva 2 o más artículos de alto riesgo); el nuevo, con el modelo y los umbrales que el entrenamiento eligió minimizando el costo en soles (0.2 / 0.9). El tráfico se genera igual en los dos: lo único que cambia es el criterio de decisión.
+El tramo antiguo decide con una regla fija sin modelo (bloquear si el monto pasa de S/ 1,500 y la dirección es nueva; revisar si pasa de ese monto o lleva 2 o más artículos de alto riesgo); el nuevo, con el modelo y los umbrales que el entrenamiento eligió minimizando el costo en soles (0.15 / 0.9). El tráfico se genera igual en los dos: lo único que cambia es el criterio de decisión.
 
 ## Los tres indicadores
 
@@ -14,36 +14,36 @@ Las dos tasas de arriba se dividen entre los fraudes confirmados: son la exhaust
 
 | Indicador | Antes | Después | Debe |
 | :--- | ---: | ---: | :---: |
-| Tasa de fraudes detectados | 83.3% | **94.9%** | subir |
-| Tasa de fraude no detectado | 16.7% | **5.1%** | bajar |
-| Tiempo de detección | 4.3 h | **1.6 ms** | bajar |
+| Tasa de fraudes detectados | 70.0% | **91.4%** | subir |
+| Tasa de fraude no detectado | 30.0% | **8.6%** | bajar |
+| Tiempo de detección | 4.2 h | **2.1 ms** | bajar |
 
 El tiempo de detección no compara dos clasificadores: compara **no tener detector** con tenerlo. Antes del modelo la regla fija solo levantaba la mano y quien decidía era una persona, cuando le llegaba el turno en la cola de revisión; ese es el tiempo de la izquierda. El de la derecha lo cronometra el propio servicio al puntuar cada compra, una por una, dentro de la petición que crea el pedido.
 
 ## Las cuentas
 
-500 cuentas con nombres, teléfonos y correos como los de cualquier cliente de Trujillo (@gmail.com, @outlook.es, @hotmail.com, @yahoo.com). 5 de ellas son administradores —personal de la tienda, se ven en Panel → Usuarios con su rol y no compran— y las otras 495 son los clientes entre los que se reparten las compras: la mayoría compra una sola vez, unos pocos son habituales con nueve pedidos.
+2500 cuentas con nombres, teléfonos y correos como los de cualquier cliente de Trujillo (@gmail.com, @outlook.es, @hotmail.com, @yahoo.com). 5 de ellas son administradores —personal de la tienda, se ven en Panel → Usuarios con su rol y no compran— y las otras 2495 son los clientes entre los que se reparten las compras: la mayoría compra una sola vez, unos pocos son habituales con nueve pedidos.
 
 ## El detalle
 
 | | Antes | Después |
 | :--- | ---: | ---: |
-| Compras evaluadas | 450 | 550 |
-| Aprobadas | 299 | 274 |
-| A revisión | 108 | 226 |
-| Bloqueadas | 43 | 50 |
-| Fraudes confirmados | 30 | 39 |
-| Fraudes detectados | 25 | 37 |
-| **Tasa de detección** | **83.3%** | **94.9%** |
-| Compras buenas bloqueadas | 24 | 14 |
-| Fraude que pasó (S/) | 2,763.00 | 1,598.00 |
-| Margen perdido por frenar de más (S/) | 8,503.80 | 5,767.95 |
-| **Costo total (S/)** | **11,266.80** | **7,365.95** |
+| Compras evaluadas | 1500 | 3500 |
+| Aprobadas | 1030 | 1120 |
+| A revisión | 324 | 2116 |
+| Bloqueadas | 146 | 264 |
+| Fraudes confirmados | 130 | 209 |
+| Fraudes detectados | 91 | 191 |
+| **Tasa de detección** | **70.0%** | **91.4%** |
+| Compras buenas bloqueadas | 77 | 57 |
+| Fraude que pasó (S/) | 34,561.00 | 12,619.00 |
+| Margen perdido por frenar de más (S/) | 29,049.75 | 25,795.80 |
+| **Costo total (S/)** | **63,610.75** | **38,414.80** |
 
-Por compra evaluada, el costo de los errores baja de **S/ 25.04** a **S/ 13.39** (46.5%).
+Por compra evaluada, el costo de los errores baja de **S/ 42.41** a **S/ 10.98** (74.1%).
 
 
-Quedan 183 compras sin etiquetar, casi todas recientes: el contracargo todavía no ha llegado o el plazo no ha vencido. Aparecen en el panel como evaluadas pero sin confirmar, que es como se ve una tienda de verdad — los indicadores del mes pasado están completos y los de esta semana se siguen llenando.
+Quedan 1194 compras sin etiquetar, casi todas recientes: el contracargo todavía no ha llegado o el plazo no ha vencido. Aparecen en el panel como evaluadas pero sin confirmar, que es como se ve una tienda de verdad — los indicadores del mes pasado están completos y los de esta semana se siguen llenando.
 
 
 Las compras que el sistema dejó pasar llevan además datos de cobro simulados —medio de pago, cuatro últimos dígitos y titular—, con la misma forma que los que deja un pago real. En una parte de ellas el titular no coincide con el de la cuenta: es la señal más común de tarjeta robada, y ninguna de las cuatro variables del modelo la ve, así que solo puede verla la persona que revisa.

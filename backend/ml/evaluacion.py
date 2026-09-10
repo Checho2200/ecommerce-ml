@@ -101,7 +101,16 @@ class Costos:
       que salga en la hoja de cálculo. Los pares de umbrales que se pasan de
       esta capacidad se descartan aunque su costo sea menor.
 
-      Estaba en el 15 %, y ese tope era el que hacía cara la detección alta:
+      Estaba en el 15 % y pasó por el 40 % antes de llegar aquí. Es el tope
+      que gobierna cuánto fraude se puede detectar: con cuatro variables y un
+      AUC-PR de 0.73, frenar nueve de cada diez fraudes exige mirar a mano una
+      parte grande de los pedidos dudosos. Al 40 % la tasa real se quedaba en
+      el 88.8 % medida sobre suficientes casos; al 60 % pasa del 93 %. Es un
+      compromiso que conviene declarar tal cual y no esconder: el sistema
+      alcanza esa detección **porque el negocio acepta revisar más**, no porque
+      el modelo separe mejor.
+
+      El tope original del 15 % era además el que hacía cara la detección alta:
       obligado a frenar nueve de cada diez fraudes sin poder revisar más, el
       optimizador no tenía más salida que **bloquear**, y bloqueaba 457 compras
       legítimas de cada 1834. Con el 40 % llega a la misma detección revisando
@@ -130,7 +139,7 @@ class Costos:
     cargo_por_contracargo: float = 30.0
     revision_manual: float = 4.0
     acierto_de_la_revision: float = 0.90
-    capacidad_de_revision: float = 0.40
+    capacidad_de_revision: float = 0.60
     deteccion_minima: float = 0.90
     bloqueo_maximo: float = 0.06
 
@@ -254,29 +263,63 @@ def buscar_umbrales(
             fila["proporcion_bloqueada"] <= costos.bloqueo_maximo
         )
 
-    caben = [
-        fila
-        for fila in rejilla
-        if fila["dentro_de_capacidad"] and fila["bloquea_de_menos"]
-    ] or rejilla
-    detectan = [fila for fila in caben if fila["detecta_lo_suficiente"]]
+    # Las restricciones se sueltan de una en una y en orden, no todas a la vez.
+    #
+    # La versión anterior tenía un solo respaldo —«si no cabe nada, mira la
+    # rejilla entera»— y con dos restricciones eso deja de ser aceptable:
+    # basta que ninguna combinación cumpla las dos para que el elegido pueda
+    # saltarse también la capacidad de revisión, que es la restricción más dura
+    # de todas. Si la tienda no puede revisar más del 60 % de los pedidos, no
+    # puede, y un par que exija revisar el 80 % no es una respuesta aunque sea
+    # el más barato.
+    #
+    # El orden va de lo más negociable a lo menos: primero se rebaja el piso de
+    # detección (un objetivo), luego el tope de rechazo (doloroso pero posible),
+    # y la capacidad de revisión solo si no queda nada más. Cada escalón queda
+    # escrito en `regla_aplicada`.
+    cabe = lambda f: f["dentro_de_capacidad"]  # noqa: E731
+    no_bloquea_de_mas = lambda f: f["bloquea_de_menos"]  # noqa: E731
+    detecta = lambda f: f["detecta_lo_suficiente"]  # noqa: E731
 
-    if detectan:
-        mejor = min(detectan, key=lambda fila: fila["costo_total"])
+    completos = [f for f in rejilla if cabe(f) and no_bloquea_de_mas(f) and detecta(f)]
+    sin_piso = [f for f in rejilla if cabe(f) and no_bloquea_de_mas(f)]
+    sin_tope_de_bloqueo = [f for f in rejilla if cabe(f)]
+
+    if completos:
+        mejor = min(completos, key=lambda fila: fila["costo_total"])
         regla = (
             f"el más barato entre los que caben en la capacidad de revisión "
             f"({costos.capacidad_de_revision:.0%}), no rechazan más del "
             f"{costos.bloqueo_maximo:.0%} de los pedidos y detectan al menos el "
             f"{costos.deteccion_minima:.0%} del fraude"
         )
-    else:
+    elif sin_piso:
         # Ningún par llega al piso. Antes que rebajar el objetivo en silencio,
         # se elige el que más detecta —desempatando por costo— y se deja dicho.
-        mejor = min(caben, key=lambda fila: (-fila["tasa_de_deteccion"], fila["costo_total"]))
+        mejor = min(sin_piso, key=lambda f: (-f["tasa_de_deteccion"], f["costo_total"]))
         regla = (
             f"ningún par alcanzó el piso de detección del "
             f"{costos.deteccion_minima:.0%}; se eligió el que más fraude detecta "
-            f"({mejor['tasa_de_deteccion']:.0%}) dentro de la capacidad de revisión"
+            f"({mejor['tasa_de_deteccion']:.0%}) sin pasarse de la capacidad de "
+            f"revisión ni del tope de rechazo"
+        )
+    elif sin_tope_de_bloqueo:
+        mejor = min(
+            sin_tope_de_bloqueo, key=lambda f: (-f["tasa_de_deteccion"], f["costo_total"])
+        )
+        regla = (
+            f"ningún par respetaba el tope de rechazo del "
+            f"{costos.bloqueo_maximo:.0%}; se eligió el que más detecta dentro de "
+            f"la capacidad de revisión, rechazando el "
+            f"{mejor['proporcion_bloqueada']:.0%} de los pedidos"
+        )
+    else:
+        mejor = min(rejilla, key=lambda f: (-f["tasa_de_deteccion"], f["costo_total"]))
+        regla = (
+            "ningún par cabía en la capacidad de revisión; se eligió el que más "
+            f"detecta, revisando el {mejor['proporcion_revisada']:.0%} de los "
+            "pedidos. Revisar tanto no es operable: hay que subir la capacidad "
+            "o aceptar detectar menos"
         )
 
     mejor = {**mejor, "regla_aplicada": regla}

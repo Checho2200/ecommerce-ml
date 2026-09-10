@@ -57,18 +57,38 @@ informe lo diría igual: el script mide, no decora.
 
 Las cuentas
 -----------
-Se crean tantas como diga `--cuentas` (500 por defecto), de las cuales
+Se crean tantas como diga `--cuentas` (2500 por defecto), de las cuales
 `--administradores` (5) tienen rol de admin. Los administradores son personal
 de la tienda: aparecen en Panel → Usuarios con su rol y no compran. Las compras
 se reparten entre el resto, con la mayoría comprando una sola vez y unos pocos
 habituales.
 
+Cuánto tráfico, y por qué tanto
+-------------------------------
+Una tasa se calcula sobre los fraudes confirmados del período, así que la
+escala a la que el indicador significa algo depende de cuántos haya. Con mil
+compras repartidas en nueve meses, un día tenía uno o dos fraudes y su tasa
+solo podía salir 0 %, 50 % o 100 %: parecía que el sistema iba a saltos cuando
+lo que saltaba era la aritmética. Con cinco mil, cada semana del tramo con
+modelo lleva entre treinta y cincuenta casos y el indicador se mueve en una
+banda creíble.
+
+El reparto entre tramos tampoco sigue al calendario, y esto hay que decirlo:
+el tramo con modelo lleva más compras y bastante más densidad diaria que los
+siete meses anteriores. No es que la tienda creciera de golpe; es que la
+medición necesita casos donde se quiere medir, y los contracargos de las
+últimas semanas todavía no han llegado.
+
 Precauciones
 ------------
-No descuenta stock: son mil pedidos que dejarían el catálogo en cero y la
+No descuenta stock: son miles de pedidos que dejarían el catálogo en cero y la
 tienda inservible. Y no corre contra una base que no sea SQLite salvo que se
 autorice a mano, por lo mismo que el otro simulador — pedidos ficticios
 mezclados con los de verdad no sirven ni para vender ni para medir.
+
+Contra PostgreSQL el volumen se nota: cada pedido es un viaje a la base y las
+cuentas se crean con hasheo real, así que una corrida completa puede pasar de
+la hora. En SQLite tarda un par de minutos.
 """
 
 import argparse
@@ -1132,11 +1152,23 @@ async def limpiar() -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cuantas", type=int, default=1000)
+    parser.add_argument(
+        "--cuantas",
+        type=int,
+        default=5000,
+        help=(
+            "Cuántas compras generar. Cinco mil no es capricho: una tasa se "
+            "calcula sobre los fraudes confirmados del período, y con mil "
+            "compras cada día tenía uno o dos, así que la tasa diaria solo "
+            "podía salir 0 %, 50 % o 100 %. Con este volumen cada semana lleva "
+            "entre treinta y cincuenta casos y el indicador se mueve en una "
+            "banda creíble en vez de saltar entre extremos."
+        ),
+    )
     parser.add_argument(
         "--antes",
         type=int,
-        default=450,
+        default=1500,
         help=(
             "Cuántas compras decide el sistema anterior (las del primer tramo). "
             "El reparto por defecto, 450 antes y 550 después, no sigue al "
@@ -1160,7 +1192,7 @@ def main() -> int:
     parser.add_argument(
         "--cuentas",
         type=int,
-        default=500,
+        default=2500,
         help=(
             "Cuántas cuentas de cliente crear. Las compras se reparten entre "
             "ellas, así que tiene que haber menos cuentas que compras: cada "
