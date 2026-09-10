@@ -1,16 +1,17 @@
 {
-  "entrenado_en": "2026-09-10T17:00:12+00:00",
+  "entrenado_en": "2026-09-10T19:52:10+00:00",
   "origen_de_los_datos": "sintetico",
   "variables": [
     "total_amount",
     "high_risk_items_count",
     "checkout_duration_seconds",
-    "is_new_shipping_address"
+    "is_new_shipping_address",
+    "account_age_days"
   ],
   "umbral_aprobacion": 0.15,
-  "umbral_bloqueo": 0.9,
-  "average_precision": 0.7294,
-  "roc_auc": 0.9055,
-  "tasa_de_deteccion": 0.9518,
-  "tiempo_de_deteccion_ms": 1.289
+  "umbral_bloqueo": 0.95,
+  "average_precision": 0.82,
+  "roc_auc": 0.9201,
+  "tasa_de_deteccion": 0.903,
+  "tiempo_de_deteccion_ms": 1.233
 }

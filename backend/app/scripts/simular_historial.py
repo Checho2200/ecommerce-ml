@@ -169,12 +169,24 @@ COMPRAS_POR_CLIENTE = ((1, 55), (2, 22), (3, 12), (5, 7), (9, 4))
 # venir de cuentas recién hechas; un cliente honesto puede serlo también, pero
 # lo normal es que lleve tiempo. Es otra señal que el modelo no ve —no está
 # entre sus cuatro variables— y que sí puede usar quien revisa.
-ANTIGUEDAD_MEDIA_DIAS = {False: 240, True: 9}
+# Son las mismas que usa `ml/dataset.py` para generar el conjunto con el que se
+# entrena. Si aquí fueran otras, el modelo vería en la tienda una distribución
+# distinta de la que aprendió y sus puntajes dejarían de estar calibrados.
+ANTIGUEDAD_MEDIA_DIAS = {False: 120.0, True: 14.0}
 
 # Proporción de compras que son fraude. Es la misma que usa el generador del
 # conjunto de entrenamiento, para que el tráfico simulado y el que vio el
 # modelo tengan la misma prevalencia y las métricas sean comparables.
 TASA_DE_FRAUDE = 0.07
+
+# Cómo se reparte ese 7 % entre las compras. Casi todo el fraude entra por una
+# cuenta que se estrena: se abre, se golpea y no se vuelve. Que un cliente con
+# historial defraude existe —es la toma de cuenta ajena— pero es raro, y el
+# modelo no puede detectarlo por la antigüedad porque justamente ahí la cuenta
+# es vieja. Con la mitad de las compras siendo estrenos, estas dos cifras dan
+# el 7 % global.
+TASA_EN_LA_PRIMERA_COMPRA = 0.12
+TASA_EN_LAS_SIGUIENTES = 0.02
 
 # Cada cuántos días, en promedio, se acaba sabiendo lo que pasó con una compra.
 # No es un plazo fijo: un contracargo puede llegar a la semana o al mes y
@@ -270,9 +282,10 @@ PERFILES = {
 }
 
 # Ni todo fraude se denuncia ni toda denuncia es real. Es el mismo ruido de
-# etiqueta que lleva el conjunto de entrenamiento, y sin él las clases quedan
-# casi separables y la banda de revisión manual no se activa nunca.
-RUIDO_DE_ETIQUETA = 0.015
+# etiqueta que lleva el conjunto de entrenamiento —se importa de allí para que
+# no puedan desalinearse— y sin él las clases quedan casi separables y la banda
+# de revisión manual no se activa nunca.
+from ml.dataset import RUIDO_DE_ETIQUETA  # noqa: E402
 
 
 def _muestra(es_fraude: bool, rng) -> dict:
@@ -761,7 +774,21 @@ async def construir(
 
         for indice, momento in enumerate(momentos):
             usuario = reparto[indice]
-            es_fraude = bool(rng.random() < TASA_DE_FRAUDE)
+            # El fraude se concentra en la primera compra de una cuenta, que es
+            # como ocurre: se abre una cuenta, se golpea una vez y no se vuelve.
+            # Un cliente que ya compró y volvió es casi siempre honesto.
+            #
+            # Sortearlo con la misma probabilidad en todas las compras, como
+            # hacía la versión anterior, producía algo que no existe: cuentas
+            # con meses de historial que un día «defraudan» y al siguiente
+            # vuelven a comprar bien. Además rompía la señal de la antigüedad
+            # —el fraude aparecía repartido por igual entre cuentas nuevas y
+            # viejas— y con ella el modelo perdía ocho puntos de detección.
+            estrena = usuario.id not in cuentas_fechadas
+            es_fraude = bool(
+                rng.random()
+                < (TASA_EN_LA_PRIMERA_COMPRA if estrena else TASA_EN_LAS_SIGUIENTES)
+            )
             muestra = _muestra(es_fraude, rng)
             lineas = _armar_carrito(muestra, caros, normales, rng)
 
@@ -778,12 +805,44 @@ async def construir(
                 "direccion_nueva"
             ] else DIRECCIONES_HABITUALES[rng.integers(len(DIRECCIONES_HABITUALES))]
 
+            # Cuándo abrió la cuenta este cliente. Se decide una sola vez, la
+            # primera vez que aparece, y como los momentos vienen ordenados esa
+            # primera vez es su compra más antigua: la cuenta queda abierta
+            # justo antes de estrenarla.
+            #
+            # La antigüedad depende de esa primera compra. Quien entra a
+            # defraudar suele hacerlo con una cuenta recién creada; quien
+            # compra de verdad lleva meses.
+            #
+            # Fijarla en cada compra, como hacía la primera versión, daba lo
+            # contrario de lo que se pretendía: un cliente con nueve pedidos
+            # acababa con la fecha más antigua de las nueve, y las cuentas de
+            # los defraudadores salían más viejas que las de los clientes
+            # honestos.
+            if usuario.id not in cuentas_fechadas:
+                dias = float(rng.exponential(ANTIGUEDAD_MEDIA_DIAS[es_fraude]))
+                alta = momento - timedelta(days=dias + 0.2)
+                # Ninguna cuenta puede ser anterior a la apertura de la tienda.
+                # Sin este tope, una compra de enero con la antigüedad media de
+                # un cliente honesto daba una cuenta abierta el año pasado, en
+                # una tienda que no existía.
+                usuario.created_at = max(alta, apertura)
+                cuentas_fechadas.add(usuario.id)
+
+            # Y la antigüedad que ve el modelo es la de ESTA compra, no la del
+            # estreno: un cliente que vuelve en marzo lleva dos meses más que
+            # cuando compró en enero, y ésa es justo la señal.
+            antiguedad = max(
+                0.0, (momento - usuario.created_at).total_seconds() / 86400
+            )
+
             # El modelo de verdad, evaluando esta compra.
             evaluacion = fraud_service.evaluar(
                 total_amount=total,
                 high_risk_items_count=de_riesgo,
                 checkout_duration_seconds=muestra["segundos"],
                 is_new_shipping_address=1 if muestra["direccion_nueva"] else 0,
+                account_age_days=antiguedad,
             )
 
             tramo = "antes" if momento.date() < corte else "despues"
@@ -808,33 +867,6 @@ async def construir(
                 decision = _decidir(evaluacion.puntaje, aprobar, bloquear)
                 explicacion = evaluacion.explicacion
                 milisegundos = round(evaluacion.milisegundos, 3)
-
-            # Cuándo abrió la cuenta este cliente. Se decide una sola vez, la
-            # primera vez que aparece, y como los momentos vienen ordenados esa
-            # primera vez es su compra más antigua: la cuenta queda abierta
-            # justo antes de estrenarla.
-            #
-            # La antigüedad depende de esa primera compra. Quien entra a
-            # defraudar suele hacerlo con una cuenta recién creada; quien
-            # compra de verdad lleva meses. Es otra señal que el modelo no ve
-            # —no está entre sus cuatro variables— y que sí puede usar quien
-            # revisa.
-            #
-            # Fijarla en cada compra, como hacía la primera versión, daba lo
-            # contrario de lo que se pretendía: un cliente con nueve pedidos
-            # acababa con la fecha más antigua de las nueve, y las cuentas de
-            # los defraudadores salían más viejas que las de los clientes
-            # honestos.
-            if usuario.id not in cuentas_fechadas:
-                antiguedad = float(rng.exponential(ANTIGUEDAD_MEDIA_DIAS[es_fraude]))
-                alta = momento - timedelta(days=antiguedad + 0.2)
-                # Ninguna cuenta puede ser anterior a la apertura de la tienda.
-                # Sin este tope, una compra de enero con la antigüedad media de
-                # un cliente honesto daba una cuenta abierta el año pasado, en
-                # una tienda que no existía: el listado de usuarios enseñaba
-                # altas de 2025 y el historial empezaba en 2026.
-                usuario.created_at = max(alta, apertura)
-                cuentas_fechadas.add(usuario.id)
 
             orden = Order(
                 # El identificador se fija aquí en vez de dejar que lo ponga la
@@ -897,6 +929,7 @@ async def construir(
                         "high_risk_items_count": de_riesgo,
                         "checkout_duration_seconds": round(muestra["segundos"], 1),
                         "is_new_shipping_address": 1 if muestra["direccion_nueva"] else 0,
+                        "account_age_days": round(antiguedad, 2),
                     },
                     decision=decision,
                     risk_level=evaluacion.nivel_de_riesgo,

@@ -33,7 +33,7 @@ from app.models.product import Product
 from app.models.user import User
 from app.schemas.order import OrderCreate
 from app.services.errors import OperacionNoPermitida, RecursoNoEncontrado
-from app.services.fraud_service import fraud_service
+from app.services.fraud_service import ANTIGUEDAD_POR_DEFECTO, fraud_service
 from app.services.payment_service import payment_service
 
 # El stock se descuenta al crear la orden y se devuelve al pasar a uno de estos
@@ -215,6 +215,33 @@ async def _es_direccion_nueva(db: AsyncSession, user_id: str, direccion: str) ->
     return 0 if resultado.scalar_one_or_none() else 1
 
 
+def _antiguedad_de_la_cuenta(cliente: User) -> float:
+    """
+    Cuántos días llevaba abierta la cuenta al llegar esta compra.
+
+    Es la quinta variable del modelo, y la única que no dice nada del pedido
+    sino de quien lo hace. Se añadió tras medir el techo de las otras cuatro:
+    los fraudes que se escapaban tenían monto normal, prisa normal y dirección
+    conocida, así que ningún umbral podía separarlos. Quien entra a defraudar
+    suele estrenar cuenta; quien compra de verdad lleva meses registrado.
+
+    La tienda ya tenía este dato en `users.created_at`, así que no hay que
+    pedirle nada al cliente ni instalar nada: es justo el tipo de señal que una
+    MYPE puede usar, al revés que una huella de dispositivo o un histórico de
+    años.
+
+    Nunca devuelve un negativo. Una fecha de alta en el futuro solo puede venir
+    de un reloj mal puesto o de datos importados a mano, y un número negativo
+    aquí desplazaría el puntaje hacia un lado que nadie eligió.
+    """
+    alta = cliente.created_at
+    if alta is None:
+        return ANTIGUEDAD_POR_DEFECTO
+    if alta.tzinfo is None:
+        alta = alta.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - alta).total_seconds() / 86400)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Creación de pedidos
 # ─────────────────────────────────────────────────────────────────────────────
@@ -238,12 +265,14 @@ async def crear_pedido(db: AsyncSession, cliente: User, datos: OrderCreate) -> P
     reserva = await _reservar_articulos(db, datos)
     direccion_nueva = await _es_direccion_nueva(db, cliente.id, datos.shipping_address)
     duracion = datos.checkout_duration_seconds or DURACION_DE_CHECKOUT_POR_DEFECTO
+    antiguedad = _antiguedad_de_la_cuenta(cliente)
 
     evaluacion = fraud_service.evaluar(
         total_amount=float(reserva.total),
         high_risk_items_count=reserva.articulos_de_alto_riesgo,
         checkout_duration_seconds=duracion,
         is_new_shipping_address=direccion_nueva,
+        account_age_days=antiguedad,
     )
 
     estado = _estado_segun_la_decision(evaluacion.decision)
@@ -285,6 +314,7 @@ async def crear_pedido(db: AsyncSession, cliente: User, datos: OrderCreate) -> P
                 "high_risk_items_count": int(reserva.articulos_de_alto_riesgo),
                 "checkout_duration_seconds": float(duracion),
                 "is_new_shipping_address": int(direccion_nueva),
+                "account_age_days": float(antiguedad),
             },
         )
     )

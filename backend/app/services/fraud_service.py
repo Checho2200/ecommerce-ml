@@ -37,6 +37,7 @@ FEATURES = [
     "high_risk_items_count",
     "checkout_duration_seconds",
     "is_new_shipping_address",
+    "account_age_days",
 ]
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,11 @@ logger = logging.getLogger(__name__)
 # archivo (app/services/ -> backend/) para que no dependa del directorio desde
 # el que se arranque el servidor.
 DIRECTORIO_MODELOS = Path(__file__).resolve().parent.parent.parent / "ml" / "modelos"
+
+# Qué antigüedad se supone si quien llama no la pasa. Es la media de un cliente
+# honesto, no cero: cero significa «cuenta abierta hoy», que es justo la señal
+# de fraude, y haría sospechosa cualquier evaluación hecha sin ese dato.
+ANTIGUEDAD_POR_DEFECTO = 120.0
 
 UMBRAL_APROBACION_POR_DEFECTO = 0.30
 UMBRAL_BLOQUEO_POR_DEFECTO = 0.70
@@ -72,6 +78,7 @@ NOMBRES = {
     "high_risk_items_count": "artículos de alto riesgo",
     "checkout_duration_seconds": "duración del checkout",
     "is_new_shipping_address": "dirección de envío",
+    "account_age_days": "antigüedad de la cuenta",
 }
 
 
@@ -93,6 +100,15 @@ def _frase(variable: str, valor: float) -> str:
         return f"{cantidad} artículo{'s' if cantidad != 1 else ''} de alto riesgo"
     if variable == "is_new_shipping_address":
         return "dirección de envío nueva" if int(valor) else "dirección de envío conocida"
+    if variable == "account_age_days":
+        dias = int(valor)
+        if dias < 1:
+            return "cuenta abierta hoy"
+        if dias == 1:
+            return "cuenta de ayer"
+        if dias < 60:
+            return f"cuenta de {dias} días"
+        return f"cuenta de {dias // 30} meses"
     return f"{NOMBRES.get(variable, variable)}: {valor:g}"
 
 
@@ -267,6 +283,7 @@ class FraudDetectionService:
         high_risk_items_count: int,
         checkout_duration_seconds: float,
         is_new_shipping_address: int,
+        account_age_days: float = ANTIGUEDAD_POR_DEFECTO,
     ) -> Evaluacion:
         """Evalúa un pedido y devuelve puntaje, decisión y explicación."""
         if self.model is None:
@@ -277,6 +294,7 @@ class FraudDetectionService:
             "high_risk_items_count": int(high_risk_items_count),
             "checkout_duration_seconds": float(checkout_duration_seconds),
             "is_new_shipping_address": int(is_new_shipping_address),
+            "account_age_days": float(account_age_days),
         }
 
         if self.model is None:

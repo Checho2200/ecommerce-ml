@@ -41,6 +41,20 @@ FEATURES = [
     "high_risk_items_count",
     "checkout_duration_seconds",
     "is_new_shipping_address",
+    # Cuántos días llevaba abierta la cuenta cuando llegó la compra.
+    #
+    # Se añadió después de medir el techo de las otras cuatro: con ellas solas,
+    # los fraudes que se escapaban puntuaban todos alrededor de 0.146 —monto
+    # normal, prisa normal, dirección conocida—, indistinguibles de una compra
+    # corriente. Ningún umbral separa lo que el modelo no mira, así que para
+    # subir la detección había que darle algo más que mirar.
+    #
+    # Ésta es la señal más fuerte que la tienda ya tiene sin pedirle nada al
+    # cliente: quien entra a defraudar suele estrenar cuenta, y quien compra de
+    # verdad lleva meses registrado. No hace falta huella de dispositivo ni
+    # histórico de años —que una MYPE no tiene—, solo la fecha de alta que ya
+    # está en la tabla de usuarios.
+    "account_age_days",
 ]
 
 ETIQUETA = "is_fraud"
@@ -52,6 +66,7 @@ NOMBRES_LEGIBLES = {
     "high_risk_items_count": "artículos de alto riesgo",
     "checkout_duration_seconds": "duración del checkout",
     "is_new_shipping_address": "dirección de envío nueva",
+    "account_age_days": "antigüedad de la cuenta",
 }
 
 # Cuántos casos etiquetados hacen falta para dejar de usar el conjunto
@@ -60,6 +75,20 @@ NOMBRES_LEGIBLES = {
 # ellos empeoraría el modelo que ya está en producción.
 MINIMO_TOTAL = 200
 MINIMO_POR_CLASE = 30
+
+# Qué antigüedad se supone cuando un registro no la trae —los que se guardaron
+# antes de que esta variable existiera—. Es la media de un cliente honesto: un
+# cero se leería como cuenta recién abierta, que es la señal de fraude.
+ANTIGUEDAD_POR_DEFECTO = 120.0
+
+# Cuántos días lleva abierta la tienda. Acota la antigüedad de cualquier
+# cuenta: una tienda que abrió en enero no puede tener clientes de hace dos
+# años, y generar antigüedades de mil días haría que el conjunto sintético no
+# se pareciera a la tienda sobre la que se va a aplicar.
+ANTIGUEDAD_MAXIMA_DIAS = 250.0
+
+# Ver el comentario largo en `generar_datos_sinteticos`.
+RUIDO_DE_ETIQUETA = 0.004
 
 
 @dataclass
@@ -128,6 +157,13 @@ async def _consultar_etiquetados() -> pd.DataFrame:
                     vector.get("checkout_duration_seconds", 0.0)
                 ),
                 "is_new_shipping_address": int(vector.get("is_new_shipping_address", 0)),
+                # Los registros anteriores a esta variable no la traen. Se les
+                # pone la antigüedad media de un cliente honesto en vez de cero:
+                # cero diría «cuenta estrenada hoy», que es justo la señal de
+                # fraude, y convertiría todo el historial viejo en sospechoso.
+                "account_age_days": float(
+                    vector.get("account_age_days", ANTIGUEDAD_POR_DEFECTO)
+                ),
                 ETIQUETA: int(bool(es_fraude)),
             }
         )
@@ -188,7 +224,10 @@ def generar_datos_sinteticos(
     n_fraude = int(n_muestras * tasa_fraude)
     n_legitimo = n_muestras - n_fraude
 
-    def muestrear(n, monto_mu, monto_sigma, riesgo_lambda, dur_mu, dur_sigma, p_dir_nueva):
+    def muestrear(
+        n, monto_mu, monto_sigma, riesgo_lambda, dur_mu, dur_sigma, p_dir_nueva,
+        antiguedad_media,
+    ):
         return pd.DataFrame(
             {
                 # Montos con cola larga: la mayoría de pedidos son modestos y
@@ -201,6 +240,14 @@ def generar_datos_sinteticos(
                     rng.lognormal(dur_mu, dur_sigma, n), 4, 3600
                 ),
                 "is_new_shipping_address": rng.binomial(1, p_dir_nueva, n),
+                # La antigüedad se agota rápido y se corta en la edad de la
+                # tienda: hay muchos clientes nuevos porque la tienda es nueva,
+                # y ninguno puede llevar más tiempo que ella. Ese tope es
+                # también lo que impide que la variable separe demasiado bien y
+                # el problema deje de ser estadístico.
+                "account_age_days": np.clip(
+                    rng.exponential(antiguedad_media, n), 0, ANTIGUEDAD_MAXIMA_DIAS
+                ),
             }
         )
 
@@ -213,6 +260,10 @@ def generar_datos_sinteticos(
         riesgo_lambda=0.50,
         dur_mu=np.log(200), dur_sigma=0.85,
         p_dir_nueva=0.20,
+        # Un cliente honesto lleva meses registrado, pero en una tienda joven
+        # muchos acaban de darse de alta: uno de cada tres lleva menos de mes y
+        # medio. Ese solapamiento es lo que impide que la variable sea un `if`.
+        antiguedad_media=120.0,
     )
     legitimos[ETIQUETA] = 0
 
@@ -225,16 +276,30 @@ def generar_datos_sinteticos(
         riesgo_lambda=2.00,
         dur_mu=np.log(50), dur_sigma=0.85,
         p_dir_nueva=0.72,
+        # Quien entra a defraudar estrena cuenta, pero no siempre: una parte usa
+        # cuentas robadas con años de historial, y ésas caen en la cola larga.
+        antiguedad_media=14.0,
     )
     fraudulentos[ETIQUETA] = 1
 
     df = pd.concat([legitimos, fraudulentos], ignore_index=True)
 
-    # Ruido de etiqueta: en la práctica no todo fraude se detecta ni toda
-    # denuncia de contracargo es real. Sin este ruido las clases quedan casi
-    # perfectamente separables, el modelo responde siempre 0 o 1, y la banda
-    # intermedia de revisión manual nunca se activa.
-    voltear = rng.random(len(df)) < 0.015
+    # Ruido de etiqueta: ni todo fraude se denuncia ni toda denuncia es real.
+    # Sin nada de ruido las clases quedan casi separables, el modelo responde
+    # siempre 0 o 1 y la banda de revisión manual no se activa nunca.
+    #
+    # Estaba en el 1.5 % y era demasiado, pero no por la cifra en sí: se aplica
+    # sobre TODAS las compras y el fraude es solo el 7 %, así que casi todo lo
+    # que voltea son compras legítimas que pasan a constar como fraude. Con el
+    # 1.5 %, una de cada seis filas de la clase «fraude» se había comportado
+    # como una compra corriente —mismo monto, misma prisa, misma cuenta— y
+    # ningún modelo puede detectarla: el techo de detección quedaba en el 83 %
+    # por construcción, y se estaba leyendo como un límite del clasificador.
+    #
+    # El 0.4 % se acerca a lo que reportan las pasarelas para el contracargo
+    # abusivo —el cliente que sí compró y luego reclama—, deja el techo cerca
+    # del 95 % y conserva el solapamiento, que es lo que hacía falta.
+    voltear = rng.random(len(df)) < RUIDO_DE_ETIQUETA
     df.loc[voltear, ETIQUETA] = 1 - df.loc[voltear, ETIQUETA]
 
     return df.sample(frac=1, random_state=semilla).reset_index(drop=True)

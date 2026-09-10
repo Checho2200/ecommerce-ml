@@ -51,6 +51,15 @@ DICCIONARIO = {
         "mide el frontend y viaja con el pedido. Un checkout de pocos segundos "
         "sugiere datos de pago ya cargados o automatizados.",
     ),
+    "account_age_days": (
+        "Antigüedad de la cuenta",
+        "días",
+        "Cuántos días llevaba abierta la cuenta cuando llegó la compra. Sale de "
+        "`users.created_at`, un dato que la tienda ya tiene sin pedirle nada al "
+        "cliente. Quien entra a defraudar suele estrenar cuenta y quien compra "
+        "de verdad lleva meses, pero el solapamiento es grande: una tienda "
+        "joven tiene muchos clientes nuevos y honestos.",
+    ),
     "is_new_shipping_address": (
         "Dirección de envío nueva",
         "0 o 1",

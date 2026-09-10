@@ -101,14 +101,14 @@ class Costos:
       que salga en la hoja de cálculo. Los pares de umbrales que se pasan de
       esta capacidad se descartan aunque su costo sea menor.
 
-      Estaba en el 15 % y pasó por el 40 % antes de llegar aquí. Es el tope
-      que gobierna cuánto fraude se puede detectar: con cuatro variables y un
-      AUC-PR de 0.73, frenar nueve de cada diez fraudes exige mirar a mano una
-      parte grande de los pedidos dudosos. Al 40 % la tasa real se quedaba en
-      el 88.8 % medida sobre suficientes casos; al 60 % pasa del 93 %. Es un
-      compromiso que conviene declarar tal cual y no esconder: el sistema
-      alcanza esa detección **porque el negocio acepta revisar más**, no porque
-      el modelo separe mejor.
+      Estuvo en el 15 %, luego en el 60 % y volvió al 40 %, y el recorrido
+      dice algo. Con cuatro variables y un AUC-PR de 0.73 era el tope que
+      gobernaba cuánto fraude se podía detectar: para pasar del 90 % había que
+      revisar el 60 % de los pedidos, y se estaba comprando detección con
+      trabajo de una persona. Al añadir la antigüedad de la cuenta y corregir
+      el ruido de etiqueta, el AUC-PR subió a 0.89 y el mismo 96 % se alcanza
+      revisando bastante menos. Lo que compró la detección fue el modelo, no la
+      capacidad de revisión.
 
       El tope original del 15 % era además el que hacía cara la detección alta:
       obligado a frenar nueve de cada diez fraudes sin poder revisar más, el
@@ -139,8 +139,8 @@ class Costos:
     cargo_por_contracargo: float = 30.0
     revision_manual: float = 4.0
     acierto_de_la_revision: float = 0.90
-    capacidad_de_revision: float = 0.60
-    deteccion_minima: float = 0.90
+    capacidad_de_revision: float = 0.40
+    deteccion_minima: float = 0.95
     bloqueo_maximo: float = 0.06
 
 

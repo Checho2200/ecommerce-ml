@@ -261,15 +261,26 @@ async def test_cada_orden_guarda_el_aporte_de_cada_variable(cliente, sesion):
     logs = (await cliente.get("/api/v1/fraud/logs", headers=cabeceras_admin)).json()
 
     assert logs, "la orden tuvo que dejar su evaluación"
+    # La lista se lee del servicio en vez de repetirse aquí. Copiada, esta
+    # prueba fallaba cada vez que el modelo ganaba una variable, y el fallo no
+    # decía «falta describir la nueva» sino que parecía un error de la API.
+    from app.services.fraud_service import FEATURES
+
     aportes = logs[0]["contributions"]
-    assert aportes and set(aportes) == {
-        "total_amount",
-        "high_risk_items_count",
-        "checkout_duration_seconds",
-        "is_new_shipping_address",
-    }
+    assert aportes and set(aportes) == set(FEATURES)
     # Y la explicación menciona algo concreto del pedido, no una frase fija.
-    assert "S/" in logs[0]["explanation"] or "checkout" in logs[0]["explanation"]
+    #
+    # Se comprueba que nombre alguno de los factores en vez de buscar dos
+    # cadenas sueltas: la explicación cita los tres que más pesaron, y cuáles
+    # son depende del pedido. Buscando «S/» y «checkout» la prueba se rompía en
+    # cuanto una variable nueva entraba en esos tres puestos, que es lo que
+    # pasó al añadir la antigüedad de la cuenta.
+    explicacion = logs[0]["explanation"].lower()
+    assert "lo que pesó" in explicacion
+    assert any(
+        pista in explicacion
+        for pista in ("s/", "checkout", "dirección", "artículo", "cuenta")
+    )
 
 
 async def test_evaluar_una_transaccion_exige_ser_administrador(cliente, sesion):
