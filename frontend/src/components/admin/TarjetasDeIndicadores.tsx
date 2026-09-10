@@ -22,6 +22,7 @@ import ReportGmailerrorredOutlinedIcon from "@mui/icons-material/ReportGmailerro
 import BoltOutlinedIcon from "@mui/icons-material/BoltOutlined";
 import type { SvgIconComponent } from "@mui/icons-material";
 import type { FraudHistoryResponse, FraudModelInfo } from "@/lib/api";
+import { duracionLegible } from "@/lib/duracion";
 
 type Direccion = "subir" | "bajar";
 
@@ -98,7 +99,7 @@ export function indicadoresDe(
     {
       clave: "tiempo",
       titulo: "Tiempo de detección",
-      valor: `${(datos?.average_detection_time_ms ?? 0).toFixed(1)} ms`,
+      valor: duracionLegible(datos?.average_detection_time_ms ?? 0),
       detalle: `Promedio sobre ${datos?.total_evaluations ?? 0} evaluaciones`,
       explicacion:
         "Cuánto tarda el modelo en evaluar una compra. Se le suma al cliente que espera en el checkout.",
@@ -109,7 +110,7 @@ export function indicadoresDe(
       referencia:
         (datos?.total_evaluations ?? 0) > 0 || modelo?.detection_time_ms == null
           ? null
-          : `Al entrenarse tardó ${modelo.detection_time_ms.toFixed(1)} ms por compra.`,
+          : `Al entrenarse tardó ${duracionLegible(modelo.detection_time_ms)} por compra.`,
     },
   ];
 }

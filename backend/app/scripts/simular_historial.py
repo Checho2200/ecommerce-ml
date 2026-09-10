@@ -132,6 +132,28 @@ DIAS_MEDIOS_HASTA_SABERLO = 12
 # compras sobre las que la tienda nunca llega a saber nada.
 PROPORCION_MAXIMA_RESUELTA = 0.95
 
+# ── Cuánto tardaba en detectarse una compra sospechosa antes del modelo ──────
+#
+# El tercer indicador de la tesis es el tiempo de detección, y hasta ahora el
+# tramo anterior guardaba el tiempo del modelo: los milisegundos que tardaba en
+# puntuar una compra que nadie le había preguntado. Es incoherente y además
+# hacía imposible que el indicador mejorara, porque comparaba al modelo consigo
+# mismo.
+#
+# Lo que había antes del modelo en una MYPE no es un clasificador más lento: es
+# que no hay clasificador. La regla fija solo levanta la mano —«este pedido pasa
+# de S/ 1,500 y va a una dirección nueva»—; quien decide si es fraude es una
+# persona, cuando le llega el turno en la cola. Ese es el tiempo que hay que
+# medir, y es el que el modelo reduce a milisegundos.
+#
+# Se modela con una lognormal: la mayoría de los pedidos se miran dentro de la
+# jornada y unos pocos se quedan para el día siguiente. La media queda cerca de
+# las tres horas y media, con cola hasta pasadas las veinticuatro.
+REVISION_MANUAL_MU = math.log(3 * 3600)   # tres horas, en segundos
+REVISION_MANUAL_SIGMA = 0.9
+REVISION_MANUAL_MINIMA_S = 15 * 60        # ni el más rápido mira un pedido en menos
+REVISION_MANUAL_MAXIMA_S = 36 * 3600      # ni el más lento pasa de día y medio
+
 DIRECCIONES_HABITUALES = [
     "Av. España 1234, Trujillo",
     "Jr. Pizarro 456, Trujillo",
@@ -338,6 +360,20 @@ def _cobro(es_fraude: bool, nombre_del_titular: str, momento: datetime, rng) -> 
         "card_holder": titular,
         "paid_at": momento + timedelta(minutes=float(rng.exponential(6))),
     }
+
+
+def _tiempo_de_deteccion_manual(rng) -> float:
+    """
+    Cuánto tarda una persona en mirar un pedido que la regla marcó, en ms.
+
+    Es el «tiempo de detección» del sistema anterior. Va en milisegundos como
+    el del modelo —es la misma columna y el mismo indicador— aunque la magnitud
+    sea otra por completo: horas frente a un milisegundo y pico. Esa distancia
+    es justamente lo que el indicador tiene que enseñar.
+    """
+    segundos = float(rng.lognormal(REVISION_MANUAL_MU, REVISION_MANUAL_SIGMA))
+    segundos = min(max(segundos, REVISION_MANUAL_MINIMA_S), REVISION_MANUAL_MAXIMA_S)
+    return round(segundos * 1000.0, 3)
 
 
 def _ya_se_sabe(dias: float, rng) -> bool:
@@ -577,10 +613,15 @@ async def construir(
                     f"(monto > S/ {MONTO_SOSPECHOSO:,.0f} o "
                     f"{ARTICULOS_SOSPECHOSOS}+ artículos de alto riesgo)."
                 )
+                # Y el tiempo que se guarda es el del sistema que decidió, no
+                # el del modelo al que nadie preguntó: lo que tardó una persona
+                # en llegar a este pedido en la cola de revisión.
+                milisegundos = _tiempo_de_deteccion_manual(rng)
             else:
                 aprobar, bloquear = umbrales[tramo]
                 decision = _decidir(evaluacion.puntaje, aprobar, bloquear)
                 explicacion = evaluacion.explicacion
+                milisegundos = round(evaluacion.milisegundos, 3)
 
             # Cuándo abrió la cuenta este cliente. Se decide una sola vez, la
             # primera vez que aparece, y como los momentos vienen ordenados esa
@@ -662,7 +703,7 @@ async def construir(
                     risk_level=evaluacion.nivel_de_riesgo,
                     explanation=explicacion,
                     contributions=evaluacion.aportes,
-                    detection_time_ms=round(evaluacion.milisegundos, 3),
+                    detection_time_ms=milisegundos,
                     evaluated_at=momento,
                     reviewed_at=revisado_el if resuelto else None,
                     is_actual_fraud=es_fraude if resuelto else None,
@@ -672,6 +713,10 @@ async def construir(
             cuenta = resumen[tramo]
             cuenta["compras"] += 1
             cuenta[decision] += 1
+            # Se acumula para poder dar el tiempo medio de cada tramo en el
+            # informe: es el tercero de los indicadores de la tesis y hasta
+            # ahora no aparecía por ninguna parte.
+            cuenta["suma_ms"] += milisegundos
             if es_fraude:
                 cuenta["fraudes"] += 1
                 if resuelto:
@@ -679,6 +724,9 @@ async def construir(
                     if decision in ("REVIEW", "BLOCKED"):
                         cuenta["detectados"] += 1
                     else:
+                        # El fraude que se aprobó: es el numerador del segundo
+                        # indicador, y hasta ahora solo se sumaba su importe.
+                        cuenta["no_detectados"] += 1
                         cuenta["perdida"] += total
             elif resuelto and decision == "BLOCKED":
                 cuenta["legitimas_bloqueadas"] += 1
@@ -712,6 +760,29 @@ def _tasa(cuenta: Counter, arriba: str, abajo: str) -> str:
     return f"{cuenta[arriba] / total:.1%}" if total else "sin datos"
 
 
+def _duracion(milisegundos: float) -> str:
+    """
+    Un tiempo de detección escrito para leer, sea cual sea su magnitud.
+
+    Los dos tramos viven en escalas que no se parecen —horas de cola de
+    revisión frente a poco más de un milisegundo del modelo—, y forzar los dos
+    a «ms» daría «12,600,000.0 ms», que no dice nada a nadie.
+    """
+    if milisegundos < 1000:
+        return f"{milisegundos:,.1f} ms"
+    segundos = milisegundos / 1000
+    if segundos < 60:
+        return f"{segundos:,.1f} s"
+    minutos = segundos / 60
+    if minutos < 60:
+        return f"{minutos:,.0f} min"
+    return f"{minutos / 60:,.1f} h"
+
+
+def _tiempo_medio(cuenta: Counter) -> str:
+    return _duracion(cuenta["suma_ms"] / cuenta["compras"]) if cuenta["compras"] else "sin datos"
+
+
 def _informe(resumen: dict, desde: date, hasta: date) -> str:
     antes, despues = resumen["antes"], resumen["despues"]
     (ap_antes, bl_antes) = resumen["umbrales"]["antes"]
@@ -742,6 +813,32 @@ def _informe(resumen: dict, desde: date, hasta: date) -> str:
         f"modelo y los umbrales que el entrenamiento eligió minimizando el "
         f"costo en soles ({ap_desp} / {bl_desp}). El tráfico se genera igual "
         "en los dos: lo único que cambia es el criterio de decisión.\n",
+        "## Los tres indicadores\n",
+        "Son los que mide la tesis. El corte es la entrada del modelo; a la "
+        "izquierda, cómo operaba la tienda antes.\n",
+        "Los dos tramos llevan la misma cantidad de compras a propósito. Las "
+        "tasas se calculan solo sobre los fraudes ya confirmados, y el tramo "
+        "nuevo es mucho más corto en calendario: repartir las compras "
+        "proporcionalmente a los días lo dejaría con tan pocos casos resueltos "
+        "que su tasa se movería varios puntos por un caso más. Igualar la "
+        "muestra es lo que permite comparar; a cambio, la densidad diaria del "
+        "tramo nuevo es mayor, y conviene decirlo en vez de dejar que se "
+        "deduzca del gráfico.\n",
+        "| Indicador | Antes | Después | Debe |",
+        "| :--- | ---: | ---: | :---: |",
+        f"| Tasa de fraudes detectados | {_tasa(antes, 'detectados', 'fraudes_resueltos')} "
+        f"| **{_tasa(despues, 'detectados', 'fraudes_resueltos')}** | subir |",
+        f"| Tasa de fraude no detectado | {_tasa(antes, 'no_detectados', 'fraudes_resueltos')} "
+        f"| **{_tasa(despues, 'no_detectados', 'fraudes_resueltos')}** | bajar |",
+        f"| Tiempo de detección | {_tiempo_medio(antes)} "
+        f"| **{_tiempo_medio(despues)}** | bajar |\n",
+        "El tiempo de detección no compara dos clasificadores: compara **no "
+        "tener detector** con tenerlo. Antes del modelo la regla fija solo "
+        "levantaba la mano y quien decidía era una persona, cuando le llegaba "
+        "el turno en la cola de revisión; ese es el tiempo de la izquierda. El "
+        "de la derecha lo cronometra el propio servicio al puntuar cada "
+        "compra, una por una, dentro de la petición que crea el pedido.\n",
+        "## El detalle\n",
         "| | Antes | Después |",
         "| :--- | ---: | ---: |",
         f"| Compras evaluadas | {antes['compras']} | {despues['compras']} |",
@@ -880,10 +977,18 @@ def main() -> int:
     parser.add_argument(
         "--antes",
         type=int,
-        default=100,
-        help="Cuántas compras decide el sistema anterior (las del primer tramo)",
+        default=500,
+        help=(
+            "Cuántas compras decide el sistema anterior (las del primer tramo). "
+            "Por defecto se reparte mitad y mitad, y eso es deliberado: las dos "
+            "tasas se calculan solo sobre los fraudes ya confirmados, y el tramo "
+            "nuevo es mucho más corto —agosto lleva unas semanas—, así que con "
+            "un reparto proporcional al calendario se queda sin casos resueltos "
+            "y su tasa pasa a ser ruido. Igualar la muestra de los dos brazos es "
+            "lo que hace que se puedan comparar."
+        ),
     )
-    parser.add_argument("--desde", type=date.fromisoformat, default=date(2026, 6, 1))
+    parser.add_argument("--desde", type=date.fromisoformat, default=date(2026, 1, 1))
     parser.add_argument("--hasta", type=date.fromisoformat, default=date.today())
     parser.add_argument(
         "--cambio",

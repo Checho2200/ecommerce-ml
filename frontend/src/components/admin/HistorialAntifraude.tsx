@@ -42,6 +42,7 @@ import {
 } from "@mui/material";
 import DownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import { duracionLegible } from "@/lib/duracion";
 import type {
   EscalaDelHistorial,
   FraudHistoryPeriod,
@@ -605,7 +606,7 @@ export default function HistorialAntifraude({
                         {p.precision == null ? "—" : `${(p.precision * 100).toFixed(0)}%`}
                       </TableCell>
                       <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                        {p.average_detection_time_ms.toFixed(1)} ms
+                        {duracionLegible(p.average_detection_time_ms)}
                       </TableCell>
                       <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                         {soles(p.approved_amount)}
@@ -640,7 +641,7 @@ export default function HistorialAntifraude({
                       datos?.precision == null
                         ? "—"
                         : `${(datos.precision * 100).toFixed(0)}%`,
-                      `${(datos?.average_detection_time_ms ?? 0).toFixed(1)} ms`,
+                      duracionLegible(datos?.average_detection_time_ms ?? 0),
                       soles(conDatos.reduce((n, p) => n + p.approved_amount, 0)),
                       soles(conDatos.reduce((n, p) => n + p.held_amount, 0)),
                     ].map((valor, i) => (

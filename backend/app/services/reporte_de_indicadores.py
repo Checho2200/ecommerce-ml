@@ -57,6 +57,31 @@ _AZUL = "0C3A6E"
 _BORDE = Border(bottom=Side(style="thin", color="D0D7E2"))
 
 
+def duracion_legible(milisegundos: float) -> str:
+    """
+    Un tiempo de detección escrito para leer, sea cual sea su magnitud.
+
+    El indicador viaja siempre en milisegundos, pero el tramo anterior al
+    modelo se mide en horas —ahí no había detector automático, decidía una
+    persona cuando le llegaba el turno— y el del modelo en poco más de uno.
+    Escribir los dos como «ms» daría «12,600,000.0 ms», que es exactamente el
+    número que nadie puede leer. Es el mismo criterio que usa el panel
+    (`lib/duracion.ts`), para que el archivo y la pantalla digan lo mismo.
+    """
+    if milisegundos < 1000:
+        return f"{milisegundos:,.1f} ms"
+    segundos = milisegundos / 1000
+    if segundos < 60:
+        return f"{segundos:,.1f} s"
+    minutos = segundos / 60
+    if minutos < 60:
+        return f"{minutos:,.0f} min"
+    horas = minutos / 60
+    if horas < 48:
+        return f"{horas:,.1f} h"
+    return f"{horas / 24:,.1f} d"
+
+
 def _rango_legible(datos: FraudHistoryResponse) -> str:
     """
     El tramo que cubre el reporte, escrito para una persona.
@@ -124,7 +149,7 @@ def _hoja_portada(libro: Workbook, datos: FraudHistoryResponse) -> None:
     tasa_no_deteccion = (
         f"{datos.undetected_rate * 100:.1f} %" if datos.undetected_rate is not None else "sin datos"
     )
-    valores = [tasa_deteccion, tasa_no_deteccion, f"{datos.average_detection_time_ms:.1f} ms"]
+    valores = [tasa_deteccion, tasa_no_deteccion, duracion_legible(datos.average_detection_time_ms)]
 
     for i, ((nombre, descripcion, direccion), valor) in enumerate(zip(INDICADORES, valores)):
         fila = encabezado_indicadores + 1 + i
@@ -201,7 +226,7 @@ def _hoja_serie(libro: Workbook, datos: FraudHistoryResponse) -> None:
             "Tasa detectados",
             "Tasa no detectado",
             "Precisión",
-            "Tiempo medio (ms)",
+            "Tiempo medio",
             "Puntaje medio",
         ],
     )
@@ -238,7 +263,10 @@ def _hoja_serie(libro: Workbook, datos: FraudHistoryResponse) -> None:
                 celda.value = "sin datos"
                 celda.font = Font(color="9AA5B1", italic=True)
 
-        hoja.cell(row=fila, column=14, value=p.average_detection_time_ms).number_format = "0.0"
+        # Como texto ya formateado y no como número en ms: la columna mezcla
+        # horas del período sin modelo con milisegundos del período con modelo,
+        # y una sola unidad haría ilegible una de las dos mitades.
+        hoja.cell(row=fila, column=14, value=duracion_legible(p.average_detection_time_ms))
         hoja.cell(row=fila, column=15, value=p.average_score).number_format = "0.000"
 
     hoja.auto_filter.ref = f"A1:O{1 + len(datos.periods)}"
@@ -307,4 +335,4 @@ def construir(datos: FraudHistoryResponse) -> BytesIO:
     return memoria
 
 
-__all__ = ["construir", "INDICADORES", "ESCALAS"]
+__all__ = ["construir", "duracion_legible", "INDICADORES", "ESCALAS"]
