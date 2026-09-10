@@ -37,6 +37,14 @@ interface Indicador {
   /** Sin fraudes confirmados en el rango, la tasa no se puede calcular. */
   medible: boolean;
   /**
+   * La fórmula de la tesis, escrita con los números de este rango.
+   *
+   * DTF y NFND dividen entre el total de transacciones, así que dan cifras muy
+   * distintas de la tasa que encabeza la tarjeta. Van aquí, con la cuenta a la
+   * vista, para que se puedan citar sin que nadie las confunda con el titular.
+   */
+  formula?: string | null;
+  /**
    * Lo que el modelo midió al entrenarse, sobre datos que no había visto.
    *
    * Se enseña solo cuando el indicador todavía no se puede calcular con los
@@ -66,13 +74,24 @@ export function indicadoresDe(
   return [
     {
       clave: "detectados",
-      titulo: "DTF · Detección de transacciones fraudulentas",
-      valor: porcentaje(datos?.dtf ?? null),
+      titulo: "Tasa de fraudes detectados",
+      valor: porcentaje(datos?.detection_rate ?? null),
       detalle: medible
-        ? `${datos?.total_detected_frauds ?? 0} detectados de ${datos?.total_evaluations ?? 0} transacciones`
+        ? `${datos?.total_detected_frauds ?? 0} frenados de ${datos?.total_actual_frauds ?? 0} fraudes confirmados`
         : "Aún sin fraudes confirmados que medir",
+      // La tarjeta enseña la exhaustividad y no DTF porque es la que responde
+      // «de los fraudes que hubo, cuántos frenamos», que es la pregunta del
+      // indicador. DTF, con el total de transacciones en el denominador, tiene
+      // por techo la propia tasa de fraude de la tienda —con un 7 % de fraude
+      // no puede pasar del 7 % ni detectándolos todos—, así que como titular
+      // engaña: parece un suspenso cuando el sistema va bien. Se sigue
+      // calculando y se enseña debajo, que es donde no se confunde con esto.
       explicacion:
-        "DTF (%) = fraudes detectados ÷ total de transacciones × 100. Al dividir entre todas las compras, su techo es la propia tasa de fraude de la tienda.",
+        "De los fraudes confirmados, qué proporción frenó el sistema antes de cobrar.",
+      formula:
+        datos?.dtf == null
+          ? null
+          : `DTF = ${datos.total_detected_frauds} ÷ ${datos.total_evaluations} × 100 = ${(datos.dtf * 100).toFixed(1)} % del total de transacciones`,
       direccion: "subir",
       icono: ShieldOutlinedIcon,
       medible,
@@ -83,13 +102,17 @@ export function indicadoresDe(
     },
     {
       clave: "no-detectados",
-      titulo: "NFND · Fraude no detectado",
-      valor: porcentaje(datos?.nfnd ?? null),
+      titulo: "Tasa de fraude no detectado",
+      valor: porcentaje(datos?.undetected_rate ?? null),
       detalle: medible
-        ? `${datos?.total_undetected_frauds ?? 0} se aprobaron de ${datos?.total_evaluations ?? 0} transacciones`
+        ? `${datos?.total_undetected_frauds ?? 0} se aprobaron de ${datos?.total_actual_frauds ?? 0} fraudes confirmados`
         : "Aún sin fraudes confirmados que medir",
       explicacion:
-        "NFND (%) = fraudes no detectados ÷ total de transacciones × 100. Es el fraude que se aprobó igual y terminó en pérdida.",
+        "De los fraudes confirmados, qué proporción se aprobó igual y terminó en pérdida.",
+      formula:
+        datos?.nfnd == null
+          ? null
+          : `NFND = ${datos.total_undetected_frauds} ÷ ${datos.total_evaluations} × 100 = ${(datos.nfnd * 100).toFixed(1)} % del total de transacciones`,
       direccion: "bajar",
       icono: ReportGmailerrorredOutlinedIcon,
       medible,
@@ -102,9 +125,9 @@ export function indicadoresDe(
       clave: "tiempo",
       titulo: "Tiempo de detección",
       valor: duracionLegible(datos?.average_detection_time_ms ?? 0),
-      detalle: `Promedio sobre ${datos?.total_evaluations ?? 0} evaluaciones`,
+      detalle: `Mediana de ${datos?.total_evaluations ?? 0} evaluaciones`,
       explicacion:
-        "TD = tiempo final − tiempo inicial. Lo cronometra el servicio alrededor de la evaluación de cada compra, dentro de la petición que crea el pedido.",
+        "TD = tiempo final − tiempo inicial, cronometrado por el servicio alrededor de la evaluación de cada compra. Se da la mediana y no el promedio: si el rango cruza la entrada del modelo, mezcla evaluaciones que tardaban horas con otras de un milisegundo y la media no describe ninguna.",
       direccion: "bajar",
       icono: BoltOutlinedIcon,
       // El tiempo no necesita etiquetas: lo cronometra el propio servicio.
@@ -245,6 +268,26 @@ export default function TarjetasDeIndicadores({
                     {i.referencia}
                   </Typography>
                 </Box>
+              )}
+
+              {/* La fórmula de la tesis con los números de este rango. Va
+                  aparte y con la cuenta escrita porque su denominador es otro
+                  —el total de transacciones— y da una cifra que no se puede
+                  comparar con el titular de arriba. */}
+              {!cargando && i.formula && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    mt: 1.5,
+                    display: "block",
+                    color: "text.secondary",
+                    fontFamily: "monospace",
+                    fontSize: "0.68rem",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {i.formula}
+                </Typography>
               )}
 
               <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>

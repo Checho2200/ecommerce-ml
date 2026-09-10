@@ -13,7 +13,8 @@ modelo son, por construcción, los más difíciles de etiquetar, y estas métric
 los subestiman.
 """
 
-from dataclasses import dataclass
+import statistics
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -50,6 +51,18 @@ class MetricasDelModelo:
     perdida_asumida: float
     venta_perdida: float
     tiempo_medio_ms: float
+
+
+def _mediana(valores: list[float]) -> float:
+    """
+    El valor central de una lista, o 0.0 si está vacía.
+
+    Se usa para el tiempo de detección. Ver `PeriodoDelHistorial.tiempo_medio_ms`
+    para por qué la mediana y no el promedio.
+    """
+    if not valores:
+        return 0.0
+    return round(float(statistics.median(valores)), 2)
 
 
 def _f1(precision: float, exhaustividad: float) -> float:
@@ -298,7 +311,22 @@ class PeriodoDelHistorial:
     precision: float | None
     # Éste sí se mide siempre: no necesita etiquetas, lo cronometra el propio
     # servicio en cada evaluación.
+    #
+    # Es la MEDIANA, no el promedio, por dos razones. La primera es que el
+    # informe de entrenamiento ya definía así este indicador («mediana de
+    # evaluaciones de una sola transacción») y tener el panel promediando
+    # significaba que la misma cifra se calculaba de dos maneras distintas
+    # según dónde se mirara. La segunda es que el promedio se rompe en cuanto
+    # la ventana cruza el día en que entró el modelo: cuatrocientas
+    # evaluaciones que tardaron horas —cuando decidía una persona— y
+    # quinientas que tardaron un milisegundo dan una media de dos horas, que
+    # no describe ni a unas ni a otras y esconde justo la mejora que el
+    # indicador existe para enseñar.
     tiempo_medio_ms: float
+    # Los tiempos del período, para poder calcular la mediana de la ventana
+    # entera. No viaja a la respuesta: la mediana de las medianas no es la
+    # mediana, así que hay que llegar a los valores.
+    tiempos_ms: list[float] = field(default_factory=list)
 
 
 def _ahora() -> datetime:
@@ -541,7 +569,7 @@ async def historial(
             {"evaluaciones": 0, "aprobadas": 0, "en_revision": 0, "bloqueadas": 0,
              "monto_aprobado": 0.0, "monto_retenido": 0.0, "suma_puntaje": 0.0,
              "revisados": 0, "fraudes_reales": 0, "detectados": 0, "no_detectados": 0,
-             "falsas_alertas": 0, "suma_ms": 0.0, "con_tiempo": 0},
+             "falsas_alertas": 0, "tiempos": []},
         )
         decision = getattr(decision, "value", decision)
         monto = float(monto or 0.0)
@@ -549,8 +577,7 @@ async def historial(
         cubo["evaluaciones"] += 1
         cubo["suma_puntaje"] += float(puntaje or 0.0)
         if milisegundos is not None:
-            cubo["suma_ms"] += float(milisegundos)
-            cubo["con_tiempo"] += 1
+            cubo["tiempos"].append(float(milisegundos))
 
         if decision == "REVIEW":
             cubo["en_revision"] += 1
@@ -617,7 +644,8 @@ async def historial(
                     if alertas_comprobadas
                     else None
                 ),
-                tiempo_medio_ms=round(c["suma_ms"] / c["con_tiempo"], 2) if c and c["con_tiempo"] else 0.0,
+                tiempo_medio_ms=_mediana(c["tiempos"]) if c else 0.0,
+                tiempos_ms=c["tiempos"] if c else [],
             )
         )
         inicio = _periodo_anterior(inicio, granularidad)

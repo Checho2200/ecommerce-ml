@@ -224,9 +224,12 @@ def _a_respuesta_de_historial(
     falsas_alertas = sum(p.falsas_alertas for p in serie)
     alertas_comprobadas = detectados + falsas_alertas
 
-    # El tiempo medio se pondera por evaluaciones por la misma razón.
-    con_tiempo = sum(p.evaluaciones for p in serie if p.tiempo_medio_ms)
-    suma_ms = sum(p.tiempo_medio_ms * p.evaluaciones for p in serie if p.tiempo_medio_ms)
+    # El tiempo de la ventana es la mediana de TODAS sus evaluaciones, no la
+    # media de las medianas de cada período: la mediana no se puede promediar.
+    # Hay que llegar a los valores, y por eso la serie los trae.
+    import statistics
+
+    tiempos = [ms for p in serie for ms in p.tiempos_ms]
 
     return FraudHistoryResponse(
         granularity=granularidad,
@@ -280,7 +283,9 @@ def _a_respuesta_de_historial(
         precision=(
             round(detectados / alertas_comprobadas, 4) if alertas_comprobadas else None
         ),
-        average_detection_time_ms=round(suma_ms / con_tiempo, 2) if con_tiempo else 0.0,
+        average_detection_time_ms=(
+            round(float(statistics.median(tiempos)), 2) if tiempos else 0.0
+        ),
     )
 
 

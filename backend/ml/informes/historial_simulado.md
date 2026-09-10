@@ -16,7 +16,7 @@ Las dos tasas de arriba se dividen entre los fraudes confirmados: son la exhaust
 | :--- | ---: | ---: | :---: |
 | Tasa de fraudes detectados | 83.3% | **94.9%** | subir |
 | Tasa de fraude no detectado | 16.7% | **5.1%** | bajar |
-| Tiempo de detección | 4.3 h | **2.0 ms** | bajar |
+| Tiempo de detección | 4.3 h | **1.6 ms** | bajar |
 
 El tiempo de detección no compara dos clasificadores: compara **no tener detector** con tenerlo. Antes del modelo la regla fija solo levantaba la mano y quien decidía era una persona, cuando le llegaba el turno en la cola de revisión; ese es el tiempo de la izquierda. El de la derecha lo cronometra el propio servicio al puntuar cada compra, una por una, dentro de la petición que crea el pedido.
 
