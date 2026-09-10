@@ -63,4 +63,15 @@ export const users = {
       body: JSON.stringify(data),
     });
   },
+
+  /**
+   * Da de baja una cuenta y borra sus datos personales.
+   *
+   * Los pedidos de esa persona no se borran: se quedan sin nombre detrás. Es
+   * lo que permite que eliminar a un cliente no cambie la historia de lo que
+   * la tienda vendió ni los fraudes confirmados que miden al modelo.
+   */
+  async remove(id: string) {
+    return request<void>(`/users/${id}`, { method: "DELETE" });
+  },
 };

@@ -217,6 +217,7 @@ def _a_respuesta_de_historial(
     porcentajes le daría el mismo peso a un mes con un fraude que a uno con
     cien, y el indicador que cita la tesis dejaría de ser el que dice ser.
     """
+    evaluaciones = sum(p.evaluaciones for p in serie)
     reales = sum(p.fraudes_reales for p in serie)
     detectados = sum(p.fraudes_detectados for p in serie)
     no_detectados = sum(p.fraudes_no_detectados for p in serie)
@@ -251,6 +252,8 @@ def _a_respuesta_de_historial(
                 undetected_frauds=p.fraudes_no_detectados,
                 detection_rate=p.tasa_de_deteccion,
                 undetected_rate=p.tasa_de_no_deteccion,
+                dtf=p.dtf,
+                nfnd=p.nfnd,
                 false_alerts=p.falsas_alertas,
                 precision=p.precision,
                 average_detection_time_ms=p.tiempo_medio_ms,
@@ -267,6 +270,13 @@ def _a_respuesta_de_historial(
         total_false_alerts=falsas_alertas,
         detection_rate=round(detectados / reales, 4) if reales else None,
         undetected_rate=round(no_detectados / reales, 4) if reales else None,
+        # DTF y NFND van sobre el total de transacciones de la ventana, que es
+        # como los define la tesis. Se suman los casos y se divide una sola
+        # vez, igual que las otras dos: promediar los porcentajes de cada
+        # período le daría el mismo peso a un mes con diez compras que a uno
+        # con doscientas.
+        dtf=round(detectados / evaluaciones, 4) if evaluaciones else None,
+        nfnd=round(no_detectados / evaluaciones, 4) if evaluaciones else None,
         precision=(
             round(detectados / alertas_comprobadas, 4) if alertas_comprobadas else None
         ),

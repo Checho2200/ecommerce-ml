@@ -1,5 +1,5 @@
 {
-  "entrenado_en": "2026-09-05T04:08:19+00:00",
+  "entrenado_en": "2026-09-10T15:47:36+00:00",
   "origen_de_los_datos": "sintetico",
   "variables": [
     "total_amount",
@@ -7,10 +7,10 @@
     "checkout_duration_seconds",
     "is_new_shipping_address"
   ],
-  "umbral_aprobacion": 0.35,
-  "umbral_bloqueo": 0.8,
+  "umbral_aprobacion": 0.2,
+  "umbral_bloqueo": 0.9,
   "average_precision": 0.7294,
   "roc_auc": 0.9055,
-  "tasa_de_deteccion": 0.8193,
-  "tiempo_de_deteccion_ms": 1.317
+  "tasa_de_deteccion": 0.8916,
+  "tiempo_de_deteccion_ms": 1.52
 }

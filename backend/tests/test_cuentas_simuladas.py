@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from app.models.user import UserRole
-from app.scripts.simular_historial import DOMINIO_SIMULADO, _crear_clientes
+from app.scripts.simular_historial import DOMINIOS, _crear_clientes
 
 
 @pytest.fixture(autouse=True)
@@ -116,14 +116,24 @@ async def test_las_compras_no_se_reparten_a_partes_iguales():
 
 
 @pytest.mark.asyncio
-async def test_todas_las_cuentas_llevan_el_dominio_reservado():
+async def test_los_correos_parecen_los_de_un_cliente_de_verdad():
     """
-    Es lo que permite a `--limpiar` retirarlas sin rozar una cuenta real, y lo
-    que hace evidente en el panel que no son clientes de verdad.
+    Los correos usan los proveedores que usa la gente. La versión anterior los
+    marcaba con un dominio inventado para poder retirarlos después; eso hacía
+    que el listado de usuarios se leyera como una maqueta, y ahora la lista de
+    cuentas creadas se guarda en un manifiesto en su lugar.
     """
     sesion, _, _ = await _repartir()
 
-    assert all(c.email.endswith(f"@{DOMINIO_SIMULADO}") for c in sesion.agregados)
+    assert all(
+        c.email.rsplit("@", 1)[1] in DOMINIOS for c in sesion.agregados
+    )
+    assert not any(
+        marca in c.email.lower()
+        for c in sesion.agregados
+        for marca in ("simulado", "test", "ejemplo", "fake")
+    )
+    # Y siguen sin repetirse, que es lo que exige la restricción de unicidad.
     assert len({c.email for c in sesion.agregados}) == 500
 
 

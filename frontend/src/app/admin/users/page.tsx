@@ -25,6 +25,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   MenuItem,
   Skeleton,
   Snackbar,
@@ -41,6 +42,7 @@ import {
 } from "@mui/material";
 import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
 import SearchIcon from "@mui/icons-material/Search";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 import {
   api,
@@ -75,6 +77,10 @@ export default function AdminUsersPage() {
   const [formulario, setFormulario] = useState(FORMULARIO_VACIO);
   const [guardando, setGuardando] = useState(false);
   const [errorDeAlta, setErrorDeAlta] = useState("");
+  // La cuenta que se va a eliminar, mientras se confirma. Eliminar no se hace
+  // de un clic: es la única acción de esta pantalla que no se puede deshacer.
+  const [porEliminar, setPorEliminar] = useState<UserResponse | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   const avisar = (texto: string, tipo: "success" | "error" = "success") =>
     setAviso({ texto, tipo });
@@ -218,7 +224,7 @@ export default function AdminUsersPage() {
         <Table size="small" sx={{ minWidth: 720 }}>
           <TableHead>
             <TableRow>
-              {["Nombre", "Correo", "Rol", "Activa", "Alta"].map((titulo, i) => (
+              {["Nombre", "Correo", "Rol", "Activa", "Alta", ""].map((titulo, i) => (
                 <TableCell
                   key={titulo}
                   align={i > 1 ? "center" : "left"}
@@ -301,6 +307,23 @@ export default function AdminUsersPage() {
                     </TableCell>
                     <TableCell align="center" sx={{ color: "text.secondary", whiteSpace: "nowrap" }}>
                       {new Date(persona.created_at).toLocaleDateString("es-PE")}
+                    </TableCell>
+                    {/* Eliminar comparte las guardas del interruptor de
+                        «Activa»: no puedes eliminarte a ti mismo ni al último
+                        administrador que queda. `motivo` ya las resuelve. */}
+                    <TableCell align="center">
+                      <Tooltip title={motivo || "Eliminar la cuenta"}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            disabled={!!motivo}
+                            onClick={() => setPorEliminar(persona)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 );
@@ -394,6 +417,57 @@ export default function AdminUsersPage() {
             sx={{ textTransform: "none", fontWeight: 700 }}
           >
             {guardando ? "Creando…" : "Crear"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirmación de la baja. Dice exactamente qué desaparece y qué no:
+          «eliminar» a secas hace pensar que se borran también sus compras, y
+          entonces nadie se atreve a pulsarlo o lo pulsa creyendo otra cosa. */}
+      <Dialog open={!!porEliminar} onClose={() => setPorEliminar(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>Eliminar la cuenta</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Se van a borrar el correo, el nombre y el teléfono de{" "}
+            <Box component="span" sx={{ fontWeight: 700 }}>
+              {porEliminar?.full_name || porEliminar?.email}
+            </Box>
+            , y la cuenta dejará de poder entrar a la tienda.
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Sus pedidos y sus evaluaciones <b>se conservan</b>, sin nombre detrás.
+            Tienen que quedarse: son parte de lo que la tienda vendió y de los
+            fraudes confirmados con los que se mide el modelo.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setPorEliminar(null)} sx={{ textTransform: "none" }}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={eliminando}
+            onClick={async () => {
+              if (!porEliminar) return;
+              setEliminando(true);
+              try {
+                await api.users.remove(porEliminar.id);
+                avisar("Cuenta eliminada");
+                setPorEliminar(null);
+                await cargar(busqueda);
+              } catch (error: unknown) {
+                avisar(
+                  error instanceof Error ? error.message : "No se pudo eliminar la cuenta",
+                  "error"
+                );
+              } finally {
+                setEliminando(false);
+              }
+            }}
+            sx={{ textTransform: "none", fontWeight: 700 }}
+          >
+            {eliminando ? "Eliminando…" : "Eliminar"}
           </Button>
         </DialogActions>
       </Dialog>

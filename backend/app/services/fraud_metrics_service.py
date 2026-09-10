@@ -268,6 +268,25 @@ class PeriodoDelHistorial:
     fraudes_no_detectados: int
     tasa_de_deteccion: float | None
     tasa_de_no_deteccion: float | None
+    # ── Los dos indicadores tal como los define la tesis ─────────────────────
+    #
+    #   DTF (%)  = fraudes detectados     / total de transacciones x 100
+    #   NFND (%) = fraudes no detectados  / total de transacciones x 100
+    #
+    # Se dividen entre TODAS las transacciones del período, no solo entre las
+    # fraudulentas. Son cosas distintas y conviene no confundirlas: las dos
+    # tasas de arriba responden «de los fraudes que hubo, cuántos frenamos»
+    # —la exhaustividad del modelo, que es la que puede pasar del 90 %—,
+    # mientras que DTF y NFND responden «de todo lo que vendimos, qué
+    # proporción fue fraude que frenamos, y cuál fraude que se nos coló».
+    # Al dividir entre el total, el techo de DTF es la propia tasa de fraude
+    # de la tienda: si el 7 % de las compras son fraude, DTF no puede pasar
+    # del 7 % ni aunque se detecten todas.
+    #
+    # Estas dos sí se calculan siempre que haya transacciones, porque su
+    # denominador no depende de que alguien haya etiquetado nada.
+    dtf: float | None
+    nfnd: float | None
     # Alertas que resultaron ser compras buenas: el administrador las revisó y
     # las etiquetó como legítimas. Es la otra mitad del expediente del modelo,
     # y la que le duele al negocio.
@@ -569,6 +588,8 @@ async def historial(
         reales = c["fraudes_reales"] if c else 0
         falsas = c["falsas_alertas"] if c else 0
         detectados = c["detectados"] if c else 0
+        # El denominador de DTF y NFND: todas las transacciones del período.
+        evaluaciones = c["evaluaciones"] if c else 0
         alertas_comprobadas = detectados + falsas
         serie.append(
             PeriodoDelHistorial(
@@ -586,6 +607,10 @@ async def historial(
                 fraudes_no_detectados=c["no_detectados"] if c else 0,
                 tasa_de_deteccion=round(detectados / reales, 4) if reales else None,
                 tasa_de_no_deteccion=round(c["no_detectados"] / reales, 4) if reales else None,
+                dtf=round(detectados / evaluaciones, 4) if evaluaciones else None,
+                nfnd=(
+                    round(c["no_detectados"] / evaluaciones, 4) if evaluaciones else None
+                ),
                 falsas_alertas=falsas,
                 precision=(
                     round(detectados / alertas_comprobadas, 4)

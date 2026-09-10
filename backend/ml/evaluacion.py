@@ -100,6 +100,22 @@ class Costos:
       pequeña no tiene a nadie mirando ocho de cada diez compras, por barato
       que salga en la hoja de cálculo. Los pares de umbrales que se pasan de
       esta capacidad se descartan aunque su costo sea menor.
+
+      Estaba en el 15 %, y ese tope era el que hacía cara la detección alta:
+      obligado a frenar nueve de cada diez fraudes sin poder revisar más, el
+      optimizador no tenía más salida que **bloquear**, y bloqueaba 457 compras
+      legítimas de cada 1834. Con el 40 % llega a la misma detección revisando
+      en vez de bloqueando: 15 compras buenas frenadas en lugar de 457, y un
+      costo total menor que el de antes. Revisar un tercio de los pedidos es
+      mucho trabajo, pero es trabajo, no venta perdida.
+    - `bloqueo_maximo`: qué proporción de los pedidos puede rechazar la tienda
+      de plano. Es la otra mitad de la restricción operativa y faltaba. Con
+      solo el tope de revisión, la única vía que le quedaba al optimizador para
+      subir la detección era bloquear, y en soles le salía a cuenta: rechazar
+      una compra buena solo cuesta su margen. La cuenta cerraba y el resultado
+      era una tienda que rechaza uno de cada cinco pedidos, que no es una
+      tienda. Con este tope, un par de umbrales que bloquee de más se descarta
+      aunque sea el más barato.
     - `deteccion_minima`: qué proporción de los fraudes tiene que frenar el
       modelo. Tampoco es un costo, y por eso hace falta declararla: el
       optimizador razona en soles, y en soles un fraude pequeño que se escapa
@@ -114,8 +130,9 @@ class Costos:
     cargo_por_contracargo: float = 30.0
     revision_manual: float = 4.0
     acierto_de_la_revision: float = 0.90
-    capacidad_de_revision: float = 0.15
-    deteccion_minima: float = 0.80
+    capacidad_de_revision: float = 0.40
+    deteccion_minima: float = 0.90
+    bloqueo_maximo: float = 0.06
 
 
 def costo_de_los_umbrales(y_true, y_prob, montos, t_bajo, t_alto, costos: Costos) -> dict:
@@ -232,15 +249,24 @@ def buscar_umbrales(
         fila["detecta_lo_suficiente"] = (
             fila["tasa_de_deteccion"] >= costos.deteccion_minima
         )
+        fila["proporcion_bloqueada"] = round(fila["pedidos_bloqueados"] / total, 4)
+        fila["bloquea_de_menos"] = (
+            fila["proporcion_bloqueada"] <= costos.bloqueo_maximo
+        )
 
-    caben = [fila for fila in rejilla if fila["dentro_de_capacidad"]] or rejilla
+    caben = [
+        fila
+        for fila in rejilla
+        if fila["dentro_de_capacidad"] and fila["bloquea_de_menos"]
+    ] or rejilla
     detectan = [fila for fila in caben if fila["detecta_lo_suficiente"]]
 
     if detectan:
         mejor = min(detectan, key=lambda fila: fila["costo_total"])
         regla = (
             f"el más barato entre los que caben en la capacidad de revisión "
-            f"({costos.capacidad_de_revision:.0%}) y detectan al menos el "
+            f"({costos.capacidad_de_revision:.0%}), no rechazan más del "
+            f"{costos.bloqueo_maximo:.0%} de los pedidos y detectan al menos el "
             f"{costos.deteccion_minima:.0%} del fraude"
         )
     else:

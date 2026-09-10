@@ -73,6 +73,7 @@ mezclados con los de verdad no sirven ni para vender ni para medir.
 
 import argparse
 import asyncio
+import json
 import math
 import sys
 
@@ -97,13 +98,25 @@ from app.services.fraud_service import (
     fraud_service,
 )
 
-# Todas las cuentas simuladas usan este dominio. Sirve para dos cosas: que
-# cualquiera que mire el listado de usuarios vea de un vistazo que no son
-# clientes reales, y que `--limpiar` pueda encontrarlas sin tocar ninguna otra.
-# Los nombres sí son verosímiles —una tienda de Trujillo—, porque un panel
-# lleno de «Cliente 0417» no se parece a nada.
-DOMINIO_SIMULADO = "cliente.simulado"
-CLAVE_DEL_CLIENTE = "historial-simulado-2026"
+# Los correos usan los proveedores que de verdad usa la gente en Trujillo. La
+# versión anterior los marcaba con un dominio inventado —`@cliente.simulado`—
+# que servía para que `--limpiar` los encontrara, pero convertía el listado de
+# usuarios en algo que se leía como una maqueta: quinientas filas gritando
+# «esto es de mentira» no se parecen a la tienda que el sistema pretende ser.
+#
+# La contrapartida es que ya nada distingue a estas cuentas de una real, así
+# que la lista de las que se crean se guarda en un manifiesto y `--limpiar` la
+# lee de ahí. Ver `_guardar_manifiesto`.
+DOMINIOS = ("gmail.com", "outlook.es", "hotmail.com", "yahoo.com")
+CLAVE_DEL_CLIENTE = "Trujillo2026.STS"
+
+# Dónde queda la lista de cuentas creadas, para poder retirarlas después.
+NOMBRE_DEL_MANIFIESTO = "cuentas_del_historial.json"
+
+# Dominio que usaba la versión anterior. Se conserva solo para que `--limpiar`
+# sepa retirar lo que dejó aquella: un script que no sabe borrar lo que él
+# mismo escribió ayer obliga a entrar a la base a mano.
+DOMINIO_ANTIGUO = "cliente.simulado"
 
 # La primera versión de este script colgaba todo el historial de una sola
 # cuenta con esta dirección. Se conserva en la limpieza para poder retirar lo
@@ -475,6 +488,39 @@ def _cuantas_compras(rng) -> int:
     return int(valores[int(rng.choice(len(valores), p=pesos / pesos.sum()))])
 
 
+def _guardar_manifiesto(correos: list[str]) -> Path:
+    """
+    Deja por escrito qué cuentas creó esta corrida.
+
+    Desde que los correos usan proveedores reales, nada distingue a estas
+    cuentas de un cliente de verdad —que es justo lo que se buscaba—, así que
+    la única forma honesta de poder retirarlas después es haber anotado cuáles
+    son. `--limpiar` lee este archivo.
+    """
+    DIRECTORIO_INFORMES.mkdir(parents=True, exist_ok=True)
+    destino = DIRECTORIO_INFORMES / NOMBRE_DEL_MANIFIESTO
+    destino.write_text(
+        json.dumps(
+            {"generado_en": datetime.now(timezone.utc).isoformat(), "correos": correos},
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return destino
+
+
+def _leer_manifiesto() -> list[str]:
+    """Los correos que dejó la última generación, o una lista vacía."""
+    archivo = DIRECTORIO_INFORMES / NOMBRE_DEL_MANIFIESTO
+    if not archivo.exists():
+        return []
+    try:
+        return list(json.loads(archivo.read_text(encoding="utf-8")).get("correos", []))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
 def _cuenta_nueva(usados: set, rol, rng) -> User:
     """Una cuenta con nombre verosímil de Trujillo y correo sin repetir."""
     nombre = NOMBRES[int(rng.integers(len(NOMBRES)))]
@@ -485,11 +531,14 @@ def _cuenta_nueva(usados: set, rol, rng) -> User:
         .replace("ó", "o").replace("ú", "u").replace("ñ", "n")
     )
 
-    correo = f"{base}@{DOMINIO_SIMULADO}"
+    # El proveedor se sortea, y el desempate va antes de la arroba —como hace
+    # la gente cuando su nombre ya está cogido— en vez de después.
+    dominio = DOMINIOS[int(rng.integers(len(DOMINIOS)))]
+    correo = f"{base}@{dominio}"
     sufijo = 1
     while correo in usados:
         sufijo += 1
-        correo = f"{base}{sufijo}@{DOMINIO_SIMULADO}"
+        correo = f"{base}{sufijo}@{dominio}"
     usados.add(correo)
 
     return User(
@@ -647,7 +696,17 @@ async def construir(
         resumen["clientes"] = len({c.email for c in reparto})
         resumen["administradores"] = len(admins)
         resumen["cuentas"] = resumen["clientes"] + len(admins)
+        # Se anota antes de empezar a insertar pedidos: si la corrida se
+        # interrumpe a mitad, la lista de cuentas creadas ya está en disco y
+        # `--limpiar` puede retirarlas.
+        resumen["manifiesto"] = str(
+            _guardar_manifiesto(
+                sorted({c.email for c in reparto} | {a.email for a in admins})
+            )
+        )
         cuentas_fechadas: set = set()
+        # El día que abrió la tienda: el primero del rango pedido.
+        apertura = datetime.combine(desde, time.min, tzinfo=timezone.utc)
 
         for indice, momento in enumerate(momentos):
             usuario = reparto[indice]
@@ -717,7 +776,13 @@ async def construir(
             # honestos.
             if usuario.id not in cuentas_fechadas:
                 antiguedad = float(rng.exponential(ANTIGUEDAD_MEDIA_DIAS[es_fraude]))
-                usuario.created_at = momento - timedelta(days=antiguedad + 0.2)
+                alta = momento - timedelta(days=antiguedad + 0.2)
+                # Ninguna cuenta puede ser anterior a la apertura de la tienda.
+                # Sin este tope, una compra de enero con la antigüedad media de
+                # un cliente honesto daba una cuenta abierta el año pasado, en
+                # una tienda que no existía: el listado de usuarios enseñaba
+                # altas de 2025 y el historial empezaba en 2026.
+                usuario.created_at = max(alta, apertura)
                 cuentas_fechadas.add(usuario.id)
 
             orden = Order(
@@ -892,14 +957,19 @@ def _informe(resumen: dict, desde: date, hasta: date) -> str:
         "## Los tres indicadores\n",
         "Son los que mide la tesis. El corte es la entrada del modelo; a la "
         "izquierda, cómo operaba la tienda antes.\n",
-        "Los dos tramos llevan la misma cantidad de compras a propósito. Las "
-        "tasas se calculan solo sobre los fraudes ya confirmados, y el tramo "
-        "nuevo es mucho más corto en calendario: repartir las compras "
-        "proporcionalmente a los días lo dejaría con tan pocos casos resueltos "
-        "que su tasa se movería varios puntos por un caso más. Igualar la "
-        "muestra es lo que permite comparar; a cambio, la densidad diaria del "
-        "tramo nuevo es mayor, y conviene decirlo en vez de dejar que se "
-        "deduzca del gráfico.\n",
+        "El reparto de compras entre los dos tramos no sigue al calendario, y "
+        "conviene decirlo en vez de dejar que se deduzca del gráfico. Las tasas "
+        "se calculan solo sobre los fraudes ya confirmados, y en el tramo nuevo "
+        "—que son semanas, no meses— muchos contracargos aún no han llegado: "
+        "hace falta más tráfico para terminar con la misma cantidad de casos "
+        "comprobados. Por eso el tramo nuevo lleva más compras y mayor densidad "
+        "diaria. Lo que se iguala no son las compras, sino los casos sobre los "
+        "que se puede medir.\n",
+        "Las dos tasas de arriba se dividen entre los fraudes confirmados: son "
+        "la exhaustividad del modelo. Los indicadores DTF y NFND que enseña el "
+        "panel dividen entre el total de transacciones, así que sus valores son "
+        "mucho menores —su techo es la propia tasa de fraude de la tienda— y no "
+        "hay que confundir unos con otros.\n",
         "| Indicador | Antes | Después | Debe |",
         "| :--- | ---: | ---: | :---: |",
         f"| Tasa de fraudes detectados | {_tasa(antes, 'detectados', 'fraudes_resueltos')} "
@@ -915,10 +985,10 @@ def _informe(resumen: dict, desde: date, hasta: date) -> str:
         "de la derecha lo cronometra el propio servicio al puntuar cada "
         "compra, una por una, dentro de la petición que crea el pedido.\n",
         "## Las cuentas\n",
-        f"{resumen.get('cuentas', 0)} cuentas con nombres y teléfonos de "
-        f"Trujillo, todas con el dominio `@{DOMINIO_SIMULADO}` para que nadie "
-        f"las confunda con clientes reales y para que `--limpiar` sepa cuáles "
-        f"retirar. {resumen.get('administradores', 0)} de ellas son "
+        f"{resumen.get('cuentas', 0)} cuentas con nombres, teléfonos y correos "
+        f"como los de cualquier cliente de Trujillo "
+        f"({', '.join('@' + d for d in DOMINIOS)}). "
+        f"{resumen.get('administradores', 0)} de ellas son "
         f"administradores —personal de la tienda, se ven en Panel → Usuarios "
         f"con su rol y no compran— y las otras "
         f"{resumen.get('clientes', 0)} son los clientes entre los que se "
@@ -1020,7 +1090,10 @@ async def limpiar() -> int:
                 await sesion.execute(
                     select(User.id).where(
                         or_(
-                            User.email.like(f"%@{DOMINIO_SIMULADO}"),
+                            User.email.in_(_leer_manifiesto() or ["(sin manifiesto)"]),
+                            # Las dos formas que usaron las versiones
+                            # anteriores, para poder retirar lo que dejaron.
+                            User.email.like(f"%@{DOMINIO_ANTIGUO}"),
                             User.email == CORREO_DEL_CLIENTE_ANTIGUO,
                         )
                     )
@@ -1063,15 +1136,17 @@ def main() -> int:
     parser.add_argument(
         "--antes",
         type=int,
-        default=500,
+        default=450,
         help=(
             "Cuántas compras decide el sistema anterior (las del primer tramo). "
-            "Por defecto se reparte mitad y mitad, y eso es deliberado: las dos "
-            "tasas se calculan solo sobre los fraudes ya confirmados, y el tramo "
-            "nuevo es mucho más corto —agosto lleva unas semanas—, así que con "
-            "un reparto proporcional al calendario se queda sin casos resueltos "
-            "y su tasa pasa a ser ruido. Igualar la muestra de los dos brazos es "
-            "lo que hace que se puedan comparar."
+            "El reparto por defecto, 450 antes y 550 después, no sigue al "
+            "calendario a propósito. Las dos tasas se calculan solo sobre los "
+            "fraudes ya confirmados, y en el tramo nuevo —que son semanas, no "
+            "meses— muchos contracargos todavía no han llegado: hace falta más "
+            "tráfico para acabar con la misma cantidad de casos comprobados. "
+            "Con este reparto los dos brazos pasan de treinta fraudes "
+            "confirmados, que es el mínimo para que la comparación signifique "
+            "algo."
         ),
     )
     parser.add_argument("--desde", type=date.fromisoformat, default=date(2026, 1, 1))

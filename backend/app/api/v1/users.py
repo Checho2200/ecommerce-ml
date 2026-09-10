@@ -182,3 +182,66 @@ async def update_user(
     await db.flush()
     await db.refresh(usuario)
     return usuario
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def eliminar_usuario(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    Da de baja una cuenta y borra sus datos personales (solo admin).
+
+    **No borra sus pedidos.** Esto es lo importante y conviene explicarlo,
+    porque la primera versión que uno escribe es un `DELETE` sobre la fila del
+    usuario y eso rompe dos cosas a la vez: revienta contra la clave foránea de
+    `orders`, y si se forzara en cascada se llevaría por delante las
+    evaluaciones del antifraude —con ellas, los fraudes confirmados que
+    sostienen los indicadores de la tesis y los ejemplos con los que se
+    reentrena el modelo—. Borrar un cliente no puede cambiar la historia de lo
+    que la tienda vendió ni de lo que el modelo acertó.
+
+    Lo que se hace es lo que hace cualquier tienda cuando alguien pide su baja:
+    la cuenta deja de existir como tal —no puede entrar, y su correo, nombre y
+    teléfono desaparecen— mientras los pedidos quedan, ya sin nombre detrás.
+    El correo se sustituye por uno irrepetible para no chocar con la restricción
+    de unicidad si otra persona se registra después con el mismo.
+
+    Las mismas dos guardas que en el resto del módulo: nadie se borra a sí mismo
+    y no se puede borrar al último administrador activo.
+    """
+    usuario = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if usuario is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if usuario.id == admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "No puedes eliminar tu propia cuenta. Pídeselo a otro "
+                "administrador."
+            ),
+        )
+
+    if usuario.role == UserRole.ADMIN and await _administradores_activos(db) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Es el único administrador activo. Nombra a otro antes de "
+                "eliminarlo, o la tienda se quedaría sin nadie que pueda "
+                "administrarla."
+            ),
+        )
+
+    usuario.email = f"cuenta-eliminada-{usuario.id}@invalido.local"
+    usuario.full_name = "Cuenta eliminada"
+    usuario.phone = None
+    usuario.is_active = False
+    usuario.role = UserRole.CLIENTE
+    # La contraseña se sustituye por un valor que ningún hash puede producir,
+    # así que ninguna contraseña vuelve a validar contra esta fila.
+    usuario.hashed_password = "cuenta-eliminada"
+    await db.flush()

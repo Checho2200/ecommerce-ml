@@ -54,8 +54,10 @@ export function indicadoresDe(
   datos: FraudHistoryResponse | null,
   modelo?: FraudModelInfo | null
 ): Indicador[] {
+  // Sin un solo fraude confirmado no hay nada que dividir: DTF y NFND salen en
+  // guion, no en cero. Un cero diría «no se detectó nada» cuando lo cierto es
+  // que no hay con qué medirlo.
   const medible = (datos?.total_actual_frauds ?? 0) > 0;
-  const confirmados = datos?.total_actual_frauds ?? 0;
 
   // La tasa que el entrenamiento midió sobre su partición de prueba.
   const alEntrenarse = modelo?.detection_rate ?? null;
@@ -64,30 +66,30 @@ export function indicadoresDe(
   return [
     {
       clave: "detectados",
-      titulo: "Tasa de fraudes detectados",
-      valor: porcentaje(datos?.detection_rate ?? null),
+      titulo: "DTF · Detección de transacciones fraudulentas",
+      valor: porcentaje(datos?.dtf ?? null),
       detalle: medible
-        ? `${datos?.total_detected_frauds ?? 0} de ${confirmados} fraudes confirmados`
+        ? `${datos?.total_detected_frauds ?? 0} detectados de ${datos?.total_evaluations ?? 0} transacciones`
         : "Aún sin fraudes confirmados que medir",
       explicacion:
-        "De los fraudes confirmados, qué proporción frenó el modelo antes de cobrar.",
+        "DTF (%) = fraudes detectados ÷ total de transacciones × 100. Al dividir entre todas las compras, su techo es la propia tasa de fraude de la tienda.",
       direccion: "subir",
       icono: ShieldOutlinedIcon,
       medible,
       referencia:
         medible || alEntrenarse === null
           ? null
-          : `Al entrenarse detectó el ${comoPorcentaje(alEntrenarse)} sobre compras que no había visto.`,
+          : `De cada 100 fraudes, el modelo frenó ${comoPorcentaje(alEntrenarse)} al entrenarse. Esa proporción —la exhaustividad— no es DTF: se divide entre los fraudes, no entre todas las compras.`,
     },
     {
       clave: "no-detectados",
-      titulo: "Tasa de fraude no detectado",
-      valor: porcentaje(datos?.undetected_rate ?? null),
+      titulo: "NFND · Fraude no detectado",
+      valor: porcentaje(datos?.nfnd ?? null),
       detalle: medible
-        ? `${datos?.total_undetected_frauds ?? 0} de ${confirmados} se aprobaron igual`
+        ? `${datos?.total_undetected_frauds ?? 0} se aprobaron de ${datos?.total_evaluations ?? 0} transacciones`
         : "Aún sin fraudes confirmados que medir",
       explicacion:
-        "De los fraudes confirmados, qué proporción se aprobó igual y terminó en pérdida.",
+        "NFND (%) = fraudes no detectados ÷ total de transacciones × 100. Es el fraude que se aprobó igual y terminó en pérdida.",
       direccion: "bajar",
       icono: ReportGmailerrorredOutlinedIcon,
       medible,
@@ -102,7 +104,7 @@ export function indicadoresDe(
       valor: duracionLegible(datos?.average_detection_time_ms ?? 0),
       detalle: `Promedio sobre ${datos?.total_evaluations ?? 0} evaluaciones`,
       explicacion:
-        "Cuánto tarda el modelo en evaluar una compra. Se le suma al cliente que espera en el checkout.",
+        "TD = tiempo final − tiempo inicial. Lo cronometra el servicio alrededor de la evaluación de cada compra, dentro de la petición que crea el pedido.",
       direccion: "bajar",
       icono: BoltOutlinedIcon,
       // El tiempo no necesita etiquetas: lo cronometra el propio servicio.

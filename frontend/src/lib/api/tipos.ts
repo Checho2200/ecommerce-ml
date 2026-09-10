@@ -171,6 +171,11 @@ export interface FraudHistoryPeriod {
   undetected_frauds: number;
   detection_rate: number | null;
   undetected_rate: number | null;
+  // Los dos indicadores de la tesis, sobre el TOTAL de transacciones:
+  //   DTF (%)  = fraudes detectados    / total de transacciones x 100
+  //   NFND (%) = fraudes no detectados / total de transacciones x 100
+  dtf: number | null;
+  nfnd: number | null;
   // Alertas que resultaron ser compras buenas, y la precisión que sale de
   // ellas. Nula mientras no se haya revisado ninguna alerta del período.
   false_alerts: number;
@@ -199,6 +204,11 @@ export interface FraudHistoryResponse {
   total_false_alerts: number;
   detection_rate: number | null;
   undetected_rate: number | null;
+  // Los dos indicadores de la tesis, sobre el TOTAL de transacciones:
+  //   DTF (%)  = fraudes detectados    / total de transacciones x 100
+  //   NFND (%) = fraudes no detectados / total de transacciones x 100
+  dtf: number | null;
+  nfnd: number | null;
   precision: number | null;
   average_detection_time_ms: number;
 }
