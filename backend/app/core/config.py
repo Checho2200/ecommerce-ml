@@ -43,11 +43,22 @@ class Settings(BaseSettings):
     CLOUDINARY_FOLDER: str = "sanchez-tech-store"
 
     # Pagos
-    # Token de MercadoPago. Empieza por "TEST-" en el entorno de pruebas y por
-    # "APP_USR-" en el de producción, y de ese prefijo depende a qué checkout
-    # se manda al comprador. Sin token, el checkout responde 503 en vez de
+    # Token de MercadoPago. Sin token, el checkout responde 503 en vez de
     # fingir que cobró.
     MERCADOPAGO_ACCESS_TOKEN: str = ""
+
+    # En qué entorno de MercadoPago se está cobrando: "test" o "produccion".
+    #
+    # Hasta hace poco no hacía falta declararlo, porque el prefijo del token lo
+    # decía: "TEST-" era pruebas y "APP_USR-" producción. **Ya no.** MercadoPago
+    # entrega hoy las credenciales de prueba con el prefijo "APP_USR-", el
+    # mismo que las de producción, así que adivinarlo por el prefijo da
+    # justamente el peor error posible con una pasarela: creer que se está
+    # cobrando de verdad cuando no, o al revés.
+    #
+    # Vacío mantiene el comportamiento anterior —deducirlo del prefijo— para no
+    # romper una instalación que ya funcionaba con un token "TEST-".
+    MERCADOPAGO_ENTORNO: str = ""
 
     # Clave secreta del webhook, que se genera en el panel de MercadoPago
     # (Tus integraciones -> Webhooks). Sirve para comprobar la firma de cada

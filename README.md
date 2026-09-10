@@ -222,6 +222,7 @@ Todas van en `backend/.env` (hay una plantilla en `backend/.env.example`).
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración de la sesión | 60 minutos |
 | `RESET_TOKEN_EXPIRE_MINUTES` | Duración del enlace de recuperación | 30 minutos |
 | `MERCADOPAGO_ACCESS_TOKEN` | Cobros | El checkout responde 503 |
+| `MERCADOPAGO_ENTORNO` | `test` o `produccion`. **Hay que declararlo**: MercadoPago entrega hoy las credenciales de prueba con el mismo prefijo `APP_USR-` que las de producción, así que el token ya no dice de qué entorno es | Se deduce del prefijo `TEST-`, que es el formato antiguo |
 | `CLOUDINARY_URL` | Dónde se guardan las imágenes que sube el panel | Se guardan en la base de datos |
 | `MERCADOPAGO_WEBHOOK_SECRET` | Firma de las notificaciones de pago | No se exige firma |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Correo saliente | Los correos se escriben en el log en vez de enviarse |
@@ -263,7 +264,7 @@ cd backend
 python -m pytest
 ```
 
-Son 272 pruebas y cubren lo que duele si se rompe:
+Son 277 pruebas y cubren lo que duele si se rompe:
 
 - **Inventario.** Que comprar descuente stock, que un pedido rechazado no lo
   toque, y que cancelar —el cliente o el administrador— lo devuelva.

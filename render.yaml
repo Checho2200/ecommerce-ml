@@ -20,6 +20,11 @@ services:
         sync: false
       - key: MERCADOPAGO_ACCESS_TOKEN
         sync: false
+      # "test" o "produccion". Hay que declararlo: MercadoPago entrega hoy las
+      # credenciales de PRUEBA con el prefijo "APP_USR-", el mismo que las de
+      # produccion, asi que el token ya no dice de que entorno es.
+      - key: MERCADOPAGO_ENTORNO
+        sync: false
       # Clave del webhook: panel de MercadoPago -> Tus integraciones ->
       # Webhooks. Mientras esté vacía, la firma de las notificaciones no se
       # exige y el webhook acepta cualquier aviso.

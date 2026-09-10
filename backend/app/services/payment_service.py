@@ -72,7 +72,9 @@ def datos_del_pago(pago: dict) -> dict:
 
 class PaymentService:
     def __init__(self):
-        self.access_token = get_settings().MERCADOPAGO_ACCESS_TOKEN
+        ajustes = get_settings()
+        self.access_token = ajustes.MERCADOPAGO_ACCESS_TOKEN
+        self.entorno = ajustes.MERCADOPAGO_ENTORNO
         self.sdk = mercadopago.SDK(self.access_token) if self.access_token else None
 
     @property
@@ -82,13 +84,25 @@ class PaymentService:
     @property
     def es_de_prueba(self) -> bool:
         """
-        Si el token es del entorno de pruebas de MercadoPago.
+        Si se está cobrando contra el entorno de pruebas de MercadoPago.
 
-        Se mira el prefijo completo `TEST-`, que es el formato documentado, y
-        no un "TEST" suelto en cualquier posición: un token de producción que
-        lo contuviera por casualidad mandaría a los compradores reales al
-        checkout de pruebas, donde su pago no existe.
+        Manda lo que diga `MERCADOPAGO_ENTORNO`, y si está vacío se cae al
+        prefijo del token.
+
+        Deducirlo del prefijo era lo único que había, y funcionaba mientras
+        MercadoPago entregaba las credenciales de prueba con `TEST-` delante.
+        Ya no lo hace: hoy las de prueba salen del panel con `APP_USR-`, el
+        mismo prefijo que las de producción. Un sistema que adivina el entorno
+        por ahí se equivoca en silencio, y equivocarse aquí es la peor
+        confusión posible con una pasarela — creer que se cobra de verdad
+        cuando no, o al revés.
+
+        Se conserva la deducción por prefijo para no romper una instalación que
+        ya venía funcionando con un token antiguo, pero declararlo gana.
         """
+        declarado = (self.entorno or "").strip().lower()
+        if declarado:
+            return declarado in ("test", "prueba", "pruebas", "sandbox")
         return self.access_token.startswith("TEST-")
 
     def create_preference(self, order_id: str, items: List[Dict[str, Any]], payer_email: str) -> str:
@@ -161,11 +175,23 @@ class PaymentService:
             # The init_point is the URL where the user should be redirected to pay
             init_point = preference.get("init_point")
             
-            # Con un token de pruebas hay que mandar al comprador al checkout
-            # de pruebas: el de producción no reconocería esa preferencia.
+            # A dónde se manda al comprador.
+            #
+            # `init_point` es el enlace que corresponde a las credenciales con
+            # las que se creó la preferencia: con credenciales de prueba abre el
+            # checkout de pruebas, y con las de producción el real. Es el que
+            # hay que usar.
+            #
+            # `sandbox_init_point` es del esquema antiguo, cuando el token de
+            # pruebas empezaba por `TEST-` y había que pedir el enlace de
+            # sandbox aparte. Se sigue usando si el token es de ese formato y
+            # MercadoPago lo devuelve, para no romper una integración vieja;
+            # con las credenciales de hoy no viene, y forzarlo devolvería None
+            # y dejaría al comprador sin enlace de pago.
             sandbox_init_point = preference.get("sandbox_init_point")
-
-            return sandbox_init_point if self.es_de_prueba else init_point
+            if self.access_token.startswith("TEST-") and sandbox_init_point:
+                return sandbox_init_point
+            return init_point
             
         except Exception as e:
             print(f"Error creating MP preference: {str(e)}")
