@@ -63,21 +63,25 @@ de la tienda: aparecen en Panel → Usuarios con su rol y no compran. Las compra
 se reparten entre el resto, con la mayoría comprando una sola vez y unos pocos
 habituales.
 
-Cuánto tráfico, y por qué tanto
--------------------------------
+Cuánto tráfico, y a qué escala se puede leer
+--------------------------------------------
 Una tasa se calcula sobre los fraudes confirmados del período, así que la
 escala a la que el indicador significa algo depende de cuántos haya. Con mil
 compras repartidas en nueve meses, un día tenía uno o dos fraudes y su tasa
 solo podía salir 0 %, 50 % o 100 %: parecía que el sistema iba a saltos cuando
-lo que saltaba era la aritmética. Con cinco mil, cada semana del tramo con
-modelo lleva entre treinta y cincuenta casos y el indicador se mueve en una
-banda creíble.
+lo que saltaba era la aritmética.
 
-El reparto entre tramos tampoco sigue al calendario, y esto hay que decirlo:
-el tramo con modelo lleva más compras y bastante más densidad diaria que los
-siete meses anteriores. No es que la tienda creciera de golpe; es que la
-medición necesita casos donde se quiere medir, y los contracargos de las
-últimas semanas todavía no han llegado.
+Con ocho mil compras la tienda vende unas mil al mes de enero a septiembre —una
+cifra plana, como debe ser: el modelo de fraude no atrae clientes— y cada mes
+lleva entre setenta y noventa fraudes confirmados. A escala **mensual** el
+indicador se lee sin ruido.
+
+A escala semanal, en cambio, el tramo con modelo sigue siendo corto: son cinco
+semanas, con diez o quince casos confirmados cada una, y ahí una tasa todavía
+salta varios puntos por un caso. No es un defecto que se pueda arreglar
+generando más tráfico sin mentir en el gráfico de ventas — es que llevas cinco
+semanas con el modelo y los contracargos tardan. La escala honesta para
+comparar los dos regímenes es el mes.
 
 Precauciones
 ------------
@@ -96,6 +100,7 @@ import asyncio
 import json
 import math
 import sys
+import uuid
 
 import numpy as np
 from collections import Counter
@@ -336,37 +341,63 @@ def _armar_carrito(muestra: dict, caros: list, normales: list, rng):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _fechas(cuantas: int, desde: date, hasta: date, corte: date, antes: int, rng):
+# Cuánto se vende cada día de la semana, en relación a un día normal. Una
+# tienda de componentes vende algo menos el fin de semana y algo más a
+# principio de semana. No es un detalle decorativo: un histograma perfectamente
+# plano es de las cosas que más delatan que un conjunto está inventado.
+PESO_POR_DIA_DE_LA_SEMANA = (1.10, 1.05, 1.00, 1.00, 1.05, 0.85, 0.70)
+
+
+def _fechas(cuantas: int, desde: date, hasta: date, corte: date, antes: int | None, rng):
     """
     Reparte las compras en el calendario.
 
-    Las del tramo antiguo caen antes de la fecha de corte —cuando el sistema
-    decidía con los umbrales viejos— y el resto después. Dentro de cada día la
-    hora se sortea entre las 8 y las 23, porque una tienda no vende de
-    madrugada y un histograma plano se nota inventado.
+    Por defecto el reparto es **uniforme en el tiempo**, y el tramo al que
+    pertenece cada compra lo decide su fecha frente al corte. Es lo único
+    defendible: el modelo de fraude no atrae clientes ni vende nada, así que la
+    tienda no puede pasar de doscientas compras al mes a dos mil el día que se
+    enciende. Una gráfica con ese salto no enseña que el sistema funciona,
+    enseña que los datos están puestos a mano.
+
+    La versión anterior repartía por cuenta —tantas antes del corte, tantas
+    después— y con ello se podía concentrar tráfico donde interesaba medir. Se
+    medía mejor y se mentía en el gráfico. `--antes` sigue existiendo para esa
+    corrida forzada, pero ya no es lo que ocurre si no se pide.
+
+    Dentro de cada día la hora se sortea entre las 8 y las 23, porque una
+    tienda no vende de madrugada.
     """
-    dias_antes = max(1, (corte - desde).days)
-    dias_despues = max(1, (hasta - corte).days)
+    dias = [desde + timedelta(days=i) for i in range((hasta - desde).days + 1)]
 
-    momentos = []
-    for indice in range(cuantas):
-        if indice < antes:
-            dia = desde + timedelta(days=int(rng.integers(dias_antes)))
-        else:
-            dia = corte + timedelta(days=int(rng.integers(dias_despues)))
-
-        momentos.append(
-            datetime.combine(
-                dia,
-                time(
-                    hour=int(rng.integers(8, 23)),
-                    minute=int(rng.integers(0, 60)),
-                    second=int(rng.integers(0, 60)),
-                ),
-                tzinfo=timezone.utc,
-            )
+    if antes is None:
+        # Uniforme sobre todo el rango, con el peso de cada día de la semana.
+        pesos = np.array(
+            [PESO_POR_DIA_DE_LA_SEMANA[d.weekday()] for d in dias], dtype=float
         )
+        elegidos = rng.choice(len(dias), size=cuantas, p=pesos / pesos.sum())
+        sorteados = [dias[i] for i in elegidos]
+    else:
+        # Reparto forzado: tantas compras a cada lado del corte.
+        previos = [d for d in dias if d < corte] or [desde]
+        posteriores = [d for d in dias if d >= corte] or [hasta]
+        sorteados = [
+            previos[int(rng.integers(len(previos)))] if i < antes
+            else posteriores[int(rng.integers(len(posteriores)))]
+            for i in range(cuantas)
+        ]
 
+    momentos = [
+        datetime.combine(
+            dia,
+            time(
+                hour=int(rng.integers(8, 23)),
+                minute=int(rng.integers(0, 60)),
+                second=int(rng.integers(0, 60)),
+            ),
+            tzinfo=timezone.utc,
+        )
+        for dia in sorteados
+    ]
     momentos.sort()
     return momentos
 
@@ -669,7 +700,7 @@ async def _catalogo(sesion):
 
 async def construir(
     cuantas: int,
-    antes: int,
+    antes: int | None,
     desde: date,
     hasta: date,
     corte: date,
@@ -806,6 +837,14 @@ async def construir(
                 cuentas_fechadas.add(usuario.id)
 
             orden = Order(
+                # El identificador se fija aquí en vez de dejar que lo ponga la
+                # base al insertar. Parece un detalle y no lo es: sin él hay que
+                # hacer `flush()` después de cada pedido para conocer su id y
+                # poder colgarle sus líneas y su evaluación, y eso son tantos
+                # viajes a la base como pedidos. Contra PostgreSQL en la nube,
+                # cinco mil viajes son más de una hora; fijándolo, todo se
+                # acumula en memoria y viaja junto al confirmar.
+                id=str(uuid.uuid4()),
                 user_id=usuario.id,
                 total_amount=round(total, 2),
                 status=ESTADO_SEGUN_DECISION[decision],
@@ -822,7 +861,6 @@ async def construir(
                 ).items():
                     setattr(orden, campo, valor)
             sesion.add(orden)
-            await sesion.flush()
 
             for linea in lineas:
                 sesion.add(
@@ -1155,7 +1193,7 @@ def main() -> int:
     parser.add_argument(
         "--cuantas",
         type=int,
-        default=5000,
+        default=8000,
         help=(
             "Cuántas compras generar. Cinco mil no es capricho: una tasa se "
             "calcula sobre los fraudes confirmados del período, y con mil "
@@ -1168,21 +1206,19 @@ def main() -> int:
     parser.add_argument(
         "--antes",
         type=int,
-        default=1500,
+        default=None,
         help=(
-            "Cuántas compras decide el sistema anterior (las del primer tramo). "
-            "El reparto por defecto, 450 antes y 550 después, no sigue al "
-            "calendario a propósito. Las dos tasas se calculan solo sobre los "
-            "fraudes ya confirmados, y en el tramo nuevo —que son semanas, no "
-            "meses— muchos contracargos todavía no han llegado: hace falta más "
-            "tráfico para acabar con la misma cantidad de casos comprobados. "
-            "Con este reparto los dos brazos pasan de treinta fraudes "
-            "confirmados, que es el mínimo para que la comparación signifique "
-            "algo."
+            "Fuerza cuántas compras caen antes del corte. Sin esto —que es lo "
+            "normal— el tráfico se reparte uniforme por el calendario y el "
+            "tramo de cada compra lo decide su fecha, que es lo único "
+            "defendible: encender el modelo no atrae clientes, así que la "
+            "tienda no puede multiplicar sus ventas el día que se enciende. "
+            "Usarlo concentra casos donde interesa medir, a cambio de un "
+            "gráfico de ventas que nadie se cree."
         ),
     )
     parser.add_argument("--desde", type=date.fromisoformat, default=date(2026, 1, 1))
-    parser.add_argument("--hasta", type=date.fromisoformat, default=date.today())
+    parser.add_argument("--hasta", type=date.fromisoformat, default=date(2026, 9, 7))
     parser.add_argument(
         "--cambio",
         type=date.fromisoformat,
@@ -1192,7 +1228,7 @@ def main() -> int:
     parser.add_argument(
         "--cuentas",
         type=int,
-        default=2500,
+        default=4000,
         help=(
             "Cuántas cuentas de cliente crear. Las compras se reparten entre "
             "ellas, así que tiene que haber menos cuentas que compras: cada "
@@ -1245,7 +1281,7 @@ def main() -> int:
     if args.desde >= args.hasta:
         print("--desde tiene que ser anterior a --hasta.")
         return 1
-    if args.antes > args.cuantas:
+    if args.antes is not None and args.antes > args.cuantas:
         print("--antes no puede superar a --cuantas.")
         return 1
 
