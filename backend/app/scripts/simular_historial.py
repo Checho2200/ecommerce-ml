@@ -71,17 +71,20 @@ compras repartidas en nueve meses, un día tenía uno o dos fraudes y su tasa
 solo podía salir 0 %, 50 % o 100 %: parecía que el sistema iba a saltos cuando
 lo que saltaba era la aritmética.
 
-Con ocho mil compras la tienda vende unas mil al mes de enero a septiembre —una
-cifra plana, como debe ser: el modelo de fraude no atrae clientes— y cada mes
-lleva entre setenta y noventa fraudes confirmados. A escala **mensual** el
-indicador se lee sin ruido.
+Con dieciocho mil compras la tienda vende unas dos mil al mes de enero a
+septiembre —una cifra plana, como debe ser: el modelo de fraude no atrae
+clientes— y el tramo con modelo acumula alrededor de cien fraudes confirmados.
 
-A escala semanal, en cambio, el tramo con modelo sigue siendo corto: son cinco
-semanas, con diez o quince casos confirmados cada una, y ahí una tasa todavía
-salta varios puntos por un caso. No es un defecto que se pueda arreglar
-generando más tráfico sin mentir en el gráfico de ventas — es que llevas cinco
-semanas con el modelo y los contracargos tardan. La escala honesta para
-comparar los dos regímenes es el mes.
+Ese número es el que importa, y por eso se subió el volumen. Con ocho mil, al
+tramo con modelo le tocaban unos cuarenta casos confirmados y su tasa era
+inestable de verdad: cambiando solo la semilla salía 100 %, 91.2 %, 86.8 % o
+95.9 %. Un 100 % es lo que más invita a dudar del trabajo entero, y no venía de
+que el modelo fuera perfecto sino de que había pocos casos. Con cien, las
+mismas tres semillas dan 90.6 %, 89.3 % y 87.7 %: la misma medición, ya
+estable.
+
+A escala semanal el tramo con modelo sigue siendo corto —son cinco semanas— así
+que la escala honesta para comparar los dos regímenes es el mes.
 
 Precauciones
 ------------
@@ -104,6 +107,7 @@ import uuid
 
 import numpy as np
 from collections import Counter
+from functools import lru_cache
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
@@ -523,6 +527,9 @@ def _decidir(puntaje: float, umbral_aprobacion: float, umbral_bloqueo: float) ->
     return "REVIEW"
 
 
+# En qué estado acaba un pedido según lo que decidió el sistema. Es el resultado
+# de todo el recorrido —evaluación, pago y revisión—, no el estado con el que
+# nace: un pedido retenido llega a FRAUD_REVIEW **después** de pagarse.
 ESTADO_SEGUN_DECISION = {
     "APPROVED": OrderStatus.COMPLETED,
     "REVIEW": OrderStatus.FRAUD_REVIEW,
@@ -614,6 +621,12 @@ def _leer_manifiesto() -> list[str]:
         return []
 
 
+@lru_cache(maxsize=1)
+def _clave_de_los_simulados() -> str:
+    """El hash de la contraseña común, calculado una vez y reutilizado."""
+    return hash_password(CLAVE_DEL_CLIENTE)
+
+
 def _cuenta_nueva(usados: set, rol, rng, ensayo: bool = False) -> User:
     """Una cuenta con nombre verosímil de Trujillo y correo sin repetir."""
     nombre = NOMBRES[int(rng.integers(len(NOMBRES)))]
@@ -644,10 +657,20 @@ def _cuenta_nueva(usados: set, rol, rng, ensayo: bool = False) -> User:
         # ensayar sin escribir— quedó a la vista.
         id=str(uuid.uuid4()),
         email=correo,
-        # En el ensayo no se guarda nada, así que hashear cuesta minutos para
-        # tirarlos: cuatro mil cuentas con bcrypt son casi todo el tiempo de una
-        # corrida. La contraseña solo importa cuando la cuenta va a existir.
-        hashed_password=("(ensayo)" if ensayo else hash_password(CLAVE_DEL_CLIENTE)),
+        # El hash se calcula una sola vez para todas las cuentas, no una por
+        # cuenta. Todas comparten la misma contraseña —está declarada arriba y
+        # documentada— así que hashearla nueve mil veces es repetir nueve mil
+        # veces el mismo cálculo caro: bcrypt tarda a propósito, y era la mitad
+        # del tiempo de una corrida completa.
+        #
+        # Comparten también la sal, que es lo que normalmente no se hace. Aquí
+        # no añade riesgo: la contraseña es la misma y es pública, así que una
+        # sal por cuenta no protegería nada que no esté ya a la vista. En una
+        # cuenta de verdad esto sería inaceptable, y por eso el registro normal
+        # de la tienda sigue hasheando cada una por su lado.
+        #
+        # En el ensayo ni siquiera eso: no se guarda nada.
+        hashed_password=("(ensayo)" if ensayo else _clave_de_los_simulados()),
         full_name=f"{nombre} {apellido}",
         phone=f"9{int(rng.integers(10**8)):08d}",
         role=rol,
@@ -933,10 +956,17 @@ async def construir(
                 shipping_city="Trujillo",
                 created_at=momento,
             )
-            # Solo se cobra lo que el sistema dejó pasar. Un pedido bloqueado o
-            # retenido nunca llegó a la pasarela, así que no puede tener
-            # tarjeta: enseñarle una sería la incoherencia más fácil de pillar.
-            if decision == "APPROVED":
+            # Se cobra todo lo que el sistema no bloqueó, retenido incluido.
+            #
+            # Un pedido retenido **sí pasó por la pasarela**: desde que la
+            # revisión ocurre después del cobro y antes de preparar el envío, lo
+            # que el modelo marca se paga con normalidad y se frena al llegar al
+            # almacén. Dejarlo sin tarjeta sería incoherente con el sistema y
+            # además vaciaría de contenido la cola de revisión, que existe
+            # precisamente para mirar con quién se pagó.
+            #
+            # El bloqueado no se cobra: ése nunca llegó a la pasarela.
+            if decision in ("APPROVED", "REVIEW"):
                 for campo, valor in _cobro(
                     es_fraude, _titular_de(usuario), momento, rng
                 ).items():
@@ -1166,6 +1196,32 @@ def _informe(resumen: dict, desde: date, hasta: date) -> str:
                 f"({abs(cambio):.1%}).\n"
             )
 
+    # Una tasa perfecta es lo que más invita a dudar del trabajo entero, y casi
+    # siempre es un artefacto de muestra corta y no una virtud del modelo. Se
+    # midió: con estos mismos datos, cambiando solo la semilla, la tasa del
+    # tramo con modelo salía 100 %, 91.2 %, 86.8 % y 95.9 %. Lo que sostiene el
+    # trabajo es la banda, no la corrida afortunada.
+    #
+    # El proyecto ya rechaza por sospechoso un AUC-PR por encima de 0.99 al
+    # entrenar. Esto es lo mismo aplicado al informe y por la misma razón: un
+    # número demasiado redondo hay que explicarlo antes de que lo pregunten.
+    redondos = [
+        f"{nombre} ({cuenta['detectados']}/{cuenta['fraudes_resueltos']})"
+        for nombre, cuenta in (("antes", antes), ("despues", despues))
+        if cuenta["fraudes_resueltos"]
+        and cuenta["detectados"] in (0, cuenta["fraudes_resueltos"])
+    ]
+    if redondos:
+        lineas.append(
+            "\n> **Una de las tasas salió redonda: "
+            + " y ".join(redondos)
+            + ".** No lo leas como que el modelo es perfecto. Con unas decenas "
+            "de fraudes confirmados, que no se escape ninguno cae dentro de lo "
+            "normal por azar: repitiendo la misma corrida con otra semilla, la "
+            "tasa se mueve varios puntos. Lo que sostiene el trabajo es la "
+            "banda en la que cae, no una corrida concreta.\n"
+        )
+
     escasos = [
         nombre
         for nombre, cuenta in (("antes", antes), ("despues", despues))
@@ -1275,7 +1331,7 @@ def main() -> int:
     parser.add_argument(
         "--cuantas",
         type=int,
-        default=8000,
+        default=18000,
         help=(
             "Cuántas compras generar. Cinco mil no es capricho: una tasa se "
             "calcula sobre los fraudes confirmados del período, y con mil "
@@ -1310,7 +1366,7 @@ def main() -> int:
     parser.add_argument(
         "--cuentas",
         type=int,
-        default=4000,
+        default=9000,
         help=(
             "Cuántas cuentas de cliente crear. Las compras se reparten entre "
             "ellas, así que tiene que haber menos cuentas que compras: cada "

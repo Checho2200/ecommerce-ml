@@ -1,6 +1,6 @@
 # Historial simulado de la tienda
 
-8000 compras repartidas entre el 01/01/2026 y el 07/09/2026, evaluadas una por una por el modelo que está en producción.
+18000 compras repartidas entre el 01/01/2026 y el 07/09/2026, evaluadas una por una por el modelo que está en producción.
 
 El tramo antiguo decide con una regla fija sin modelo (bloquear si el monto pasa de S/ 1,500 y la dirección es nueva; revisar si pasa de ese monto o lleva 2 o más artículos de alto riesgo); el nuevo, con el modelo y los umbrales que el entrenamiento eligió minimizando el costo en soles (0.3 / 0.9). El tráfico se genera igual en los dos: lo único que cambia es el criterio de decisión.
 
@@ -14,36 +14,36 @@ Las dos tasas de arriba se dividen entre los fraudes confirmados: son la exhaust
 
 | Indicador | Antes | Después | Debe |
 | :--- | ---: | ---: | :---: |
-| Tasa de fraudes detectados | 83.7% | **91.2%** | subir |
-| Tasa de fraude no detectado | 16.3% | **8.8%** | bajar |
-| Tiempo de detección | 4.5 h | **1.9 ms** | bajar |
+| Tasa de fraudes detectados | 86.5% | **90.6%** | subir |
+| Tasa de fraude no detectado | 13.5% | **9.4%** | bajar |
+| Tiempo de detección | 4.5 h | **2.5 ms** | bajar |
 
 El tiempo de detección no compara dos clasificadores: compara **no tener detector** con tenerlo. Antes del modelo la regla fija solo levantaba la mano y quien decidía era una persona, cuando le llegaba el turno en la cola de revisión; ese es el tiempo de la izquierda. El de la derecha lo cronometra el propio servicio al puntuar cada compra, una por una, dentro de la petición que crea el pedido.
 
 ## Las cuentas
 
-4000 cuentas con nombres, teléfonos y correos como los de cualquier cliente de Trujillo (@gmail.com, @outlook.es, @hotmail.com, @yahoo.com). 5 de ellas son administradores —personal de la tienda, se ven en Panel → Usuarios con su rol y no compran— y las otras 3995 son los clientes entre los que se reparten las compras: la mayoría compra una sola vez, unos pocos son habituales con nueve pedidos.
+9000 cuentas con nombres, teléfonos y correos como los de cualquier cliente de Trujillo (@gmail.com, @outlook.es, @hotmail.com, @yahoo.com). 5 de ellas son administradores —personal de la tienda, se ven en Panel → Usuarios con su rol y no compran— y las otras 8995 son los clientes entre los que se reparten las compras: la mayoría compra una sola vez, unos pocos son habituales con nueve pedidos.
 
 ## El detalle
 
 | | Antes | Después |
 | :--- | ---: | ---: |
-| Compras evaluadas | 6772 | 1228 |
-| Aprobadas | 4710 | 995 |
-| A revisión | 1441 | 183 |
-| Bloqueadas | 621 | 50 |
-| Fraudes confirmados | 490 | 57 |
-| Fraudes detectados | 410 | 52 |
-| **Tasa de detección** | **83.7%** | **91.2%** |
-| Compras buenas bloqueadas | 322 | 6 |
-| Fraude que pasó (S/) | 75,975.00 | 6,888.00 |
-| Margen perdido por frenar de más (S/) | 120,312.75 | 2,263.50 |
-| **Costo total (S/)** | **196,287.75** | **9,151.50** |
+| Compras evaluadas | 15285 | 2715 |
+| Aprobadas | 10448 | 2280 |
+| A revisión | 3399 | 351 |
+| Bloqueadas | 1438 | 84 |
+| Fraudes confirmados | 1109 | 96 |
+| Fraudes detectados | 959 | 87 |
+| **Tasa de detección** | **86.5%** | **90.6%** |
+| Compras buenas bloqueadas | 691 | 5 |
+| Fraude que pasó (S/) | 140,825.00 | 7,453.00 |
+| Margen perdido por frenar de más (S/) | 262,635.30 | 1,941.30 |
+| **Costo total (S/)** | **403,460.30** | **9,394.30** |
 
-Por compra evaluada, el costo de los errores baja de **S/ 28.99** a **S/ 7.45** (74.3%).
+Por compra evaluada, el costo de los errores baja de **S/ 26.40** a **S/ 3.46** (86.9%).
 
 
-Quedan 657 compras sin etiquetar, casi todas recientes: el contracargo todavía no ha llegado o el plazo no ha vencido. Aparecen en el panel como evaluadas pero sin confirmar, que es como se ve una tienda de verdad — los indicadores del mes pasado están completos y los de esta semana se siguen llenando.
+Quedan 1522 compras sin etiquetar, casi todas recientes: el contracargo todavía no ha llegado o el plazo no ha vencido. Aparecen en el panel como evaluadas pero sin confirmar, que es como se ve una tienda de verdad — los indicadores del mes pasado están completos y los de esta semana se siguen llenando.
 
 
 Las compras que el sistema dejó pasar llevan además datos de cobro simulados —medio de pago, cuatro últimos dígitos y titular—, con la misma forma que los que deja un pago real. En una parte de ellas el titular no coincide con el de la cuenta: es la señal más común de tarjeta robada, y ninguna de las cuatro variables del modelo la ve, así que solo puede verla la persona que revisa.
