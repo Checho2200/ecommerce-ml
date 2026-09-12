@@ -64,13 +64,45 @@ class OrderResponse(BaseModel):
     user_name: Optional[str] = None
     payment_id: Optional[str] = None
     payment_method: Optional[str] = None
+    payment_gateway: Optional[str] = None
     card_last_four: Optional[str] = None
     card_holder: Optional[str] = None
     paid_at: Optional[datetime] = None
 
+    # Si este servidor puede cobrar con Niubiz. La tienda ofrece dos pasarelas
+    # y cada una depende de sus propias credenciales, así que el checkout tiene
+    # que saber cuáles hay antes de pintar los botones: ofrecer una que no está
+    # configurada manda al comprador a un error con la tarjeta ya en la mano.
+    niubiz_disponible: bool = False
+
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class NiubizSessionResponse(BaseModel):
+    """
+    Lo que el navegador necesita para abrir el formulario de Niubiz.
+
+    Todo viene del backend, incluida la dirección del script y la del retorno.
+    Así el frontend no tiene que saber en qué entorno se está cobrando ni
+    guardar una copia de esas direcciones que se quede vieja: hay una sola
+    fuente de verdad, que es la configuración del servidor.
+
+    Aquí no viaja ningún secreto. La clave de sesión sirve para un solo cobro,
+    por un monto fijo, y el código de comercio es público por definición: va en
+    el formulario que ve cualquiera.
+    """
+
+    session_key: str
+    merchant_id: str
+    purchase_number: str
+    amount: str
+    checkout_js: str
+    action_url: str
+    # Para poder avisar en pantalla cuando se está cobrando contra el entorno
+    # de pruebas, y que nadie crea que pagó de verdad.
+    es_de_prueba: bool
 
 
 class OrderListResponse(BaseModel):

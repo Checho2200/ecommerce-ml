@@ -34,6 +34,7 @@ from app.api.v1.upload import router as upload_router
 from app.api.v1.users import router as users_router
 from app.services import image_storage
 from app.services.fraud_service import fraud_service
+from app.services.niubiz_service import niubiz_service
 from app.services.payment_service import payment_service
 
 settings = get_settings()
@@ -186,6 +187,18 @@ async def health():
             if not payment_service.is_configured
             else "test"
             if payment_service.es_de_prueba
+            else "production"
+        ),
+        # La segunda pasarela, por separado. Las dos conviven y cada una
+        # depende de sus propias credenciales, así que una sola línea no podría
+        # decir la verdad sobre ambas: se puede estar cobrando de prueba por
+        # una y de verdad por la otra, que es precisamente lo que hay que poder
+        # ver desde fuera antes de una demostración.
+        "niubiz": (
+            "not_configured"
+            if not niubiz_service.esta_configurado
+            else "test"
+            if niubiz_service.es_de_prueba
             else "production"
         ),
         # Igual que arriba: dónde acaban las imágenes que sube el panel. Sin

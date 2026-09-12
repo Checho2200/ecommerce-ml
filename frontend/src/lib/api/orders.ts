@@ -1,7 +1,11 @@
 /** Pedidos: creación, seguimiento del cliente y gestión del administrador. */
 
 import { request } from "./cliente";
-import type { OrderResponse, OrderSummaryResponse } from "./tipos";
+import type {
+  NiubizSessionResponse,
+  OrderResponse,
+  OrderSummaryResponse,
+} from "./tipos";
 
 export const orders = {
   async list(params?: { page?: number; per_page?: number; status?: string }) {
@@ -44,6 +48,15 @@ export const orders = {
     return request<OrderResponse>("/orders", {
       method: "POST",
       body: JSON.stringify(data),
+    });
+  },
+
+  // Abre con Niubiz una sesión para cobrar esta orden. Todavía no cobra nada:
+  // devuelve lo que el navegador necesita para levantar el formulario de la
+  // pasarela, y el cobro ocurre cuando ese formulario termina.
+  async niubizSession(id: string) {
+    return request<NiubizSessionResponse>(`/orders/${id}/niubiz/sesion`, {
+      method: "POST",
     });
   },
 

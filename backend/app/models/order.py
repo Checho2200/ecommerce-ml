@@ -51,6 +51,20 @@ class Order(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # El número de compra que exige Niubiz.
+    #
+    # Niubiz identifica cada cobro por un número de hasta doce dígitos, y el
+    # identificador de las órdenes de esta tienda es un UUID, que no lo es. Así
+    # que se les asigna uno aparte, la primera vez que alguien elige pagar con
+    # Niubiz, y se conserva: la clave de sesión y la autorización tienen que
+    # llevar exactamente el mismo, y un reintento del mismo pedido tiene que
+    # poder reusarlo.
+    #
+    # Nula en las órdenes que nunca pasaron por Niubiz.
+    purchase_number: Mapped[str] = mapped_column(
+        String(12), nullable=True, unique=True
+    )
+
     # ── Con qué se pagó ──────────────────────────────────────────────────
     #
     # Lo rellena el webhook con lo que responde MercadoPago cuando el cobro se
@@ -66,6 +80,11 @@ class Order(Base):
     # ser. La tarjeta la maneja MercadoPago de principio a fin.
     payment_id: Mapped[str] = mapped_column(String(50), nullable=True)
     payment_method: Mapped[str] = mapped_column(String(30), nullable=True)
+    # Con cuál de las dos pasarelas se cobró: "mercadopago" o "niubiz". Sin
+    # esto, un `payment_id` suelto no dice en qué panel buscarlo, que es
+    # justamente lo que hace falta ante un contracargo. Nula en las órdenes
+    # anteriores a Niubiz, que solo pudieron pagarse por MercadoPago.
+    payment_gateway: Mapped[str] = mapped_column(String(20), nullable=True)
     card_last_four: Mapped[str] = mapped_column(String(4), nullable=True)
     # El titular tal como lo devuelve la pasarela. Es el dato que delata el
     # caso clásico: la cuenta es de una persona y la tarjeta de otra.

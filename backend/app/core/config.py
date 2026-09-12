@@ -60,6 +60,30 @@ class Settings(BaseSettings):
     # romper una instalación que ya funcionaba con un token "TEST-".
     MERCADOPAGO_ENTORNO: str = ""
 
+    # ── Niubiz (Visa Perú) ───────────────────────────────────────────────
+    #
+    # La segunda pasarela. No sustituye a MercadoPago: convive con él, y el
+    # comprador elige en el checkout con cuál paga.
+    #
+    # Las credenciales las entrega Niubiz al afiliar el comercio. Son tres:
+    # usuario y contraseña de la API (se mandan como Basic auth para pedir el
+    # token de acceso) y el código de comercio. Sin las tres, la opción de
+    # pagar con Niubiz no se ofrece —el checkout enseña solo MercadoPago— en
+    # lugar de fingir que puede cobrar.
+    NIUBIZ_USER: str = ""
+    NIUBIZ_PASSWORD: str = ""
+    NIUBIZ_MERCHANT_ID: str = ""
+
+    # En qué entorno de Niubiz se cobra: "test" o "produccion".
+    #
+    # Aquí sí hay que declararlo siempre, porque las credenciales de Niubiz no
+    # llevan ninguna marca que distinga un entorno del otro: el mismo usuario y
+    # contraseña tienen la forma de siempre en los dos. De esta variable
+    # dependen las tres direcciones que se usan —la de la API, la del
+    # formulario y la del script del checkout—, así que equivocarla no da un
+    # cobro falso: da un error, que es el fallo preferible.
+    NIUBIZ_ENTORNO: str = "test"
+
     # Clave secreta del webhook, que se genera en el panel de MercadoPago
     # (Tus integraciones -> Webhooks). Sirve para comprobar la firma de cada
     # notificación. Si se deja vacía, la firma no se exige.

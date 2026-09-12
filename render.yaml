@@ -30,6 +30,19 @@ services:
       # exige y el webhook acepta cualquier aviso.
       - key: MERCADOPAGO_WEBHOOK_SECRET
         sync: false
+      # Niubiz, la segunda pasarela. Con las tres puestas, el checkout ofrece
+      # las dos formas de pago; sin alguna, solo MercadoPago.
+      - key: NIUBIZ_USER
+        sync: false
+      - key: NIUBIZ_PASSWORD
+        sync: false
+      - key: NIUBIZ_MERCHANT_ID
+        sync: false
+      # "test" o "produccion". Hay que declararlo: las credenciales de Niubiz
+      # no llevan marca de entorno, y de esta variable dependen las tres
+      # direcciones que se usan.
+      - key: NIUBIZ_ENTORNO
+        value: test
       - key: SECRET_KEY
         sync: false
       # Donde se guardan las imagenes que sube el panel de administracion.

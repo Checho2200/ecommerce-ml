@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { useCartStore } from '@/lib/stores/cart'
 import { useAuth } from '@/lib/auth'
 import { api, ApiError } from '@/lib/api'
+import type { OrderResponse } from '@/lib/api'
+import { abrirFormularioDeNiubiz } from '@/lib/niubiz'
 import Header from '@/components/ui/Header'
 
 import {
@@ -20,6 +22,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import GppMaybeIcon from '@mui/icons-material/GppMaybe'
 import HourglassTopIcon from '@mui/icons-material/HourglassTop'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -33,6 +36,11 @@ export default function CheckoutPage() {
   const [success, setSuccess] = useState(false)
   const [orderId, setOrderId] = useState('')
   const [orderStatus, setOrderStatus] = useState('')
+  // El pedido recien creado, mientras espera que la persona elija con cual de
+  // las dos pasarelas paga. El carrito no se vacia todavia: si abandona el
+  // pago, sus productos tienen que seguir ahi.
+  const [pedido, setPedido] = useState<OrderResponse | null>(null)
+  const [pasarela, setPasarela] = useState('')
   // Cuanto tarda la persona en completar el checkout es una de las cuatro
   // variables que mira el modelo de fraude. El instante de entrada se anota en
   // una ref dentro de un efecto: leer el reloj durante el render hace que dos
@@ -87,11 +95,15 @@ export default function CheckoutPage() {
         shipping_city: city,
         checkout_duration_seconds: (Date.now() - mountTime.current) / 1000,
       })
-      if (order.payment_url) {
-        // El carrito NO se vacia aqui: si el pago falla o el cliente lo
-        // abandona, volveria a la tienda sin sus productos y teniendo que
-        // buscarlos otra vez. Se vacia en /checkout/success, cuando
-        // MercadoPago confirma el cobro.
+      // El carrito NO se vacia aqui: si el pago falla o el cliente lo abandona,
+      // volveria a la tienda sin sus productos y teniendo que buscarlos otra
+      // vez. Se vacia en /checkout/success, cuando la pasarela confirma el cobro.
+      if (order.status === 'PENDING' && order.niubiz_disponible) {
+        // Hay con que elegir, o solo esta Niubiz: en los dos casos se le
+        // ensena el boton en vez de abrir nada solo, porque el formulario de
+        // Niubiz necesita que alguien lo pida.
+        setPedido(order)
+      } else if (order.payment_url) {
         window.location.href = order.payment_url
       } else {
         clearCart()
@@ -104,6 +116,105 @@ export default function CheckoutPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const pagarConNiubiz = async () => {
+    if (!pedido) return
+    setPasarela('niubiz')
+    setError('')
+    try {
+      const sesion = await api.orders.niubizSession(pedido.id)
+      await abrirFormularioDeNiubiz(sesion, {
+        ordenId: pedido.id,
+        nombreDelComercio: 'GRUPO STS SAC',
+      })
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'No pudimos abrir el formulario de pago. Intentalo de nuevo.',
+      )
+    } finally {
+      // Se suelta el boton aunque el modal haya abierto: si la persona lo
+      // cierra sin pagar, tiene que poder volver a intentarlo.
+      setPasarela('')
+    }
+  }
+
+  // -- Con que pagar ----------------------------------------
+  // El pedido ya existe y ya paso por el modelo de fraude; lo que falta es
+  // cobrarlo. Son dos pasarelas distintas: MercadoPago lleva a su propio sitio
+  // y avisa despues por webhook, y Niubiz cobra en un formulario que se abre
+  // encima de esta pagina.
+  if (pedido) {
+    return (
+      <Box sx={{ minHeight: '100dvh', bgcolor: 'background.default' }}>
+        <Header />
+        <Container maxWidth="sm">
+          <Box sx={{ py: 10 }}>
+            <Typography variant="h4" sx={{ fontWeight: 900, mb: 1, textAlign: 'center' }}>
+              Como quieres pagar?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 4, textAlign: 'center' }}>
+              Tu pedido por S/{pedido.total_amount.toFixed(2)} esta reservado. No se te
+              cobrara nada hasta que completes el pago.
+            </Typography>
+
+            {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {pedido.niubiz_disponible && (
+                <Button
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  startIcon={<CreditCardIcon />}
+                  disabled={pasarela !== ''}
+                  onClick={pagarConNiubiz}
+                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2, py: 1.75 }}
+                >
+                  {pasarela === 'niubiz'
+                    ? <CircularProgress size={22} color="inherit" />
+                    : 'Pagar con tarjeta (Niubiz)'}
+                </Button>
+              )}
+
+              {pedido.payment_url && (
+                <Button
+                  variant="outlined"
+                  size="large"
+                  fullWidth
+                  endIcon={<OpenInNewIcon />}
+                  disabled={pasarela !== ''}
+                  onClick={() => {
+                    setPasarela('mercadopago')
+                    window.location.href = pedido.payment_url as string
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2, py: 1.75 }}
+                >
+                  Pagar con MercadoPago
+                </Button>
+              )}
+            </Box>
+
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 3, display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}
+            >
+              <ShieldIcon sx={{ fontSize: 14 }} />
+              Los datos de tu tarjeta los maneja la pasarela; la tienda nunca los recibe.
+            </Typography>
+
+            <Box sx={{ textAlign: 'center', mt: 4 }}>
+              <Button component={Link} href="/orders" size="small" sx={{ textTransform: 'none' }}>
+                Pagarlo mas tarde desde mis compras
+              </Button>
+            </Box>
+          </Box>
+        </Container>
+      </Box>
+    )
   }
 
   // ── Desenlace de la orden ────────────────────────────────
@@ -241,7 +352,8 @@ export default function CheckoutPage() {
                 </Box>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <ShieldIcon sx={{ fontSize: 14 }} />
-                  Pagos seguros protegidos por nuestro sistema antifraude.
+                  Elegiras entre Niubiz y MercadoPago en el siguiente paso. Pagos
+                  protegidos por nuestro sistema antifraude.
                 </Typography>
               </CardContent>
             </Card>

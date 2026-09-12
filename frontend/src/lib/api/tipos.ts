@@ -63,9 +63,33 @@ export interface OrderResponse {
   user_name: string | null;
   payment_id: string | null;
   payment_method: string | null;
+  // Con cuál de las dos pasarelas se cobró: "mercadopago" o "niubiz". Nula
+  // mientras el pedido no se haya pagado.
+  payment_gateway: string | null;
   card_last_four: string | null;
   card_holder: string | null;
   paid_at: string | null;
+  // Si este servidor puede cobrar con Niubiz. Lo dice el backend porque
+  // depende de sus credenciales, y el checkout lo necesita para saber qué
+  // formas de pago ofrecer.
+  niubiz_disponible: boolean;
+}
+
+/**
+ * Lo que hace falta para abrir el formulario de Niubiz.
+ *
+ * Viene entero del backend, direcciones incluidas, para que el frontend no
+ * tenga que saber contra qué entorno se está cobrando. Aquí no viaja ningún
+ * secreto: la clave de sesión sirve para un solo cobro y por un monto fijo.
+ */
+export interface NiubizSessionResponse {
+  session_key: string;
+  merchant_id: string;
+  purchase_number: string;
+  amount: string;
+  checkout_js: string;
+  action_url: string;
+  es_de_prueba: boolean;
 }
 
 // Quién compró y con qué pagó. Los datos de tarjeta solo existen si hubo

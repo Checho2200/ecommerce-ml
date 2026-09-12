@@ -208,7 +208,11 @@ export default function OrdersPage() {
                     </TableCell>
                     {/* Con qué se pagó. Solo hay algo que enseñar si hubo
                         cobro, y son los cuatro últimos dígitos: el número
-                        completo no llega a la tienda ni debe hacerlo. */}
+                        completo no llega a la tienda ni debe hacerlo.
+
+                        Y con qué pasarela, porque hay dos: sin ese dato, el
+                        identificador del pago no dice en qué panel buscarlo,
+                        que es lo primero que hace falta ante un contracargo. */}
                     <TableCell>
                       {o.card_last_four ? (
                         <>
@@ -220,6 +224,7 @@ export default function OrdersPage() {
                           </Typography>
                           <Typography variant="caption" color="text.secondary" sx={{ textTransform: "capitalize" }}>
                             {o.payment_method || ""}
+                            {o.payment_gateway ? ` · ${o.payment_gateway}` : ""}
                             {o.card_holder ? ` · ${o.card_holder}` : ""}
                           </Typography>
                         </>

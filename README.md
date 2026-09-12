@@ -1,7 +1,7 @@
 # Sanchez Tech Store — e-commerce con detección de fraude
 
 Tienda en línea de componentes y periféricos de cómputo para **Grupo STS SAC**
-(Trujillo, La Libertad), con cobro real por MercadoPago y un modelo de
+(Trujillo, La Libertad), con cobro real por Niubiz o MercadoPago y un modelo de
 aprendizaje automático que evalúa cada pedido antes de aceptarlo.
 
 El sistema está desplegado y funcionando:
@@ -25,9 +25,12 @@ El sistema está desplegado y funcionando:
 
 - **Catálogo y compra.** Productos por categorías, búsqueda, carrito, checkout
   y seguimiento de pedidos.
-- **Pago.** Checkout Pro de MercadoPago, solo con tarjeta. El entorno lo decide
-  el prefijo del token (`TEST-` o `APP_USR-`) y `/health` dice cuál está activo. El pedido se confirma cuando MercadoPago avisa por webhook,
-  no cuando el cliente vuelve del pago.
+- **Pago.** Dos pasarelas, solo con tarjeta, y el comprador elige. **Niubiz**
+  abre su formulario encima de la tienda y confirma el cobro en la misma
+  llamada. **MercadoPago** lleva a su Checkout Pro y confirma después por
+  webhook. `/health` dice cuál está activa y contra qué entorno cobra cada una.
+  En los dos casos el pedido se confirma cuando la pasarela lo dice, no cuando
+  el cliente vuelve a la tienda.
 - **Detección de fraude.** Cada pedido pasa por un modelo LightGBM que devuelve
   una probabilidad de fraude; según esa probabilidad la orden se aprueba, se
   manda a revisión o se rechaza. Todas las evaluaciones quedan registradas.
@@ -81,6 +84,7 @@ negocio o una integración externa, y ninguno importa FastAPI:
 | `fraud_metrics_service.py` | Medir el modelo contra los pedidos revisados |
 | `payment_service.py` | Preferencias de cobro y lectura de notificaciones de MercadoPago |
 | `webhook_security.py` | Verificar la firma de esas notificaciones |
+| `niubiz_service.py` | Los tres tokens de Niubiz: acceso, sesión de cobro y autorización |
 | `email_service.py` | Correo saliente, con degradación a log si no hay SMTP |
 | `errors.py` | Los errores de dominio que los servicios lanzan |
 
@@ -223,11 +227,13 @@ Todas van en `backend/.env` (hay una plantilla en `backend/.env.example`).
 | `RESET_TOKEN_EXPIRE_MINUTES` | Duración del enlace de recuperación | 30 minutos |
 | `MERCADOPAGO_ACCESS_TOKEN` | Cobros | El checkout responde 503 |
 | `MERCADOPAGO_ENTORNO` | `test` o `produccion`. **Hay que declararlo**: MercadoPago entrega hoy las credenciales de prueba con el mismo prefijo `APP_USR-` que las de producción, así que el token ya no dice de qué entorno es | Se deduce del prefijo `TEST-`, que es el formato antiguo |
+| `NIUBIZ_USER`, `NIUBIZ_PASSWORD`, `NIUBIZ_MERCHANT_ID` | Cobros con Niubiz. Hacen falta las tres | El checkout no ofrece Niubiz, solo MercadoPago |
+| `NIUBIZ_ENTORNO` | `test` o `produccion`. **Hay que declararlo**: las credenciales de Niubiz no llevan ninguna marca de entorno | `test` |
 | `CLOUDINARY_URL` | Dónde se guardan las imágenes que sube el panel | Se guardan en la base de datos |
 | `MERCADOPAGO_WEBHOOK_SECRET` | Firma de las notificaciones de pago | No se exige firma |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Correo saliente | Los correos se escriben en el log en vez de enviarse |
 | `FRONTEND_URL` | CORS y enlaces de los correos | `http://localhost:3000` |
-| `BACKEND_URL` | URL del webhook que se le da a MercadoPago | `http://localhost:8000` |
+| `BACKEND_URL` | Dirección pública de esta API: el webhook que se le da a MercadoPago y el retorno del formulario de Niubiz | `http://localhost:8000` |
 | `DEBUG` | Registro detallado de SQL | `true` |
 
 En el frontend solo hace falta `NEXT_PUBLIC_API_URL`.
@@ -742,22 +748,52 @@ Dos límites que conviene declarar antes de que los pregunten:
 
 ## Cómo funciona el pago
 
+La tienda cobra con **dos pasarelas que conviven**, y el comprador elige cuál
+usar después de confirmar el pedido. Las dos empiezan igual:
+
 1. El cliente confirma el pedido. El backend descuenta stock, evalúa el fraude
-   y crea la orden en `PENDING`.
-2. Se crea una preferencia de MercadoPago y el cliente va a pagar. El carrito
-   **no** se vacía todavía.
+   y crea la orden en `PENDING`. El carrito **no** se vacía todavía: si el pago
+   falla o se abandona, sus productos siguen ahí.
+
+A partir de ahí cambian, y la diferencia importa.
+
+### Niubiz
+
+2. El navegador pide una sesión de cobro a
+   `POST /api/v1/orders/{id}/niubiz/sesion`. El backend encadena los tres
+   tokens de Niubiz —acceso, sesión y, más tarde, transacción— y devuelve lo
+   que hace falta para abrir el formulario.
+3. `checkout.js` abre un modal **encima de la tienda**. La tarjeta se escribe
+   ahí y viaja a Niubiz; no pasa por este servidor en ningún momento.
+4. Al terminar, el modal envía un formulario a
+   `POST /api/v1/orders/{id}/niubiz/retorno`. El backend canjea el token por el
+   cobro contra la API de Niubiz y **la respuesta a esa llamada es la
+   confirmación**: la orden queda resuelta antes de que el comprador termine de
+   volver. No hay aviso que pueda perderse.
+
+### MercadoPago
+
+2. Se crea una preferencia y el cliente va a pagar al sitio de MercadoPago.
 3. MercadoPago notifica al webhook `/api/v1/orders/webhook/mercadopago`. El
    backend comprueba la firma de la notificación, vuelve a consultar el pago
-   contra la API de MercadoPago y recién ahí marca la orden como `COMPLETED`
-   —o la cancela y devuelve el stock si el pago fue rechazado.
-4. Al confirmarse, el cliente recibe un correo con el detalle.
+   contra la API de MercadoPago y recién ahí marca la orden.
+
+### Y las dos terminan igual
+
+Cobrada la orden, las dos pasarelas pasan por
+`order_service.registrar_resultado_del_pago`, que es donde vive la regla de qué
+le ocurre a un pedido pagado: se completa, o **queda retenido** si el modelo lo
+había marcado para revisión. Un pago rechazado cancela la orden y devuelve el
+stock. Al confirmarse, el cliente recibe un correo con el detalle.
 
 Las órdenes que quedan sin pagar caducan a las dos horas y liberan su
 inventario.
 
-Para probar el webhook en local hace falta exponer el puerto 8000 con un túnel
-(por ejemplo `ngrok http 8000`) y poner esa dirección en `BACKEND_URL`:
-MercadoPago solo notifica a direcciones públicas por HTTPS.
+**En local.** Niubiz funciona sin más: quien llama a la dirección de retorno es
+el navegador del comprador, que sí alcanza `localhost`. El webhook de
+MercadoPago no: hace falta exponer el puerto 8000 con un túnel (por ejemplo
+`ngrok http 8000`) y poner esa dirección en `BACKEND_URL`, porque MercadoPago
+solo notifica a direcciones públicas por HTTPS.
 
 ---
 

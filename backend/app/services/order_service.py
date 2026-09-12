@@ -19,6 +19,8 @@ errores se comunican con las excepciones de `app/services/errors.py`, que la
 capa de la API traduce a códigos HTTP.
 """
 
+import random
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -34,6 +36,12 @@ from app.models.user import User
 from app.schemas.order import OrderCreate
 from app.services.errors import OperacionNoPermitida, RecursoNoEncontrado
 from app.services.fraud_service import ANTIGUEDAD_POR_DEFECTO, fraud_service
+from app.services.niubiz_service import (
+    ErrorDeNiubiz,
+    SesionDeCobro,
+    datos_del_pago_de_niubiz,
+    niubiz_service,
+)
 from app.services.payment_service import payment_service
 
 # El stock se descuenta al crear la orden y se devuelve al pasar a uno de estos
@@ -579,3 +587,141 @@ async def registrar_resultado_del_pago(
         return ResultadoDelPago("cancelada", orden)
 
     return ResultadoDelPago("sin cambios", orden)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cobro con Niubiz
+# ─────────────────────────────────────────────────────────────────────────────
+async def asignar_numero_de_compra(db: AsyncSession, orden: Order) -> str:
+    """
+    Devuelve el número de compra de una orden, creándolo la primera vez.
+
+    Niubiz identifica cada cobro por un número de hasta doce dígitos, y el
+    identificador de las órdenes de esta tienda es un UUID. Hace falta uno
+    aparte, y tiene que cumplir tres cosas: caber en doce dígitos, no repetirse
+    nunca dentro del comercio y **ser el mismo** en la clave de sesión y en la
+    autorización, o Niubiz rechaza el cobro.
+
+    Por eso se guarda en la orden en vez de calcularse cada vez. Un comprador
+    que abre el formulario, lo cierra y vuelve a intentarlo tiene que reusar el
+    suyo; si cada intento generara uno nuevo, la tienda iría gastando números y
+    perdería la correspondencia entre el pedido y lo que se ve en el panel de
+    Niubiz.
+
+    El número sale del reloj más cuatro dígitos al azar. No es un contador
+    porque un contador obliga a coordinar a todos los procesos que cobran, y
+    esto vale igual: el índice único de la columna es lo que garantiza de
+    verdad que no se repita, y si el sorteo choca se vuelve a tirar.
+    """
+    if orden.purchase_number:
+        return orden.purchase_number
+
+    for _ in range(5):
+        candidato = f"{int(time.time()) % 10**8:08d}{random.randint(0, 9999):04d}"
+        ya_existe = (
+            await db.execute(
+                select(Order.id).where(Order.purchase_number == candidato)
+            )
+        ).scalar_one_or_none()
+        if ya_existe:
+            continue
+
+        orden.purchase_number = candidato
+        await db.commit()
+        await db.refresh(orden)
+        return candidato
+
+    raise OperacionNoPermitida(
+        "No se pudo generar un número de compra para esta orden. Inténtalo de nuevo."
+    )
+
+
+async def preparar_cobro_con_niubiz(
+    db: AsyncSession,
+    orden: Order,
+    cliente: User,
+    ip_del_cliente: str,
+    action_url: str,
+) -> SesionDeCobro:
+    """
+    Abre con Niubiz una sesión para cobrar esta orden.
+
+    Solo se cobra lo que está esperando pago. Un pedido ya pagado, cancelado o
+    retenido por el modelo no puede abrir sesión: si pudiera, un cobro repetido
+    entraría por aquí sin que nada lo frenara, porque Niubiz no sabe nada de
+    los estados de esta tienda.
+
+    El monto se toma de la orden guardada y **nunca de la petición**. Es la
+    razón por la que esto vive en el servidor: la clave de sesión que devuelve
+    Niubiz queda atada a ese monto, así que ni manipulando la pantalla se puede
+    pagar menos de lo que cuesta el pedido.
+    """
+    if orden.status != OrderStatus.PENDING:
+        raise OperacionNoPermitida(
+            "Esta orden no está esperando pago, así que no se puede cobrar."
+        )
+
+    numero = await asignar_numero_de_compra(db, orden)
+
+    return await niubiz_service.crear_sesion(
+        monto=orden.total_amount,
+        numero_de_compra=numero,
+        ip_del_cliente=ip_del_cliente,
+        correo=cliente.email,
+        identificador_del_cliente=cliente.id,
+        antiguedad_en_dias=_antiguedad_de_la_cuenta(cliente),
+        action_url=action_url,
+    )
+
+
+async def confirmar_pago_de_niubiz(
+    db: AsyncSession, orden_id: str, token_de_transaccion: str
+) -> ResultadoDelPago:
+    """
+    Canjea el token del formulario por el cobro y aplica el resultado.
+
+    Aquí está la diferencia grande con MercadoPago: no hay webhook que esperar.
+    Niubiz contesta si cobró o no dentro de esta misma llamada, así que el
+    pedido queda resuelto antes de que el comprador termine de volver a la
+    tienda. Nada puede perderse por el camino.
+
+    Lo que se hace con el resultado es exactamente lo mismo que hace el webhook
+    de MercadoPago, y a propósito: las dos pasarelas terminan en
+    `registrar_resultado_del_pago`, que es donde vive la regla de qué le pasa a
+    un pedido cuando se paga —incluido retenerlo si el modelo lo marcó—. Tener
+    dos copias de esa regla sería tener dos versiones del sistema.
+    """
+    orden = (
+        await db.execute(select(Order).where(Order.id == orden_id))
+    ).scalar_one_or_none()
+
+    if not orden:
+        return ResultadoDelPago("orden no encontrada")
+
+    if orden.status != OrderStatus.PENDING:
+        # El comprador volvió a enviar el formulario, o recargó el retorno.
+        return ResultadoDelPago("sin cambios", orden)
+
+    try:
+        respuesta = await niubiz_service.autorizar(
+            token_de_transaccion=token_de_transaccion,
+            numero_de_compra=orden.purchase_number or "",
+            monto=orden.total_amount,
+        )
+    except ErrorDeNiubiz as error:
+        if error.es_rechazo:
+            # Niubiz dice que esa tarjeta no paga: el pedido se cancela y el
+            # stock vuelve, igual que con un pago rechazado de MercadoPago.
+            print(f"Order {orden.id}: Niubiz rechazó el pago ({error.mensaje}).")
+            return await registrar_resultado_del_pago(db, orden.id, "rejected")
+
+        # Cualquier otro fallo no dice nada sobre la tarjeta, así que el pedido
+        # se queda pendiente y se puede reintentar. Cancelarlo aquí sería
+        # regalarle a cualquiera una forma de anular pedidos ajenos: la
+        # dirección de retorno es pública y recibe lo que le manden.
+        print(f"Order {orden.id}: fallo hablando con Niubiz ({error.mensaje}).")
+        return ResultadoDelPago("sin cambios", orden)
+
+    return await registrar_resultado_del_pago(
+        db, orden.id, "approved", datos_del_pago_de_niubiz(respuesta)
+    )

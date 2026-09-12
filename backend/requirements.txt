@@ -20,6 +20,10 @@ pandas==2.2.3
 # descarga del reporte responde un 500.
 openpyxl==3.1.5
 mercadopago==3.5.0
+# Las llamadas a Niubiz, que no tiene SDK de Python. Asíncronas, porque el
+# servidor corre con un solo proceso y una espera bloqueante contra la
+# pasarela dejaría clavada la tienda entera mientras tanto.
+httpx==0.28.1
 # Guarda las imagenes del panel de administracion fuera del servidor: en el
 # plan gratuito de Render el disco es efimero y en la base de datos ocuparian
 # el poco espacio del plan gratuito de Neon.

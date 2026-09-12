@@ -16,6 +16,7 @@ import math
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import func, inspect as sa_inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +24,9 @@ from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
 from app.models.order import Order, OrderItem
 from app.models.user import User
+from app.core.config import get_settings
 from app.schemas.order import (
+    NiubizSessionResponse,
     OrderCreate,
     OrderItemResponse,
     OrderListResponse,
@@ -32,6 +35,7 @@ from app.schemas.order import (
     OrderSummaryResponse,
 )
 from app.services import email_service, order_service, webhook_security
+from app.services.niubiz_service import ErrorDeNiubiz, leer_retorno, niubiz_service
 from app.services.payment_service import (
     datos_del_pago,
     leer_notificacion,
@@ -99,6 +103,12 @@ def _a_respuesta(
         user_name=orden.user.full_name if orden.user else None,
         payment_id=orden.payment_id,
         payment_method=orden.payment_method,
+        payment_gateway=orden.payment_gateway,
+        # Si este servidor sabe cobrar con Niubiz. Depende de la configuración,
+        # no de la orden, pero viaja aquí porque es justo donde el checkout lo
+        # necesita: al recibir la orden recién creada tiene que decidir qué
+        # botones de pago enseñar.
+        niubiz_disponible=niubiz_service.esta_configurado,
         card_last_four=orden.card_last_four,
         card_holder=orden.card_holder,
         paid_at=orden.paid_at,
@@ -294,6 +304,135 @@ async def mercadopago_webhook(
     except Exception as exc:  # noqa: BLE001 - ver la nota del docstring
         print(f"Webhook error: {exc}")
         return {"status": "error", "message": str(exc)}
+
+
+def _ip_del_comprador(request: Request) -> str:
+    """
+    Desde qué dirección se está comprando.
+
+    Niubiz la pide para su propio motor antifraude. Detrás del proxy de Render
+    `request.client.host` es la dirección del proxy y no la del comprador, así
+    que se mira primero la cabecera que el proxy escribe; el primer valor de la
+    lista es el cliente original.
+    """
+    reenviada = request.headers.get("x-forwarded-for")
+    if reenviada:
+        return reenviada.split(",")[0].strip()
+    return request.client.host if request.client else "0.0.0.0"
+
+
+@router.post("/{order_id}/niubiz/sesion", response_model=NiubizSessionResponse)
+async def crear_sesion_de_niubiz(
+    order_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Abre una sesión de cobro con Niubiz para una orden propia.
+
+    Devuelve lo que el navegador necesita para levantar el formulario de la
+    pasarela. No es un cobro: todavía no se ha tocado ninguna tarjeta.
+    """
+    orden = await order_service.obtener_pedido(db, order_id)
+
+    if orden.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para pagar esta orden",
+        )
+
+    if not niubiz_service.esta_configurado:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Los pagos con Niubiz no están configurados en este servidor.",
+        )
+
+    backend = get_settings().BACKEND_URL
+    try:
+        sesion = await order_service.preparar_cobro_con_niubiz(
+            db,
+            orden,
+            current_user,
+            _ip_del_comprador(request),
+            f"{backend}/api/v1/orders/{orden.id}/niubiz/retorno",
+        )
+    except ErrorDeNiubiz as error:
+        # La pasarela no contestó o no aceptó las credenciales. Se dice tal
+        # cual en lugar de un 500 mudo: es exactamente el fallo que deja a
+        # alguien mirando una pantalla sin saber si le cobraron.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=error.mensaje
+        ) from error
+
+    return NiubizSessionResponse(
+        session_key=sesion.session_key,
+        merchant_id=sesion.merchant_id,
+        purchase_number=sesion.purchase_number,
+        amount=sesion.amount,
+        checkout_js=sesion.checkout_js,
+        action_url=sesion.action_url,
+        es_de_prueba=sesion.es_de_prueba,
+    )
+
+
+@router.post("/{order_id}/niubiz/retorno", include_in_schema=False)
+async def retorno_de_niubiz(
+    order_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Recibe el formulario que envía el checkout de Niubiz y cierra la compra.
+
+    Esto no lo llama la tienda: lo envía el navegador del comprador cuando el
+    formulario de Niubiz termina. Por eso no lleva autenticación —el POST viene
+    de otro sitio y sin la cabecera del token— y por eso responde con una
+    redirección en vez de con JSON: lo que hay al otro lado es una persona
+    mirando, no código.
+
+    Que sea público no lo hace manipulable. El cobro no se da por bueno porque
+    alguien mande un `transactionToken`, sino porque Niubiz lo acepta cuando
+    este servidor se lo presenta; un token inventado hace que la pasarela diga
+    que no y el pedido se quede como estaba.
+    """
+    formulario = dict(await request.form())
+    token, motivo = leer_retorno(formulario)
+
+    frontend = get_settings().FRONTEND_URL
+
+    if not token:
+        # El comprador cerró el formulario, o la sesión caducó. No se cobró
+        # nada y el pedido sigue esperando pago.
+        print(f"Retorno de Niubiz sin token para {order_id}: {motivo or 'sin motivo'}")
+        return RedirectResponse(
+            f"{frontend}/checkout/failure?order_id={order_id}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    resultado = await order_service.confirmar_pago_de_niubiz(db, order_id, token)
+
+    if resultado.estado in ("completada", "retenida"):
+        # Igual que en el webhook de MercadoPago: el correo va en segundo plano
+        # y sin poder fallar, porque el cobro ya está hecho.
+        if resultado.estado == "completada" and resultado.orden.user is not None:
+            background_tasks.add_task(
+                email_service.enviar_confirmacion_de_pedido,
+                resultado.orden.user.email,
+                resultado.orden.user.full_name,
+                resultado.orden.id,
+                resultado.orden.total_amount,
+            )
+        return RedirectResponse(
+            f"{frontend}/checkout/success?order_id={order_id}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    return RedirectResponse(
+        f"{frontend}/checkout/failure?order_id={order_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.patch("/{order_id}/release", response_model=OrderResponse)
