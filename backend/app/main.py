@@ -140,9 +140,21 @@ static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-@app.get("/", tags=["Health"])
+@app.api_route("/", methods=["GET", "HEAD"], tags=["Health"])
 async def root():
-    """Health check endpoint."""
+    """
+    Señal de vida del servicio.
+
+    Acepta HEAD además de GET, y no es un capricho: al desplegar, Render
+    comprueba que el servicio escucha mandando un `HEAD /`. FastAPI no añade
+    HEAD solo cuando se declara un GET —Starlette sí lo hace, FastAPI no—, así
+    que esa comprobación recibía un 405 y Render anotaba «no open ports
+    detected». Casi siempre acababa detectándolo por otra vía, pero al menos un
+    despliegue murió por esto con «Port scan timeout reached».
+
+    Una petición HEAD no lleva cuerpo en la respuesta, así que lo que se
+    devuelve aquí solo lo ve quien pregunte con GET.
+    """
     return {
         "app": settings.APP_NAME,
         "status": "running",
