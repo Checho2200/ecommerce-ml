@@ -385,13 +385,20 @@ def datos_del_pago_de_niubiz(respuesta: dict) -> dict:
     nada más**. Niubiz la entrega ya enmascarada (`455687******8232`), así que
     el número completo no llega a este servidor en ningún momento.
 
-    Sobre el titular: Niubiz no lo devuelve en la autorización con la
-    constancia con que lo hace MercadoPago, y cuando no viene el campo queda
-    nulo. Se buscan las claves donde podría aparecer en lugar de inventarlo,
-    porque el panel prefiere decir que no lo sabe a enseñar un nombre que nadie
-    verificó. Es la señal que usa el revisor para el fraude con tarjeta robada,
-    así que conviene mirar la primera respuesta real y ajustar aquí si Niubiz
-    la trae con otro nombre.
+    Sobre el titular hay una diferencia con MercadoPago que conviene tener
+    clara, porque no es un detalle de implementación: **el formulario de Niubiz
+    no pregunta el nombre del titular.** Se comprobó abriendo el modal del
+    sandbox: pide número de tarjeta, vencimiento y código de seguridad, y nada
+    más. Y lo que ese formulario devuelve a la tienda son tres campos exactos
+    —`transactionToken`, `customerEmail` y `channel`—, que tampoco lo llevan.
+
+    La consecuencia es que en un pedido pagado por Niubiz este campo queda
+    nulo, y el revisor pierde la señal más útil que tiene para el fraude con
+    tarjeta robada: que el titular de la tarjeta no sea el dueño de la cuenta.
+    Con MercadoPago esa señal sí existe. Se buscan de todos modos las claves
+    donde el nombre podría aparecer en la autorización, por si un comercio
+    configurado de otra forma lo recibiera, pero no se inventa: el panel
+    prefiere decir que no lo sabe a enseñar un nombre que nadie verificó.
     """
     mapa = respuesta.get("dataMap") or {}
     enmascarada = str(mapa.get("CARD") or "")
