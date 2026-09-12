@@ -316,3 +316,45 @@ def test_con_una_direccion_publica_si_se_pide(monkeypatch):
     _crear(servicio)
 
     assert servicio.sdk.enviado["auto_return"] == "approved"
+
+
+# ── Solo con tarjeta ─────────────────────────────────────────────────────────
+#
+# La detección de fraude de esta tienda cubre el pago con tarjeta no presente,
+# que es donde existen la tarjeta robada y el contracargo. Lo demás se excluye
+# del checkout: en un pago en efectivo, por transferencia o que el comprador
+# empuja desde su aplicación no hay nada que detectar, y encima no deja datos de
+# tarjeta que el revisor pueda mirar.
+
+
+def _medios_excluidos(monkeypatch):
+    servicio = _servicio_que_responde(
+        {"status": 201, "response": {"init_point": "https://mp/pagar"}},
+        monkeypatch=monkeypatch,
+    )
+    _crear(servicio)
+    return servicio.sdk.enviado["payment_methods"]
+
+
+def test_se_excluyen_efectivo_transferencia_y_agentes(monkeypatch):
+    tipos = {t["id"] for t in _medios_excluidos(monkeypatch)["excluded_payment_types"]}
+
+    assert {"ticket", "atm", "bank_transfer"} <= tipos
+
+
+def test_yape_se_excluye_por_nombre_y_no_por_tipo(monkeypatch):
+    """
+    Yape hay que nombrarlo, y esto es lo que no se ve venir.
+
+    MercadoPago lo tiene registrado como `debit_card`: consultando los medios de
+    pago de la cuenta sale literalmente `debit_card / yape`. Así que excluir
+    tipos no lo quitaba —aparecía en el checkout junto a la tarjeta— y excluirlo
+    por tipo se llevaría por delante todas las tarjetas de débito, que sí se
+    quieren.
+    """
+    medios = _medios_excluidos(monkeypatch)
+    metodos = {m["id"] for m in medios["excluded_payment_methods"]}
+    tipos = {t["id"] for t in medios["excluded_payment_types"]}
+
+    assert "yape" in metodos
+    assert "debit_card" not in tipos

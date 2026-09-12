@@ -168,7 +168,24 @@ class PaymentService:
                     {"id": "ticket"},         # efectivo / PagoEfectivo
                     {"id": "atm"},            # banca y agentes
                     {"id": "bank_transfer"},  # transferencia bancaria
-                ]
+                ],
+                # Yape aparte, y por un motivo que no se ve venir: MercadoPago
+                # lo tiene registrado como `debit_card`, no como billetera ni
+                # como transferencia. Consultando los medios de pago de la
+                # cuenta sale literalmente `debit_card / yape`. Por eso excluir
+                # tipos no lo quitaba del checkout y hay que nombrarlo.
+                #
+                # Se excluye por la misma razón que el efectivo y la
+                # transferencia: la detección de fraude de esta tienda cubre el
+                # pago con tarjeta no presente, donde existen la tarjeta robada
+                # y el contracargo. En un pago que el comprador empuja desde su
+                # propia aplicación no hay nada que detectar, y además no deja
+                # datos de tarjeta —ni los cuatro últimos dígitos ni el
+                # titular—, que es justo lo que mira el revisor cuando el modelo
+                # retiene un pedido.
+                "excluded_payment_methods": [
+                    {"id": "yape"},
+                ],
             },
             # Important: Set the webhook URL
             "notification_url": notification_url,
