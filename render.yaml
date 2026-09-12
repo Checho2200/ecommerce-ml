@@ -41,8 +41,13 @@ services:
       # "test" o "produccion". Hay que declararlo: las credenciales de Niubiz
       # no llevan marca de entorno, y de esta variable dependen las tres
       # direcciones que se usan.
+      #
+      # Se fija en el panel de Render y no aquí con un valor escrito. Con un
+      # valor escrito, cada despliegue lo devolvería a lo que ponga este
+      # archivo, y un servidor que cobra de verdad volvería a pruebas sin que
+      # nadie se enterase —o al revés—. Es el mismo trato que MERCADOPAGO_ENTORNO.
       - key: NIUBIZ_ENTORNO
-        value: test
+        sync: false
       - key: SECRET_KEY
         sync: false
       # Donde se guardan las imagenes que sube el panel de administracion.
