@@ -69,5 +69,22 @@ class Product(Base):
     order_items = relationship("OrderItem", back_populates="product", lazy="selectin")
     reviews = relationship("ProductReview", back_populates="product", lazy="selectin")
 
+    @property
+    def precio_efectivo(self) -> float:
+        """
+        Lo que el cliente paga de verdad.
+
+        `price` es el precio de lista y `discount_price` el de oferta, y hasta
+        ahora cada parte del sistema decidía por su cuenta cuál mirar: el
+        catálogo enseñaba el de oferta y tachaba el otro, pero el carrito, el
+        pedido y el cobro usaban `price`. La tienda anunciaba un precio y
+        cobraba otro más alto.
+
+        Que exista este único sitio es lo que impide que vuelva a pasar.
+        Coincide a propósito con el `coalesce(discount_price, price)` que ya
+        usaba el listado del catálogo para ordenar por precio.
+        """
+        return self.discount_price if self.discount_price is not None else self.price
+
     def __repr__(self) -> str:
-        return f"<Product {self.name} - S/{self.price}>"
+        return f"<Product {self.name} - S/{self.precio_efectivo}>"

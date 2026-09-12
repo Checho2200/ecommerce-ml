@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { ProductResponse } from '@/lib/api';
+import { precioEfectivo } from '@/lib/precio';
 
 export interface CartItem {
   product: ProductResponse;
@@ -39,7 +40,7 @@ export const useCartStore = create<CartStore>()(
         set({
           items: newItems,
           totalItems: newItems.reduce((a, i) => a + i.quantity, 0),
-          totalPrice: newItems.reduce((a, i) => a + i.product.price * i.quantity, 0),
+          totalPrice: newItems.reduce((a, i) => a + precioEfectivo(i.product) * i.quantity, 0),
         });
       },
 
@@ -48,7 +49,7 @@ export const useCartStore = create<CartStore>()(
         set({
           items: newItems,
           totalItems: newItems.reduce((a, i) => a + i.quantity, 0),
-          totalPrice: newItems.reduce((a, i) => a + i.product.price * i.quantity, 0),
+          totalPrice: newItems.reduce((a, i) => a + precioEfectivo(i.product) * i.quantity, 0),
         });
       },
 
@@ -59,7 +60,7 @@ export const useCartStore = create<CartStore>()(
         set({
           items: newItems,
           totalItems: newItems.reduce((a, i) => a + i.quantity, 0),
-          totalPrice: newItems.reduce((a, i) => a + i.product.price * i.quantity, 0),
+          totalPrice: newItems.reduce((a, i) => a + precioEfectivo(i.product) * i.quantity, 0),
         });
       },
 
@@ -74,7 +75,7 @@ export const useCartStore = create<CartStore>()(
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.totalItems = state.items.reduce((a, i) => a + i.quantity, 0);
-          state.totalPrice = state.items.reduce((a, i) => a + i.product.price * i.quantity, 0);
+          state.totalPrice = state.items.reduce((a, i) => a + precioEfectivo(i.product) * i.quantity, 0);
         }
       },
     }

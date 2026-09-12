@@ -147,6 +147,11 @@ async def _reservar_articulos(db: AsyncSession, datos: OrderCreate) -> Articulos
 
     Los precios salen de la base, nunca de lo que mande el navegador: si no, un
     cliente podría comprar una tarjeta de video al precio que él escriba.
+
+    Y sale `precio_efectivo`, que es el de oferta cuando lo hay. Antes salía
+    `price` a secas, así que un producto rebajado se anunciaba a un precio y se
+    cobraba al otro, el de lista. El cliente veía S/ 1 en el catálogo y S/ 5 en
+    el carrito.
     """
     total = 0.0
     lineas: list[OrderItem] = []
@@ -178,14 +183,17 @@ async def _reservar_articulos(db: AsyncSession, datos: OrderCreate) -> Articulos
             articulos_de_alto_riesgo += pedido_de_linea.quantity
 
         producto.stock -= pedido_de_linea.quantity
-        total += producto.price * pedido_de_linea.quantity
+        total += producto.precio_efectivo * pedido_de_linea.quantity
 
         nombres[producto.id] = producto.name
         lineas.append(
             OrderItem(
                 product_id=producto.id,
                 quantity=pedido_de_linea.quantity,
-                unit_price=producto.price,
+                # Se guarda el precio al que se vendió, no el de lista: si mañana
+                # cambia la oferta, este pedido tiene que seguir contando lo que
+                # el cliente pagó.
+                unit_price=producto.precio_efectivo,
             )
         )
 

@@ -22,6 +22,24 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 # apunta a otra base, las pruebas la usarían.
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_sanchez.db")
 
+# Y ninguna prueba habla con una pasarela de pago de verdad.
+#
+# Crear un pedido pide un enlace de cobro, así que con un token configurado en
+# `backend/.env` la suite entera se ponía a crear preferencias reales en la
+# cuenta de MercadoPago del comercio: decenas de enlaces de pago basura por cada
+# ejecución, y una dependencia de que internet y la pasarela estuvieran en pie
+# para que pasaran las pruebas. No llegaba a cobrar nada, pero no es sitio para
+# tocar un sistema de producción.
+#
+# Sin credenciales, el servicio de pagos se declara no configurado y el pedido
+# se crea igual pero sin enlace, que es justo lo que estas pruebas necesitan.
+# Se fuerza con `environ[...] = ""` y no con `setdefault` porque lo que hay que
+# ganarle es al archivo .env, que sí trae valor.
+os.environ["MERCADOPAGO_ACCESS_TOKEN"] = ""
+os.environ["NIUBIZ_USER"] = ""
+os.environ["NIUBIZ_PASSWORD"] = ""
+os.environ["NIUBIZ_MERCHANT_ID"] = ""
+
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.rate_limit import limiter  # noqa: E402
 from app.core.security import hash_password  # noqa: E402

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCartStore } from "@/lib/stores/cart";
+import { precioEfectivo } from "@/lib/precio";
 import Header from "@/components/ui/Header";
 import Link from "next/link";
 
@@ -137,7 +138,7 @@ export default function CartPage() {
                             </Typography>
                           </Box>
                           <Typography variant="subtitle1" sx={{ fontWeight: 800, whiteSpace: "nowrap" }}>
-                            S/{(item.product.price * item.quantity).toFixed(2)}
+                            S/{(precioEfectivo(item.product) * item.quantity).toFixed(2)}
                           </Typography>
                         </Box>
 

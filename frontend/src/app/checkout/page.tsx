@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useCartStore } from '@/lib/stores/cart'
+import { precioEfectivo } from '@/lib/precio'
 import { useAuth } from '@/lib/auth'
 import { api, ApiError } from '@/lib/api'
 import type { OrderResponse } from '@/lib/api'
@@ -90,7 +91,7 @@ export default function CheckoutPage() {
     setError('')
     try {
       const order = await api.orders.create({
-        items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity, unit_price: i.product.price })),
+        items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity, unit_price: precioEfectivo(i.product) })),
         shipping_address: address,
         shipping_city: city,
         checkout_duration_seconds: (Date.now() - mountTime.current) / 1000,
@@ -371,7 +372,7 @@ export default function CheckoutPage() {
                       {item.product.name} <Typography component="span" variant="caption" color="text.secondary">×{item.quantity}</Typography>
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-                      S/{(item.product.price * item.quantity).toFixed(2)}
+                      S/{(precioEfectivo(item.product) * item.quantity).toFixed(2)}
                     </Typography>
                   </Box>
                 ))}
