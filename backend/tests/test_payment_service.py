@@ -72,6 +72,10 @@ PREFERENCIA = {
 def _servicio_con(token: str) -> PaymentService:
     servicio = PaymentService()
     servicio.access_token = token
+    # Sin entorno declarado: estas pruebas son justo sobre la deducción por el
+    # prefijo del token, que es lo que queda cuando nadie lo declara. Si se
+    # dejara lo que traiga la configuración de la máquina, medirían otra cosa.
+    servicio.entorno = ""
     servicio.sdk = _SdkFalso(PREFERENCIA)
     return servicio
 
@@ -115,6 +119,12 @@ def test_el_token_sale_de_la_configuracion_y_no_solo_del_entorno(monkeypatch):
     from app.core.config import get_settings
 
     monkeypatch.setattr(get_settings(), "MERCADOPAGO_ACCESS_TOKEN", "TEST-desde-el-env")
+    # Y el entorno se deja sin declarar a propósito: lo que aquí se comprueba es
+    # que el token se deduzca solo. Sin esta línea, la prueba leía el `.env` de
+    # la máquina de quien la ejecutara —donde hoy dice "produccion", porque la
+    # tienda cobra de verdad— y fallaba por algo que no tiene que ver con lo que
+    # mide. Una prueba no puede depender de cómo esté configurada la máquina.
+    monkeypatch.setattr(get_settings(), "MERCADOPAGO_ENTORNO", "")
 
     servicio = PaymentService()
 
@@ -179,3 +189,130 @@ def test_sin_token_no_hay_pagos_configurados(monkeypatch):
     servicio = _servicio(monkeypatch, "", entorno="test")
 
     assert not servicio.is_configured
+
+
+# ── Cuando MercadoPago dice que no ───────────────────────────────────────────
+#
+# Estas dos pruebas nacen de un fallo real y difícil de encontrar: el checkout
+# respondía «no pudimos iniciar el pago» y no había forma de saber por qué, ni
+# en la pantalla ni en el log. MercadoPago sí había dado el motivo; el código lo
+# tiraba a la basura.
+
+
+class _SdkQueResponde:
+    """Un SDK de mentira que devuelve la respuesta cruda que se le diga."""
+
+    def __init__(self, respuesta):
+        self.respuesta = respuesta
+        self.enviado = None
+
+    def preference(self):
+        return self
+
+    def create(self, datos):
+        self.enviado = datos
+        return self.respuesta
+
+
+class _AjustesFalsos:
+    def __init__(self, frontend):
+        self.FRONTEND_URL = frontend
+        self.BACKEND_URL = "https://api.ejemplo.com"
+
+
+def _servicio_que_responde(
+    respuesta, frontend="https://tienda.ejemplo.com", monkeypatch=None
+):
+    from app.services import payment_service as modulo
+
+    servicio = PaymentService()
+    servicio.sdk = _SdkQueResponde(respuesta)
+    servicio.access_token = "APP_USR-lo-que-sea"
+    if monkeypatch is not None:
+        monkeypatch.setattr(modulo, "get_settings", lambda: _AjustesFalsos(frontend))
+    return servicio
+
+
+def _crear(servicio):
+    return servicio.create_preference(
+        order_id="una-orden",
+        items=[{"title": "Teclado", "quantity": 1, "unit_price": 99.0}],
+        payer_email="cliente@ejemplo.com",
+    )
+
+
+def test_un_rechazo_de_mercadopago_llega_con_su_motivo(monkeypatch):
+    """
+    El SDK no lanza excepción con un 400: devuelve el motivo dentro.
+
+    El código leía `init_point`, se encontraba un `None` y lo devolvía tal cual,
+    así que el pedido quedaba sin enlace de pago y nadie sabía por qué. El
+    motivo tiene que llegar entero hasta quien pueda hacer algo con él.
+    """
+    servicio = _servicio_que_responde(
+        {
+            "status": 400,
+            "response": {
+                "error": "invalid_auto_return",
+                "message": "auto_return invalid. back_url.success must be defined",
+            },
+        },
+        monkeypatch=monkeypatch,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        _crear(servicio)
+
+    assert error.value.status_code == 502
+    assert "back_url.success" in error.value.detail
+
+
+def test_una_respuesta_sin_enlace_tampoco_pasa_en_silencio(monkeypatch):
+    """
+    Devolver `None` dejaba al comprador con un pedido que no se puede pagar.
+
+    Un pedido sin enlace no es un pedido a medias: es uno que nadie va a poder
+    completar nunca, y su inventario queda apartado hasta que caduque.
+    """
+    servicio = _servicio_que_responde(
+        {"status": 201, "response": {}}, monkeypatch=monkeypatch
+    )
+
+    with pytest.raises(HTTPException) as error:
+        _crear(servicio)
+
+    assert error.value.status_code == 502
+
+
+# ── auto_return y la dirección de vuelta ─────────────────────────────────────
+#
+# MercadoPago exige que `back_urls.success` sea una dirección que él pueda
+# alcanzar cuando se le pide `auto_return`, y rechaza la preferencia entera si
+# no lo es. En una máquina de desarrollo esa dirección es localhost, así que
+# pedirlo allí hacía imposible crear ninguna preferencia y nadie podía probar
+# una compra en local.
+
+
+def test_en_local_no_se_pide_auto_return(monkeypatch):
+    servicio = _servicio_que_responde(
+        {"status": 201, "response": {"init_point": "https://mp/pagar"}},
+        frontend="http://localhost:3000",
+        monkeypatch=monkeypatch,
+    )
+
+    _crear(servicio)
+
+    assert "auto_return" not in servicio.sdk.enviado
+
+
+def test_con_una_direccion_publica_si_se_pide(monkeypatch):
+    """Y en el sitio desplegado se conserva: el comprador vuelve solo."""
+    servicio = _servicio_que_responde(
+        {"status": 201, "response": {"init_point": "https://mp/pagar"}},
+        frontend="https://tienda.ejemplo.com",
+        monkeypatch=monkeypatch,
+    )
+
+    _crear(servicio)
+
+    assert servicio.sdk.enviado["auto_return"] == "approved"

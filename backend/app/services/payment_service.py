@@ -140,7 +140,21 @@ class PaymentService:
                 # compra habia fallado cuando todavia no se sabia.
                 "pending": f"{FRONTEND_URL}/checkout/pending?order_id={order_id}"
             },
-            "auto_return": "approved",
+            # Volver solo al terminar: MercadoPago exige que `back_urls.success`
+            # sea una dirección que él pueda alcanzar, y rechaza la preferencia
+            # entera —400 `invalid_auto_return`— si no lo es.
+            #
+            # En una máquina de desarrollo esa dirección es `localhost`, así que
+            # pedir `auto_return` allí hacía imposible crear ninguna
+            # preferencia: el checkout no daba enlace de pago y nadie podía
+            # comprar en local. Se pide cuando sirve y se omite cuando no; lo
+            # único que se pierde es que el comprador vuelva solo, en lugar de
+            # pulsar «volver al sitio».
+            **(
+                {"auto_return": "approved"}
+                if FRONTEND_URL.startswith("https://")
+                else {}
+            ),
             "external_reference": str(order_id),
             # Solo tarjeta. El resto de medios que ofrece Checkout Pro en Peru
             # (PagoEfectivo, banca y agentes, transferencia) llenaban de ruido
@@ -171,7 +185,34 @@ class PaymentService:
         try:
             preference_response = self.sdk.preference().create(preference_data)
             preference = preference_response["response"]
-            
+
+            # Que el rechazo no pase en silencio.
+            #
+            # El SDK no lanza excepción cuando MercadoPago contesta 400: devuelve
+            # la respuesta con el motivo dentro y sin `init_point`. El código
+            # anterior leía `init_point`, se encontraba un `None` y lo devolvía
+            # tal cual, así que el pedido acababa sin enlace de pago y la tienda
+            # decía «no pudimos iniciar el pago» sin más. El motivo —que
+            # MercadoPago sí había dado— se perdía entero, y con él la única
+            # pista para arreglar nada.
+            #
+            # Ahora se mira el código de estado y se repite lo que dijo la
+            # pasarela, en el log y en la respuesta.
+            estado = preference_response.get("status")
+            if estado is not None and int(estado) >= 400:
+                motivo = (
+                    preference.get("message")
+                    or preference.get("error")
+                    or "MercadoPago rechazó la preferencia sin decir por qué."
+                )
+                print(
+                    f"MercadoPago rechazó la preferencia ({estado}): "
+                    f"{preference.get('error')} - {motivo}"
+                )
+                raise HTTPException(
+                    status_code=502, detail=f"MercadoPago: {motivo}"
+                )
+
             # The init_point is the URL where the user should be redirected to pay
             init_point = preference.get("init_point")
             
@@ -191,12 +232,28 @@ class PaymentService:
             sandbox_init_point = preference.get("sandbox_init_point")
             if self.access_token.startswith("TEST-") and sandbox_init_point:
                 return sandbox_init_point
+
+            if not init_point:
+                # Respuesta buena y sin enlace: no debería ocurrir, pero
+                # devolver `None` aquí es lo que dejaba al comprador con un
+                # pedido que no se puede pagar y sin explicación.
+                print(f"MercadoPago respondió sin init_point: {preference}")
+                raise HTTPException(
+                    status_code=502,
+                    detail="MercadoPago no devolvió un enlace de pago.",
+                )
+
             return init_point
-            
+
+        except HTTPException:
+            # Ya lleva dentro lo que dijo MercadoPago; envolverla en un 500
+            # genérico sería volver al problema que esto arregla.
+            raise
         except Exception as e:
             print(f"Error creating MP preference: {str(e)}")
-            # Fallback or raise error
-            raise HTTPException(status_code=500, detail="Error creating payment preference")
+            raise HTTPException(
+                status_code=502, detail=f"Error creando la preferencia de pago: {e}"
+            )
 
     def verify_payment(self, payment_id: str) -> dict:
         """
