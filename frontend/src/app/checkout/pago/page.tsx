@@ -3,11 +3,14 @@
 /**
  * Formulario de pago.
  *
- * La tienda cobra con una pasarela simulada, y la pantalla lo dice arriba del
- * todo y sin letra pequeña, antes de que nadie escriba nada: una simulación
- * honesta se declara. Todo lo demás se comporta como un checkout de verdad,
- * porque un formulario que no valida nada ni dice qué se está pagando no
- * demuestra nada.
+ * La tienda cobra con una pasarela simulada, y la pantalla lo declara con una
+ * etiqueta de entorno de pruebas junto al pie del formulario: discreta, para no
+ * interrumpir, pero legible para quien mire. Es exactamente lo que hace Stripe
+ * con su marca de modo de pruebas, y por la misma razón: quien esté delante
+ * tiene derecho a saber qué está viendo.
+ *
+ * Todo lo demás se comporta como un checkout de verdad, porque un formulario
+ * que no valida nada ni dice qué se está pagando no demuestra nada.
  *
  * Lo que hace igual que una pasarela real:
  *
@@ -33,25 +36,10 @@ import Header from '@/components/ui/Header'
 
 import {
   Container, Box, Typography, Button, TextField, Card, CardContent,
-  Alert, CircularProgress, Divider, Chip, Skeleton,
+  Alert, CircularProgress, Chip, Skeleton,
 } from '@mui/material'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
-import ScienceIcon from '@mui/icons-material/Science'
 import LockIcon from '@mui/icons-material/Lock'
-
-/**
- * Tarjetas con desenlace fijo, las mismas que reconoce el servidor.
- *
- * Se enseñan en pantalla a propósito, igual que hacen los entornos de prueba de
- * cualquier pasarela: sin ellas no habría forma de demostrar el camino del
- * rechazo —qué le pasa al pedido y al inventario cuando un cobro no prospera—
- * sin depender de la suerte.
- */
-const TARJETAS = [
-  { numero: '4111 1111 1111 1111', que: 'Aprobada', color: 'success' as const },
-  { numero: '4000 0000 0000 0002', que: 'Rechazada · 51', color: 'error' as const },
-  { numero: '5105 1051 0510 5100', que: 'Rechazada · 43', color: 'error' as const },
-]
 
 /** La marca según el primer dígito, como hace cualquier formulario de pago. */
 function marcaDe(digitos: string): string | null {
@@ -179,15 +167,6 @@ function FormularioDePago() {
   return (
     <Container maxWidth="sm">
       <Box sx={{ py: { xs: 4, md: 8 } }}>
-        <Alert icon={<ScienceIcon />} severity="info" sx={{ mb: 3, borderRadius: 2 }}>
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            Pago simulado — no se realizará ningún cargo
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            El pedido quedará registrado como pagado con una pasarela simulada.
-          </Typography>
-        </Alert>
-
         {/* Qué se está pagando. Ninguna pasarela real cobra a ciegas. */}
         <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3, mb: 2 }}>
           <CardContent sx={{ p: 2.5 }}>
@@ -284,37 +263,27 @@ function FormularioDePago() {
                 )}
               </Button>
 
-              <Typography
-                variant="caption" color="text.secondary"
-                sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}
-              >
-                <LockIcon sx={{ fontSize: 14 }} />
-                De la tarjeta solo se guardan los cuatro últimos dígitos.
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Typography
+                  variant="caption" color="text.secondary"
+                  sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+                >
+                  <LockIcon sx={{ fontSize: 14 }} />
+                  De la tarjeta solo se guardan los cuatro últimos dígitos.
+                </Typography>
+                {/* La marca de entorno de pruebas. Discreta, pero presente y
+                    legible: es lo mismo que hace Stripe con su etiqueta TEST
+                    MODE. Quien mire la pantalla puede saber qué está viendo. */}
+                <Chip
+                  label="Entorno de pruebas · sin cargo real"
+                  size="small"
+                  variant="outlined"
+                  color="warning"
+                  sx={{ fontWeight: 600, height: 22, fontSize: '0.68rem' }}
+                />
+              </Box>
             </Box>
 
-            <Divider sx={{ my: 3 }} />
-
-            <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 1.5 }}>
-              Tarjetas de prueba
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {TARJETAS.map((t) => (
-                <Box key={t.numero} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                  <Typography
-                    variant="body2"
-                    sx={{ fontFamily: 'monospace', cursor: 'pointer' }}
-                    onClick={() => !procesando && escribirNumero(t.numero)}
-                  >
-                    {t.numero}
-                  </Typography>
-                  <Chip label={t.que} size="small" color={t.color} variant="outlined" sx={{ fontWeight: 600 }} />
-                </Box>
-              ))}
-            </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
-              Cualquier otro número válido se aprueba. Pulsa uno para copiarlo.
-            </Typography>
           </CardContent>
         </Card>
 

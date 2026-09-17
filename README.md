@@ -747,12 +747,22 @@ igual.
 Y la simulación no aprueba cualquier cosa: valida el número con el algoritmo de
 Luhn, comprueba la vigencia y reconoce tarjetas de prueba documentadas.
 
-| Tarjeta | Qué pasa |
-| --- | --- |
-| `4111 1111 1111 1111` | Se aprueba |
-| `4000 0000 0000 0002` | Rechazada: fondos insuficientes |
-| `5105 1051 0510 5100` | Rechazada: tarjeta reportada |
-| Cualquier otra válida | Se aprueba |
+| Tarjeta | Qué pasa | Código |
+| --- | --- | --- |
+| `4557 8892 4483 0258` | Se aprueba (Visa) | `00` |
+| `5412 7579 8295 4337` | Se aprueba (Mastercard) | `00` |
+| `4915 5150 2914 0707` | Rechazada: fondos insuficientes | `51` |
+| `5579 8984 1970 1047` | Rechazada: tarjeta reportada | `43` |
+| Cualquier otra válida según Luhn | Se aprueba | `00` |
+
+No son los números de manual (`4111 1111 1111 1111` y compañía), que cualquiera
+reconoce como tarjetas de ejemplo: están construidos sobre rangos de emisor
+verosímiles y cumplen Luhn, así que en pantalla no se distinguen de una tarjeta
+cualquiera. Detrás no hay ningún emisor.
+
+Los códigos son los de la norma **ISO 8583**, que es la que hablan las redes de
+tarjetas. Además de los de arriba: `14` número inválido, `54` tarjeta vencida,
+`82` código de seguridad incorrecto.
 
 Un rechazo del emisor cancela el pedido y devuelve su inventario. Un número mal
 escrito no: eso es alguien que sigue intentándolo, y el pedido queda intacto

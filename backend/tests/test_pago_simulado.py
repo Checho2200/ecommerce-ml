@@ -24,8 +24,8 @@ from app.services.pago_simulado import cobrar, luhn_valido, marca_de
 from tests.conftest import crear_producto, crear_usuario, token_de
 
 
-APROBADA = "4111111111111111"
-RECHAZADA = "4000000000000002"
+APROBADA = "4557889244830258"
+RECHAZADA = "4915515029140707"
 
 # Un año por delante, para que las pruebas no caduquen con el tiempo.
 ANIO_VIGENTE = datetime.now(timezone.utc).year + 1
@@ -91,7 +91,7 @@ def test_un_numero_inventado_no_pasa_luhn():
     banco.
     """
     assert not luhn_valido("1234567890123456")
-    assert not luhn_valido("4111111111111112")
+    assert not luhn_valido("4557889244830259")
     assert luhn_valido(APROBADA)
     assert luhn_valido(RECHAZADA)
 
@@ -119,7 +119,7 @@ def test_un_numero_mal_escrito_no_es_un_rechazo_del_emisor():
     persona todavía está escribiendo.
     """
     resultado = cobrar(
-        numero="4111111111111112", mes=12, anio=ANIO_VIGENTE, cvv="123", titular="Ana"
+        numero="4557889244830259", mes=12, anio=ANIO_VIGENTE, cvv="123", titular="Ana"
     )
 
     assert not resultado.aprobado
@@ -174,7 +174,7 @@ async def test_de_la_tarjeta_solo_quedan_los_cuatro_ultimos_digitos(sesion):
     await _pagar(sesion, orden.id, titular="Ana Quispe Ramos")
 
     await sesion.refresh(orden)
-    assert orden.card_last_four == "1111"
+    assert orden.card_last_four == "0258"
     assert orden.card_holder == "Ana Quispe Ramos"
     # El número entero no aparece por ninguna parte de la orden.
     assert APROBADA not in str(
@@ -244,7 +244,7 @@ async def test_una_errata_deja_el_pedido_intacto_para_reintentar(sesion):
     producto = await crear_producto(sesion, stock=10)
     orden = await _pedido(sesion, usuario, producto, unidades=3)
 
-    aplicado, cobro = await _pagar(sesion, orden.id, numero="4111111111111112")
+    aplicado, cobro = await _pagar(sesion, orden.id, numero="4557889244830259")
 
     assert not cobro.aprobado
     assert aplicado.estado == "sin cambios"
@@ -325,7 +325,7 @@ async def test_el_recorrido_completo_por_http(cliente, sesion):
     final = (await cliente.get(f"/api/v1/orders/{orden_id}", headers=cabeceras)).json()
     assert final["status"] == "COMPLETED"
     assert final["payment_gateway"] == "simulado"
-    assert final["card_last_four"] == "1111"
+    assert final["card_last_four"] == "0258"
 
 
 # ── Los códigos de respuesta ─────────────────────────────────────────────────
@@ -344,8 +344,8 @@ def test_cada_desenlace_trae_su_codigo():
 
     assert codigo(APROBADA) == "00"
     assert codigo(RECHAZADA) == "51"
-    assert codigo("5105105105105100") == "43"
-    assert codigo("4111111111111112") == "14"
+    assert codigo("5579898419701047") == "43"
+    assert codigo("4557889244830259") == "14"
     assert codigo(APROBADA, mes=1, anio=2020) == "54"
 
 

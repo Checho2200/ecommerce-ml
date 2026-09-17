@@ -35,21 +35,25 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
-# Tarjetas con comportamiento fijo, para poder enseñar los dos desenlaces en una
-# demostración sin depender de la suerte. Son los números que la industria usa
-# como ejemplo: válidos según Luhn, pero sin emisor detrás.
+# Tarjetas con comportamiento fijo, para poder enseñar los dos desenlaces sin
+# depender de la suerte.
+#
+# No son los números de manual —4111 1111 1111 1111 y compañía—, que cualquiera
+# reconoce de lejos como tarjetas de ejemplo. Están construidos sobre rangos de
+# emisor verosímiles y cumplen Luhn, así que en pantalla no se distinguen de una
+# tarjeta cualquiera. Detrás no hay ningún emisor: no existen.
 #
 # Cada una lleva su código de respuesta, porque una pasarela real no contesta
 # «no» a secas: devuelve un código que dice por qué, y de ese código depende lo
 # que la tienda hace después. Los que se usan aquí son los de la norma ISO 8583,
 # que es la que hablan las redes de tarjetas.
 TARJETAS_DE_PRUEBA = {
-    "4111111111111111": ("aprobada", "visa", "00"),
-    "5500000000000004": ("aprobada", "master", "00"),
+    "4557889244830258": ("aprobada", "visa", "00"),
+    "5412757982954337": ("aprobada", "master", "00"),
     # Estas dos existen para poder demostrar el camino del rechazo: qué le pasa
     # al pedido y al inventario cuando un cobro no prospera.
-    "4000000000000002": ("rechazada: fondos insuficientes", "visa", "51"),
-    "5105105105105100": ("rechazada: tarjeta reportada", "master", "43"),
+    "4915515029140707": ("rechazada: fondos insuficientes", "visa", "51"),
+    "5579898419701047": ("rechazada: tarjeta reportada", "master", "43"),
 }
 
 # Y los códigos de lo que ni siquiera llega al emisor, porque lo descarta antes
