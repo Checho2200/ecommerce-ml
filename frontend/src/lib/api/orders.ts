@@ -2,7 +2,6 @@
 
 import { request } from "./cliente";
 import type {
-  NiubizSessionResponse,
   PagoSimuladoRequest,
   PagoSimuladoResponse,
   OrderResponse,
@@ -53,17 +52,14 @@ export const orders = {
     });
   },
 
-  // Abre con Niubiz una sesión para cobrar esta orden. Todavía no cobra nada:
-  // devuelve lo que el navegador necesita para levantar el formulario de la
-  // pasarela, y el cobro ocurre cuando ese formulario termina.
-  async niubizSession(id: string) {
-    return request<NiubizSessionResponse>(`/orders/${id}/niubiz/sesion`, {
-      method: "POST",
-    });
-  },
-
   // Cobra un pedido con la pasarela simulada. No mueve dinero, y el pedido
   // queda marcado como simulado para que nunca se confunda con un cobro real.
+  // Una orden concreta. El formulario de pago la pide para enseñar qué se está
+  // pagando: un checkout que no dice el importe no se parece a ninguno real.
+  async get(id: string) {
+    return request<OrderResponse>(`/orders/${id}`);
+  },
+
   async pagarSimulado(id: string, datos: PagoSimuladoRequest) {
     return request<PagoSimuladoResponse>(`/orders/${id}/pago-simulado`, {
       method: "POST",

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { api, OrderResponse, ApiError } from '@/lib/api'
-import { abrirFormularioDeNiubiz } from '@/lib/niubiz'
 import Header from '@/components/ui/Header'
 
 import {
@@ -81,34 +80,6 @@ export default function MyOrdersPage() {
     }
   }
 
-  // Retomar el pago de un pedido que quedó pendiente.
-  //
-  // Antes no había forma: el enlace de MercadoPago se generaba al crear el
-  // pedido y se perdía al salir de esa pantalla, así que quien abandonaba el
-  // pago solo podía esperar a que el pedido caducara. Con Niubiz la sesión de
-  // cobro se abre cuando haga falta, así que el pedido se puede pagar mientras
-  // siga vivo.
-  const [pagando, setPagando] = useState('')
-
-  const pagarConNiubiz = async (order: OrderResponse) => {
-    setPagando(order.id)
-    try {
-      const sesion = await api.orders.niubizSession(order.id)
-      await abrirFormularioDeNiubiz(sesion, {
-        ordenId: order.id,
-        nombreDelComercio: 'GRUPO STS SAC',
-      })
-    } catch (err) {
-      alert(
-        err instanceof ApiError
-          ? err.message
-          : 'No pudimos abrir el formulario de pago. Intentalo de nuevo.',
-      )
-    } finally {
-      setPagando('')
-    }
-  }
-
   const isCancellable = (order: OrderResponse) => {
     if (order.status !== 'PENDING') return false
     const hoursElapsed = (consultadoEn - new Date(order.created_at).getTime()) / 3600000
@@ -176,7 +147,7 @@ export default function MyOrdersPage() {
                         variant="outlined"
                         sx={{ fontWeight: 700 }}
                       />
-                      {order.status === 'PENDING' && order.pago_simulado && (
+                      {order.status === 'PENDING' && (
                         <Button
                           component={Link}
                           href={`/checkout/pago?order_id=${order.id}`}
@@ -186,20 +157,6 @@ export default function MyOrdersPage() {
                           sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
                         >
                           Pagar
-                        </Button>
-                      )}
-                      {order.status === 'PENDING' && order.niubiz_disponible && (
-                        <Button
-                          size="small"
-                          variant="contained"
-                          startIcon={<CreditCardIcon />}
-                          disabled={pagando !== ''}
-                          onClick={() => pagarConNiubiz(order)}
-                          sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
-                        >
-                          {pagando === order.id
-                            ? <CircularProgress size={16} color="inherit" />
-                            : 'Pagar'}
                         </Button>
                       )}
                       {isCancellable(order) && (

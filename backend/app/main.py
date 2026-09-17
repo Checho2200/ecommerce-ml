@@ -34,8 +34,6 @@ from app.api.v1.upload import router as upload_router
 from app.api.v1.users import router as users_router
 from app.services import image_storage
 from app.services.fraud_service import fraud_service
-from app.services.niubiz_service import niubiz_service
-from app.services.payment_service import payment_service
 
 settings = get_settings()
 
@@ -194,34 +192,9 @@ async def health():
         # con una pasarela — creer que se está cobrando de verdad cuando no, o
         # al revés — y permite comprobar de un vistazo que un cambio de
         # credenciales llegó al servidor.
-        # El modo simulado manda sobre todo lo demás: si está encendido, da
-        # igual qué credenciales haya cargadas, porque no se llama a ninguna
-        # pasarela. Decirlo aquí es lo que permite comprobar desde fuera que una
-        # demostración no está cobrando de verdad —y, al revés, que una tienda
-        # que cobra no se quedó simulada por descuido.
-        "payments": (
-            "simulado"
-            if get_settings().PAGO_SIMULADO
-            else "not_configured"
-            if not payment_service.is_configured
-            else "test"
-            if payment_service.es_de_prueba
-            else "production"
-        ),
-        # La segunda pasarela, por separado. Las dos conviven y cada una
-        # depende de sus propias credenciales, así que una sola línea no podría
-        # decir la verdad sobre ambas: se puede estar cobrando de prueba por
-        # una y de verdad por la otra, que es precisamente lo que hay que poder
-        # ver desde fuera antes de una demostración.
-        "niubiz": (
-            "not_configured"
-            if not niubiz_service.esta_configurado
-            else "test"
-            if niubiz_service.es_de_prueba
-            else "production"
-        ),
-        # Igual que arriba: dónde acaban las imágenes que sube el panel. Sin
-        # credenciales de Cloudinary se guardan en la base, que funciona pero
-        # gasta el espacio del plan gratuito de Neon.
+        # La tienda cobra con una pasarela simulada y lo dice aquí, que es
+        # donde se puede comprobar desde fuera sin abrir nada. Ningún pedido se
+        # cobra de verdad.
+        "payments": "simulado",
         "images": "cloudinary" if image_storage.esta_configurado() else "database",
     }

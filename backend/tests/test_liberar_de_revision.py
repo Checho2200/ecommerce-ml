@@ -51,7 +51,7 @@ async def test_liberar_deja_la_orden_lista_para_pagarse(sesion):
 
     assert orden.payable_since is None, "una orden retenida nunca fue pagable"
 
-    liberada, _url = await order_service.liberar_de_revision(sesion, orden.id)
+    liberada = await order_service.liberar_de_revision(sesion, orden.id)
 
     assert liberada.status == OrderStatus.PENDING
     # Sin esta marca, el plazo se contaría desde que se creó la orden.

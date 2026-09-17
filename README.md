@@ -30,8 +30,6 @@ El sistema está desplegado y funcionando:
   Luhn y la vigencia, y hay tarjetas de prueba documentadas que se aprueban o se
   rechazan. No se mueve dinero: la pantalla lo avisa, cada orden guarda
   `payment_gateway = "simulado"` y `/health` responde `"payments":"simulado"`.
-  El repositorio conserva además las integraciones reales de **MercadoPago** y
-  **Niubiz**, apagadas.
 - **Detección de fraude.** Cada pedido pasa por un modelo LightGBM que devuelve
   una probabilidad de fraude; según esa probabilidad la orden se aprueba, se
   manda a revisión o se rechaza. Todas las evaluaciones quedan registradas.
@@ -83,9 +81,6 @@ negocio o una integración externa, y ninguno importa FastAPI:
 | `order_service.py` | Reservar inventario, evaluar el pedido, decidir su estado, caducarlo, cancelarlo, devolver stock |
 | `fraud_service.py` | Cargar el modelo, puntuar un pedido, explicar la decisión |
 | `fraud_metrics_service.py` | Medir el modelo contra los pedidos revisados |
-| `payment_service.py` | Preferencias de cobro y lectura de notificaciones de MercadoPago |
-| `webhook_security.py` | Verificar la firma de esas notificaciones |
-| `niubiz_service.py` | Los tres tokens de Niubiz: acceso, sesión de cobro y autorización |
 | `pago_simulado.py` | La pasarela simulada: Luhn, vigencia y tarjetas de prueba |
 | `email_service.py` | Correo saliente, con degradación a log si no hay SMTP |
 | `errors.py` | Los errores de dominio que los servicios lanzan |
@@ -227,16 +222,10 @@ Todas van en `backend/.env` (hay una plantilla en `backend/.env.example`).
 | `SECRET_KEY` | Firma de los JWT | Usa una clave de ejemplo: **cámbiala en producción** |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración de la sesión | 60 minutos |
 | `RESET_TOKEN_EXPIRE_MINUTES` | Duración del enlace de recuperación | 30 minutos |
-| `MERCADOPAGO_ACCESS_TOKEN` | Cobros | El checkout responde 503 |
-| `MERCADOPAGO_ENTORNO` | `test` o `produccion`. **Hay que declararlo**: MercadoPago entrega hoy las credenciales de prueba con el mismo prefijo `APP_USR-` que las de producción, así que el token ya no dice de qué entorno es | Se deduce del prefijo `TEST-`, que es el formato antiguo |
-| `PAGO_SIMULADO` | Cobra con la pasarela simulada en vez de llamar a ninguna real | `false`: se usa MercadoPago |
-| `NIUBIZ_USER`, `NIUBIZ_PASSWORD`, `NIUBIZ_MERCHANT_ID` | Cobros con Niubiz. Hacen falta las tres | El checkout no ofrece Niubiz, solo MercadoPago |
-| `NIUBIZ_ENTORNO` | `test` o `produccion`. **Hay que declararlo**: las credenciales de Niubiz no llevan ninguna marca de entorno | `test` |
 | `CLOUDINARY_URL` | Dónde se guardan las imágenes que sube el panel | Se guardan en la base de datos |
-| `MERCADOPAGO_WEBHOOK_SECRET` | Firma de las notificaciones de pago | No se exige firma |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Correo saliente | Los correos se escriben en el log en vez de enviarse |
 | `FRONTEND_URL` | CORS y enlaces de los correos | `http://localhost:3000` |
-| `BACKEND_URL` | Dirección pública de esta API: el webhook que se le da a MercadoPago y el retorno del formulario de Niubiz | `http://localhost:8000` |
+| `BACKEND_URL` | Dirección pública de esta API, para los enlaces de los correos | `http://localhost:8000` |
 | `DEBUG` | Registro detallado de SQL | `true` |
 
 En el frontend solo hace falta `NEXT_PUBLIC_API_URL`.
@@ -282,20 +271,6 @@ Son 284 pruebas y cubren lo que duele si se rompe:
 - **Contraseñas.** Que el enlace de recuperación caduque al usarse, que un
   token de sesión no sirva para cambiar la contraseña y que la cuenta
   desactivada no pueda recuperarse.
-- **Pagos.** El parseo de las notificaciones de MercadoPago (los dos formatos
-  que la pasarela usa hoy) y la verificación de su firma.
-- **Modelo de fraude.** Que cargue, que puntúe dentro de rango, que respete los
-  umbrales que salieron del entrenamiento, que explique cada decisión con los
-  factores de ese pedido, y que toda orden quede con su evaluación registrada.
-- **Medición del modelo.** Que el AUC-PR delate al clasificador que aprueba
-  todo, que el costo de cada tipo de error se calcule como está documentado, que
-  los umbrales elegidos respeten la capacidad de revisión, y que las métricas
-  del panel cuenten solo los pedidos que alguien revisó de verdad.
-- **Datos de entrenamiento.** Que el entrenamiento lea de verdad los pedidos
-  etiquetados de la base, que descarte los que nadie revisó, que se niegue a
-  entrenar sin casos suficientes de cada clase, y que un modelo peor o con un
-  resultado sospechoso no llegue a producción.
-
 Cada prueba corre contra su propio SQLite temporal, así que no tocan la base de
 desarrollo ni dependen del orden.
 
@@ -751,12 +726,12 @@ Dos límites que conviene declarar antes de que los pregunten:
 
 ## Cómo funciona el pago
 
-La tienda cobra con una **pasarela simulada**. Las dos integraciones reales
-—MercadoPago y Niubiz— están escritas, probadas y apagadas: MercadoPago
-rechazaba los cobros sin llegar a registrar el pago, y Niubiz exige una
-afiliación comercial y una sesión de certificación para entregar credenciales de
-producción. Como lo que este trabajo demuestra es la detección de fraude y no el
-cobro, el cobro se simula.
+La tienda cobra con una **pasarela simulada**, y es la única que hay. Antes
+estuvieron integradas MercadoPago y Niubiz, y las dos se retiraron: la primera
+rechazaba los cobros sin llegar a registrarlos, y la segunda exige una
+afiliación comercial y una sesión de certificación para entregar credenciales
+de producción. Como lo que este trabajo demuestra es la detección de fraude y
+no el cobro, el cobro se simula.
 
 **La simulación se declara, siempre.** La pantalla del checkout avisa de que no
 se hará ningún cargo, la orden guarda `payment_gateway = "simulado"` —así que el
@@ -782,57 +757,6 @@ Luhn, comprueba la vigencia y reconoce tarjetas de prueba documentadas.
 Un rechazo del emisor cancela el pedido y devuelve su inventario. Un número mal
 escrito no: eso es alguien que sigue intentándolo, y el pedido queda intacto
 para reintentar.
-
----
-
-### Las pasarelas reales, apagadas
-
-Se conservan enteras por si algún día vuelven a estar disponibles. Las dos
-empiezan igual:
-
-1. El cliente confirma el pedido. El backend descuenta stock, evalúa el fraude
-   y crea la orden en `PENDING`. El carrito **no** se vacía todavía: si el pago
-   falla o se abandona, sus productos siguen ahí.
-
-A partir de ahí cambian, y la diferencia importa.
-
-### Niubiz
-
-2. El navegador pide una sesión de cobro a
-   `POST /api/v1/orders/{id}/niubiz/sesion`. El backend encadena los tres
-   tokens de Niubiz —acceso, sesión y, más tarde, transacción— y devuelve lo
-   que hace falta para abrir el formulario.
-3. `checkout.js` abre un modal **encima de la tienda**. La tarjeta se escribe
-   ahí y viaja a Niubiz; no pasa por este servidor en ningún momento.
-4. Al terminar, el modal envía un formulario a
-   `POST /api/v1/orders/{id}/niubiz/retorno`. El backend canjea el token por el
-   cobro contra la API de Niubiz y **la respuesta a esa llamada es la
-   confirmación**: la orden queda resuelta antes de que el comprador termine de
-   volver. No hay aviso que pueda perderse.
-
-### MercadoPago
-
-2. Se crea una preferencia y el cliente va a pagar al sitio de MercadoPago.
-3. MercadoPago notifica al webhook `/api/v1/orders/webhook/mercadopago`. El
-   backend comprueba la firma de la notificación, vuelve a consultar el pago
-   contra la API de MercadoPago y recién ahí marca la orden.
-
-### Y las dos terminan igual
-
-Cobrada la orden, las dos pasarelas pasan por
-`order_service.registrar_resultado_del_pago`, que es donde vive la regla de qué
-le ocurre a un pedido pagado: se completa, o **queda retenido** si el modelo lo
-había marcado para revisión. Un pago rechazado cancela la orden y devuelve el
-stock. Al confirmarse, el cliente recibe un correo con el detalle.
-
-Las órdenes que quedan sin pagar caducan a las dos horas y liberan su
-inventario.
-
-**En local.** Niubiz funciona sin más: quien llama a la dirección de retorno es
-el navegador del comprador, que sí alcanza `localhost`. El webhook de
-MercadoPago no: hace falta exponer el puerto 8000 con un túnel (por ejemplo
-`ngrok http 8000`) y poner esa dirección en `BACKEND_URL`, porque MercadoPago
-solo notifica a direcciones públicas por HTTPS.
 
 ---
 

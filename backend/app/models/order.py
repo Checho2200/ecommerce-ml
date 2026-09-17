@@ -51,39 +51,25 @@ class Order(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # El número de compra que exige Niubiz.
-    #
-    # Niubiz identifica cada cobro por un número de hasta doce dígitos, y el
-    # identificador de las órdenes de esta tienda es un UUID, que no lo es. Así
-    # que se les asigna uno aparte, la primera vez que alguien elige pagar con
-    # Niubiz, y se conserva: la clave de sesión y la autorización tienen que
-    # llevar exactamente el mismo, y un reintento del mismo pedido tiene que
-    # poder reusarlo.
-    #
-    # Nula en las órdenes que nunca pasaron por Niubiz.
-    purchase_number: Mapped[str] = mapped_column(
-        String(12), nullable=True, unique=True
-    )
 
     # ── Con qué se pagó ──────────────────────────────────────────────────
     #
-    # Lo rellena el webhook con lo que responde MercadoPago cuando el cobro se
-    # aprueba. Sirve para el seguimiento: ante un contracargo hay que poder
-    # decir qué pago fue, con qué tarjeta y a nombre de quién, sin entrar al
-    # panel de la pasarela.
+    # Lo rellena la pasarela cuando el cobro se aprueba. Sirve para el
+    # seguimiento: hay que poder decir qué pago fue, con qué tarjeta y a nombre
+    # de quién, sin salir de la tienda.
     #
     # Se guardan **los cuatro últimos dígitos y nada más**. El número completo,
     # el código de seguridad y la fecha de caducidad no se reciben, no se
     # guardan y no se registran en ningún log: PCI-DSS permite conservar los
     # cuatro últimos precisamente porque no sirven para cobrar, y guardar el
     # resto convertiría esta base en un objetivo que la tienda no tiene por qué
-    # ser. La tarjeta la maneja MercadoPago de principio a fin.
+    # ser.
     payment_id: Mapped[str] = mapped_column(String(50), nullable=True)
     payment_method: Mapped[str] = mapped_column(String(30), nullable=True)
-    # Con cuál de las dos pasarelas se cobró: "mercadopago" o "niubiz". Sin
-    # esto, un `payment_id` suelto no dice en qué panel buscarlo, que es
-    # justamente lo que hace falta ante un contracargo. Nula en las órdenes
-    # anteriores a Niubiz, que solo pudieron pagarse por MercadoPago.
+    # Con qué se cobró. Hoy siempre "simulado", y por eso existe: para que un
+    # pedido cobrado por la pasarela simulada no se pueda confundir nunca con
+    # uno cobrado de verdad, ni hoy en el panel ni dentro de un año mirando la
+    # base de datos.
     payment_gateway: Mapped[str] = mapped_column(String(20), nullable=True)
     card_last_four: Mapped[str] = mapped_column(String(4), nullable=True)
     # El titular tal como lo devuelve la pasarela. Es el dato que delata el

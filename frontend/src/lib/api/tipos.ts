@@ -57,7 +57,6 @@ export interface OrderResponse {
   // pedido concreto.
   fraud_explanation: string | null;
   fraud_log_id: string | null;
-  payment_url?: string;
   created_at: string;
   user_email: string | null;
   user_name: string | null;
@@ -72,11 +71,6 @@ export interface OrderResponse {
   // Si este servidor puede cobrar con Niubiz. Lo dice el backend porque
   // depende de sus credenciales, y el checkout lo necesita para saber qué
   // formas de pago ofrecer.
-  niubiz_disponible: boolean;
-  // Si la tienda está cobrando con la pasarela simulada. El checkout lo
-  // necesita para enseñar su propio formulario en vez de mandar a nadie fuera,
-  // y para avisar de que no se hará ningún cargo.
-  pago_simulado: boolean;
 }
 
 /** La tarjeta que se escribe en el formulario de pago simulado. */
@@ -93,23 +87,11 @@ export interface PagoSimuladoResponse {
   aprobado: boolean;
   estado_del_pedido: string;
   motivo: string | null;
-}
-
-/**
- * Lo que hace falta para abrir el formulario de Niubiz.
- *
- * Viene entero del backend, direcciones incluidas, para que el frontend no
- * tenga que saber contra qué entorno se está cobrando. Aquí no viaja ningún
- * secreto: la clave de sesión sirve para un solo cobro y por un monto fijo.
- */
-export interface NiubizSessionResponse {
-  session_key: string;
-  merchant_id: string;
-  purchase_number: string;
-  amount: string;
-  checkout_js: string;
-  action_url: string;
-  es_de_prueba: boolean;
+  // El código de respuesta, como el de una pasarela real: "00" aprobado, "51"
+  // fondos insuficientes, "43" tarjeta reportada.
+  codigo: string | null;
+  // La referencia del cobro, para el comprobante. Solo cuando se aprueba.
+  referencia: string | null;
 }
 
 // Quién compró y con qué pagó. Los datos de tarjeta solo existen si hubo

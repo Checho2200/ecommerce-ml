@@ -264,73 +264,10 @@ async def test_un_pedido_ya_pagado_no_se_cobra_dos_veces(sesion):
     assert aplicado.estado == "sin cambios"
 
 
-# ── Las tres pasarelas escriben lo mismo ─────────────────────────────────────
-def test_la_simulada_llena_las_mismas_columnas_que_las_reales():
-    """
-    Que encaje sin una sola rama especial es la prueba de que sustituye a la
-    pasarela y no al sistema.
-    """
-    from app.services.niubiz_service import datos_del_pago_de_niubiz
-    from app.services.pago_simulado import datos_del_pago_simulado
-    from app.services.payment_service import datos_del_pago
-
-    de_simulada = set(
-        datos_del_pago_simulado(
-            cobrar(
-                numero=APROBADA,
-                mes=12,
-                anio=ANIO_VIGENTE,
-                cvv="123",
-                titular="Ana Quispe",
-            )
-        )
-    )
-
-    assert set(datos_del_pago({"id": 1, "payment_method_id": "visa", "card": {}})) <= de_simulada
-    assert set(datos_del_pago_de_niubiz({"dataMap": {}})) == de_simulada
 
 
 # ── Por HTTP, que es como lo usa la tienda ───────────────────────────────────
-def _encender_simulado(monkeypatch, encendido=True):
-    from app.core.config import get_settings
-
-    monkeypatch.setattr(get_settings(), "PAGO_SIMULADO", encendido)
-
-
-async def test_si_la_tienda_no_esta_en_modo_simulado_el_endpoint_no_existe(
-    cliente, sesion, monkeypatch
-):
-    """
-    Apagado, no está: responde 404 y no 403 ni 400.
-
-    Una tienda que cobra de verdad no puede tener colgando una puerta que
-    completa pedidos sin cobrar, aunque haga falta estar autenticado para
-    empujarla.
-    """
-    _encender_simulado(monkeypatch, False)
-    usuario = await crear_usuario(sesion)
-    producto = await crear_producto(sesion)
-    orden = await _pedido(sesion, usuario, producto)
-    orden_id = orden.id
-
-    token = await token_de(cliente, usuario.email)
-    respuesta = await cliente.post(
-        f"/api/v1/orders/{orden_id}/pago-simulado",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "numero": APROBADA,
-            "mes": 12,
-            "anio": ANIO_VIGENTE,
-            "cvv": "123",
-            "titular": "Ana Quispe",
-        },
-    )
-
-    assert respuesta.status_code == 404
-
-
-async def test_nadie_paga_el_pedido_de_otro(cliente, sesion, monkeypatch):
-    _encender_simulado(monkeypatch)
+async def test_nadie_paga_el_pedido_de_otro(cliente, sesion):
     dueno = await crear_usuario(sesion, email="dueno@ejemplo.com")
     await crear_usuario(sesion, email="intruso@ejemplo.com")
     producto = await crear_producto(sesion)
@@ -353,14 +290,13 @@ async def test_nadie_paga_el_pedido_de_otro(cliente, sesion, monkeypatch):
     assert respuesta.status_code == 403
 
 
-async def test_el_recorrido_completo_por_http(cliente, sesion, monkeypatch):
+async def test_el_recorrido_completo_por_http(cliente, sesion):
     """
     De la orden pendiente al pedido completado, por donde pasa la tienda.
 
     Y la orden avisa de que está en modo simulado, que es lo que el checkout
     mira para enseñar su propio formulario en lugar de mandar a nadie fuera.
     """
-    _encender_simulado(monkeypatch)
     usuario = await crear_usuario(sesion)
     producto = await crear_producto(sesion)
     orden = await _pedido(sesion, usuario, producto)
@@ -368,9 +304,6 @@ async def test_el_recorrido_completo_por_http(cliente, sesion, monkeypatch):
 
     token = await token_de(cliente, usuario.email)
     cabeceras = {"Authorization": f"Bearer {token}"}
-
-    detalle = await cliente.get(f"/api/v1/orders/{orden_id}", headers=cabeceras)
-    assert detalle.json()["pago_simulado"] is True
 
     respuesta = await cliente.post(
         f"/api/v1/orders/{orden_id}/pago-simulado",
@@ -393,3 +326,61 @@ async def test_el_recorrido_completo_por_http(cliente, sesion, monkeypatch):
     assert final["status"] == "COMPLETED"
     assert final["payment_gateway"] == "simulado"
     assert final["card_last_four"] == "1111"
+
+
+# ── Los códigos de respuesta ─────────────────────────────────────────────────
+#
+# Una pasarela real no contesta «no» a secas: devuelve un código que dice por
+# qué, y es el dato que un comercio apunta cuando un cliente llama a preguntar.
+# Los que se usan aquí son los de la norma ISO 8583, que es la que hablan las
+# redes de tarjetas.
+
+
+def test_cada_desenlace_trae_su_codigo():
+    def codigo(numero, **extra):
+        datos = dict(numero=numero, mes=12, anio=ANIO_VIGENTE, cvv="123", titular="Ana Quispe")
+        datos.update(extra)
+        return cobrar(**datos).codigo
+
+    assert codigo(APROBADA) == "00"
+    assert codigo(RECHAZADA) == "51"
+    assert codigo("5105105105105100") == "43"
+    assert codigo("4111111111111112") == "14"
+    assert codigo(APROBADA, mes=1, anio=2020) == "54"
+
+
+async def test_el_cobro_aprobado_devuelve_su_referencia(cliente, sesion):
+    """
+    El comprobante tiene que cuadrar con el sistema.
+
+    La referencia que ve el comprador es la misma que queda guardada en el
+    pedido y que el administrador ve en el panel. Un comprobante que no coincide
+    con lo que hay dentro no sirve para reclamar nada.
+    """
+    usuario = await crear_usuario(sesion)
+    producto = await crear_producto(sesion)
+    orden = await _pedido(sesion, usuario, producto)
+    orden_id = orden.id
+
+    token = await token_de(cliente, usuario.email)
+    cabeceras = {"Authorization": f"Bearer {token}"}
+
+    respuesta = await cliente.post(
+        f"/api/v1/orders/{orden_id}/pago-simulado",
+        headers=cabeceras,
+        json={
+            "numero": APROBADA,
+            "mes": 12,
+            "anio": ANIO_VIGENTE,
+            "cvv": "123",
+            "titular": "Ana Quispe Ramos",
+        },
+    )
+
+    cuerpo = respuesta.json()
+    assert cuerpo["codigo"] == "00"
+    assert cuerpo["referencia"].startswith("SIM-")
+
+    guardada = (await cliente.get(f"/api/v1/orders/{orden_id}", headers=cabeceras)).json()
+    assert guardada["payment_id"] == cuerpo["referencia"]
+

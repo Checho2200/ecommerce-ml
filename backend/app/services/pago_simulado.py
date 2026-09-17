@@ -38,14 +38,26 @@ from typing import Optional
 # Tarjetas con comportamiento fijo, para poder enseñar los dos desenlaces en una
 # demostración sin depender de la suerte. Son los números que la industria usa
 # como ejemplo: válidos según Luhn, pero sin emisor detrás.
+#
+# Cada una lleva su código de respuesta, porque una pasarela real no contesta
+# «no» a secas: devuelve un código que dice por qué, y de ese código depende lo
+# que la tienda hace después. Los que se usan aquí son los de la norma ISO 8583,
+# que es la que hablan las redes de tarjetas.
 TARJETAS_DE_PRUEBA = {
-    "4111111111111111": ("aprobada", "visa"),
-    "5500000000000004": ("aprobada", "master"),
+    "4111111111111111": ("aprobada", "visa", "00"),
+    "5500000000000004": ("aprobada", "master", "00"),
     # Estas dos existen para poder demostrar el camino del rechazo: qué le pasa
     # al pedido y al inventario cuando un cobro no prospera.
-    "4000000000000002": ("rechazada: fondos insuficientes", "visa"),
-    "5105105105105100": ("rechazada: tarjeta reportada", "master"),
+    "4000000000000002": ("rechazada: fondos insuficientes", "visa", "51"),
+    "5105105105105100": ("rechazada: tarjeta reportada", "master", "43"),
 }
+
+# Y los códigos de lo que ni siquiera llega al emisor, porque lo descarta antes
+# el propio formulario.
+CODIGO_NUMERO_INVALIDO = "14"
+CODIGO_VENCIDA = "54"
+CODIGO_CVV = "82"
+CODIGO_APROBADO = "00"
 
 
 @dataclass
@@ -63,6 +75,10 @@ class ResultadoSimulado:
     ultimos_cuatro: Optional[str] = None
     marca: Optional[str] = None
     titular: Optional[str] = None
+    # El código de respuesta, como el que devuelve una pasarela real. "00" es
+    # aprobado; cualquier otro dice por qué no. Se enseña en pantalla porque es
+    # lo que un comercio de verdad apunta cuando un cliente llama a preguntar.
+    codigo: Optional[str] = None
     # Si el «no» vino del emisor de la tarjeta o del formulario, que no es lo
     # mismo y el pedido no corre la misma suerte. Una tarjeta rechazada es una
     # compra que no va a completarse: el pedido se cancela y el inventario
@@ -150,24 +166,36 @@ def cobrar(
     digitos = _solo_digitos(numero)
 
     if not luhn_valido(digitos):
-        return ResultadoSimulado(False, "El número de tarjeta no es válido.")
+        return ResultadoSimulado(
+            False, "El número de tarjeta no es válido.", codigo=CODIGO_NUMERO_INVALIDO
+        )
 
     if not (1 <= mes <= 12):
-        return ResultadoSimulado(False, "El mes de vencimiento no existe.")
+        return ResultadoSimulado(
+            False, "El mes de vencimiento no existe.", codigo=CODIGO_VENCIDA
+        )
 
     if _vencida(mes, anio):
-        return ResultadoSimulado(False, "La tarjeta está vencida.")
+        return ResultadoSimulado(
+            False, "La tarjeta está vencida.", codigo=CODIGO_VENCIDA
+        )
 
     if len(_solo_digitos(cvv)) not in (3, 4):
-        return ResultadoSimulado(False, "El código de seguridad no es válido.")
+        return ResultadoSimulado(
+            False, "El código de seguridad no es válido.", codigo=CODIGO_CVV
+        )
 
     if not (titular or "").strip():
-        return ResultadoSimulado(False, "Falta el nombre del titular.")
+        return ResultadoSimulado(
+            False, "Falta el nombre del titular.", codigo=CODIGO_CVV
+        )
 
     marca = marca_de(digitos)
     ultimos = digitos[-4:]
 
-    decision, marca_fija = TARJETAS_DE_PRUEBA.get(digitos, ("aprobada", marca))
+    decision, marca_fija, codigo = TARJETAS_DE_PRUEBA.get(
+        digitos, ("aprobada", marca, CODIGO_APROBADO)
+    )
 
     if decision.startswith("rechazada"):
         # El motivo va sin el prefijo, que es de uso interno.
@@ -177,6 +205,7 @@ def cobrar(
             ultimos_cuatro=ultimos,
             marca=marca_fija,
             titular=titular.strip(),
+            codigo=codigo,
             es_rechazo_del_emisor=True,
         )
 
@@ -186,6 +215,7 @@ def cobrar(
         ultimos_cuatro=ultimos,
         marca=marca_fija,
         titular=titular.strip(),
+        codigo=codigo,
     )
 
 

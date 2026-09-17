@@ -36,19 +36,11 @@ from app.models.user import User
 from app.schemas.order import OrderCreate
 from app.services.errors import OperacionNoPermitida, RecursoNoEncontrado
 from app.services.fraud_service import ANTIGUEDAD_POR_DEFECTO, fraud_service
-from app.core.config import get_settings
-from app.services.niubiz_service import (
-    ErrorDeNiubiz,
-    SesionDeCobro,
-    datos_del_pago_de_niubiz,
-    niubiz_service,
-)
 from app.services.pago_simulado import (
     ResultadoSimulado,
     cobrar as cobrar_simulado,
     datos_del_pago_simulado,
 )
-from app.services.payment_service import payment_service
 
 # El stock se descuenta al crear la orden y se devuelve al pasar a uno de estos
 # estados. Tenerlos en un conjunto evita el fallo de devolverlo dos veces: una
@@ -101,7 +93,6 @@ class PedidoCreado:
 
     orden: Order
     nombres_de_productos: dict[str, str]
-    url_de_pago: Optional[str] = None
     evaluacion: object = field(default=None, repr=False)
 
 
@@ -121,7 +112,7 @@ async def caducar_pendientes(db: AsyncSession, user_id: str) -> None:
     """
     Cierra las órdenes que este cliente dejó a medias y devuelve su stock.
 
-    Quien abandona el checkout de MercadoPago deja una orden en PENDING que
+    Quien abandona el pago deja una orden en PENDING que
     retiene unidades. Como el carrito ya no se vacía hasta que el pago se
     confirma, al reintentar la compra se reservaría dos veces el mismo producto;
     esto lo evita.
@@ -161,8 +152,8 @@ async def _reservar_articulos(db: AsyncSession, datos: OrderCreate) -> Articulos
     """
     total = 0.0
     lineas: list[OrderItem] = []
-    # El checkout de MercadoPago muestra el título de cada artículo, así que
-    # hace falta el nombre del producto y no su identificador.
+    # El resumen del pago muestra el título de cada artículo, así que hace
+    # falta el nombre del producto y no su identificador.
     nombres: dict[str, str] = {}
     articulos_de_alto_riesgo = 0
 
@@ -364,45 +355,11 @@ async def crear_pedido(db: AsyncSession, cliente: User, datos: OrderCreate) -> P
     await db.flush()
     await db.refresh(orden)
 
-    url_de_pago = None
     if orden.status == OrderStatus.PENDING:
         orden.payable_since = orden.created_at
-        url_de_pago = _generar_cobro(orden, reserva, cliente.email)
 
-    return PedidoCreado(orden, reserva.nombres, url_de_pago, evaluacion)
+    return PedidoCreado(orden, reserva.nombres, evaluacion)
 
-
-def _generar_cobro(orden: Order, reserva: ArticulosReservados, correo: str) -> Optional[str]:
-    """
-    Pide a MercadoPago el enlace de pago.
-
-    Si la pasarela falla, el pedido igual se devuelve: ya está creado y con su
-    inventario reservado, y el cliente puede reintentar el pago. Tumbar la
-    compra entera por una caída de la pasarela sería peor.
-    """
-    if get_settings().PAGO_SIMULADO:
-        # En modo simulado no hay pasarela a la que pedirle un enlace: el
-        # comprador paga en un formulario de la propia tienda. Se devuelve None
-        # y el checkout, que sabe que está en modo simulado, enseña ese
-        # formulario en lugar de mandar a nadie fuera.
-        return None
-
-    articulos = [
-        {
-            "title": reserva.nombres.get(linea.product_id, "Producto"),
-            "quantity": linea.quantity,
-            "unit_price": linea.unit_price,
-        }
-        for linea in reserva.lineas
-    ]
-
-    try:
-        return payment_service.create_preference(
-            order_id=orden.id, items=articulos, payer_email=correo
-        )
-    except Exception as exc:  # noqa: BLE001 - el pedido no depende de esto
-        print(f"Error creating MP preference: {exc}")
-        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -439,22 +396,17 @@ async def cambiar_estado(db: AsyncSession, orden_id: str, nuevo_estado: str) -> 
     return orden
 
 
-async def liberar_de_revision(db: AsyncSession, orden_id: str) -> tuple[Order, Optional[str]]:
+async def liberar_de_revision(db: AsyncSession, orden_id: str) -> Order:
     """
     Deja seguir una orden que el modelo había retenido.
 
     Desde que la retención ocurre después del cobro, una orden en revisión
     normalmente **ya está pagada**: soltarla es darla por buena y dejar que se
-    prepare, o sea COMPLETED. No hay enlace de pago que generar porque el
-    cliente ya pagó.
+    prepare, o sea COMPLETED.
 
     Queda el caso heredado: pedidos retenidos con las reglas anteriores, que
-    nunca llegaron a la pasarela. Ésos sí necesitan volver a PENDING y estrenar
-    enlace de pago, o el cliente se quedaría con un pedido «pendiente» que no
-    puede pagar por ningún sitio. Se distinguen por `paid_at`.
-
-    Devuelve la orden y la URL de pago, nula cuando no hace falta —o cuando la
-    pasarela falla, que tampoco debe deshacer la decisión del administrador.
+    nunca llegaron a pagarse. Ésos vuelven a PENDING y estrenan plazo, para que
+    el cliente pueda pagarlos desde sus compras. Se distinguen por `paid_at`.
     """
     orden = await obtener_pedido(db, orden_id)
 
@@ -465,33 +417,16 @@ async def liberar_de_revision(db: AsyncSession, orden_id: str) -> tuple[Order, O
 
     if orden.paid_at is not None:
         orden.status = OrderStatus.COMPLETED
-        await db.flush()
-        await db.refresh(orden)
-        return orden, None
+    else:
+        orden.status = OrderStatus.PENDING
+        # El plazo de caducidad se cuenta desde ahora y no desde que se creó:
+        # una orden que estuvo tres horas retenida llevaba tres horas de
+        # existencia y cero de poder pagarse.
+        orden.payable_since = datetime.now(timezone.utc)
 
-    orden.status = OrderStatus.PENDING
-    orden.payable_since = datetime.now(timezone.utc)
-
-    articulos = [
-        {
-            "title": (linea.product.name if linea.product else "Producto"),
-            "quantity": linea.quantity,
-            "unit_price": linea.unit_price,
-        }
-        for linea in orden.items
-    ]
-
-    url_de_pago = None
-    try:
-        url_de_pago = payment_service.create_preference(
-            order_id=orden.id, items=articulos, payer_email=orden.user.email
-        )
-    except Exception as exc:  # noqa: BLE001 - la decisión no depende de esto
-        print(f"Error creating MP preference al liberar {orden.id}: {exc}")
-
-    await db.flush()
+    await db.commit()
     await db.refresh(orden)
-    return orden, url_de_pago
+    return orden
 
 
 async def cancelar_pedido_del_cliente(db: AsyncSession, cliente: User, orden_id: str) -> Order:
@@ -556,15 +491,19 @@ class ResultadoDelPago:
 async def registrar_resultado_del_pago(
     db: AsyncSession,
     referencia_externa: str,
-    estado_en_mercadopago: str,
+    estado_del_cobro: str,
     datos_del_pago: dict | None = None,
 ) -> ResultadoDelPago:
     """
-    Aplica al pedido lo que MercadoPago dice que pasó con su pago.
+    Aplica al pedido lo que la pasarela dice que pasó con su cobro.
 
-    Solo se toca un pedido que siga pendiente: las notificaciones se repiten y
-    llegan desordenadas, y no se puede volver a cancelar —ni a devolver stock
-    de— algo que ya se resolvió.
+    Aquí vive **la regla de qué le pasa a un pedido pagado**, en un solo sitio:
+    se completa, o queda retenido si el modelo lo marcó para revisar. La
+    pasarela es intercambiable; esto no.
+
+    Solo se toca un pedido que siga pendiente. Un cobro se puede confirmar dos
+    veces —alguien recarga, alguien reenvía un formulario— y no se puede volver
+    a cancelar, ni a devolver stock de, algo que ya se resolvió.
     """
     resultado = await db.execute(select(Order).where(Order.id == referencia_externa))
     orden = resultado.scalar_one_or_none()
@@ -575,7 +514,7 @@ async def registrar_resultado_del_pago(
     if orden.status != OrderStatus.PENDING:
         return ResultadoDelPago("sin cambios", orden)
 
-    if estado_en_mercadopago == "approved":
+    if estado_del_cobro == "approved":
         # Con qué se pagó, para poder seguirle la pista al cobro después. Son
         # los cuatro últimos dígitos y el titular; el resto de la tarjeta no
         # llega hasta aquí ni debe hacerlo.
@@ -598,154 +537,17 @@ async def registrar_resultado_del_pago(
         )
         return ResultadoDelPago("retenida" if retener else "completada", orden)
 
-    if estado_en_mercadopago in ("rejected", "cancelled"):
+    if estado_del_cobro in ("rejected", "cancelled"):
         # Sin esto un pago rechazado dejaba la orden en PENDING para siempre,
         # con su stock reservado y sin forma de cobrarla.
         orden.status = OrderStatus.CANCELLED
         await devolver_stock(db, orden)
         await db.commit()
-        print(f"Order {orden.id} cancelada: MercadoPago devolvió '{estado_en_mercadopago}'.")
+        print(f"Order {orden.id} cancelada: el cobro terminó en '{estado_del_cobro}'.")
         return ResultadoDelPago("cancelada", orden)
 
     return ResultadoDelPago("sin cambios", orden)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Cobro con Niubiz
-# ─────────────────────────────────────────────────────────────────────────────
-async def asignar_numero_de_compra(db: AsyncSession, orden: Order) -> str:
-    """
-    Devuelve el número de compra de una orden, creándolo la primera vez.
-
-    Niubiz identifica cada cobro por un número de hasta doce dígitos, y el
-    identificador de las órdenes de esta tienda es un UUID. Hace falta uno
-    aparte, y tiene que cumplir tres cosas: caber en doce dígitos, no repetirse
-    nunca dentro del comercio y **ser el mismo** en la clave de sesión y en la
-    autorización, o Niubiz rechaza el cobro.
-
-    Por eso se guarda en la orden en vez de calcularse cada vez. Un comprador
-    que abre el formulario, lo cierra y vuelve a intentarlo tiene que reusar el
-    suyo; si cada intento generara uno nuevo, la tienda iría gastando números y
-    perdería la correspondencia entre el pedido y lo que se ve en el panel de
-    Niubiz.
-
-    El número sale del reloj más cuatro dígitos al azar. No es un contador
-    porque un contador obliga a coordinar a todos los procesos que cobran, y
-    esto vale igual: el índice único de la columna es lo que garantiza de
-    verdad que no se repita, y si el sorteo choca se vuelve a tirar.
-    """
-    if orden.purchase_number:
-        return orden.purchase_number
-
-    for _ in range(5):
-        candidato = f"{int(time.time()) % 10**8:08d}{random.randint(0, 9999):04d}"
-        ya_existe = (
-            await db.execute(
-                select(Order.id).where(Order.purchase_number == candidato)
-            )
-        ).scalar_one_or_none()
-        if ya_existe:
-            continue
-
-        orden.purchase_number = candidato
-        await db.commit()
-        await db.refresh(orden)
-        return candidato
-
-    raise OperacionNoPermitida(
-        "No se pudo generar un número de compra para esta orden. Inténtalo de nuevo."
-    )
-
-
-async def preparar_cobro_con_niubiz(
-    db: AsyncSession,
-    orden: Order,
-    cliente: User,
-    ip_del_cliente: str,
-    action_url: str,
-) -> SesionDeCobro:
-    """
-    Abre con Niubiz una sesión para cobrar esta orden.
-
-    Solo se cobra lo que está esperando pago. Un pedido ya pagado, cancelado o
-    retenido por el modelo no puede abrir sesión: si pudiera, un cobro repetido
-    entraría por aquí sin que nada lo frenara, porque Niubiz no sabe nada de
-    los estados de esta tienda.
-
-    El monto se toma de la orden guardada y **nunca de la petición**. Es la
-    razón por la que esto vive en el servidor: la clave de sesión que devuelve
-    Niubiz queda atada a ese monto, así que ni manipulando la pantalla se puede
-    pagar menos de lo que cuesta el pedido.
-    """
-    if orden.status != OrderStatus.PENDING:
-        raise OperacionNoPermitida(
-            "Esta orden no está esperando pago, así que no se puede cobrar."
-        )
-
-    numero = await asignar_numero_de_compra(db, orden)
-
-    return await niubiz_service.crear_sesion(
-        monto=orden.total_amount,
-        numero_de_compra=numero,
-        ip_del_cliente=ip_del_cliente,
-        correo=cliente.email,
-        identificador_del_cliente=cliente.id,
-        antiguedad_en_dias=_antiguedad_de_la_cuenta(cliente),
-        action_url=action_url,
-    )
-
-
-async def confirmar_pago_de_niubiz(
-    db: AsyncSession, orden_id: str, token_de_transaccion: str
-) -> ResultadoDelPago:
-    """
-    Canjea el token del formulario por el cobro y aplica el resultado.
-
-    Aquí está la diferencia grande con MercadoPago: no hay webhook que esperar.
-    Niubiz contesta si cobró o no dentro de esta misma llamada, así que el
-    pedido queda resuelto antes de que el comprador termine de volver a la
-    tienda. Nada puede perderse por el camino.
-
-    Lo que se hace con el resultado es exactamente lo mismo que hace el webhook
-    de MercadoPago, y a propósito: las dos pasarelas terminan en
-    `registrar_resultado_del_pago`, que es donde vive la regla de qué le pasa a
-    un pedido cuando se paga —incluido retenerlo si el modelo lo marcó—. Tener
-    dos copias de esa regla sería tener dos versiones del sistema.
-    """
-    orden = (
-        await db.execute(select(Order).where(Order.id == orden_id))
-    ).scalar_one_or_none()
-
-    if not orden:
-        return ResultadoDelPago("orden no encontrada")
-
-    if orden.status != OrderStatus.PENDING:
-        # El comprador volvió a enviar el formulario, o recargó el retorno.
-        return ResultadoDelPago("sin cambios", orden)
-
-    try:
-        respuesta = await niubiz_service.autorizar(
-            token_de_transaccion=token_de_transaccion,
-            numero_de_compra=orden.purchase_number or "",
-            monto=orden.total_amount,
-        )
-    except ErrorDeNiubiz as error:
-        if error.es_rechazo:
-            # Niubiz dice que esa tarjeta no paga: el pedido se cancela y el
-            # stock vuelve, igual que con un pago rechazado de MercadoPago.
-            print(f"Order {orden.id}: Niubiz rechazó el pago ({error.mensaje}).")
-            return await registrar_resultado_del_pago(db, orden.id, "rejected")
-
-        # Cualquier otro fallo no dice nada sobre la tarjeta, así que el pedido
-        # se queda pendiente y se puede reintentar. Cancelarlo aquí sería
-        # regalarle a cualquiera una forma de anular pedidos ajenos: la
-        # dirección de retorno es pública y recibe lo que le manden.
-        print(f"Order {orden.id}: fallo hablando con Niubiz ({error.mensaje}).")
-        return ResultadoDelPago("sin cambios", orden)
-
-    return await registrar_resultado_del_pago(
-        db, orden.id, "approved", datos_del_pago_de_niubiz(respuesta)
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -765,10 +567,10 @@ async def confirmar_pago_simulado(
     Resuelve un cobro simulado y aplica al pedido lo que salga.
 
     Esto es lo que sustituye a la pasarela, y a nada más: el resultado entra por
-    `registrar_resultado_del_pago`, igual que el webhook de MercadoPago y que la
-    autorización de Niubiz, así que la regla de qué le pasa a un pedido pagado
-    —completarse, o quedar retenido si el modelo lo marcó— es la misma y vive en
-    un solo sitio.
+    `registrar_resultado_del_pago`, que es donde vive la regla de qué le pasa a
+    un pedido pagado: completarse, o quedar retenido si el modelo lo marcó. Que
+    la pasarela entre por ahí, y no por una rama propia, es lo que mantiene esa
+    regla en un solo sitio.
 
     Los dos «no» que puede dar la simulación tienen consecuencias distintas, y
     la distinción es la misma que con una pasarela de verdad:

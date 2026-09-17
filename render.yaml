@@ -18,42 +18,6 @@ services:
         value: "3.12.0"
       - key: DATABASE_URL
         sync: false
-      # Cobro simulado: la tienda no llama a ninguna pasarela y lo declara
-      # en pantalla, en cada orden y en /health. Se fija en el panel y no aqui
-      # con un valor escrito, para que un despliegue no pueda devolver la
-      # tienda a modo simulado —ni sacarla de el— sin que nadie se entere.
-      - key: PAGO_SIMULADO
-        sync: false
-      - key: MERCADOPAGO_ACCESS_TOKEN
-        sync: false
-      # "test" o "produccion". Hay que declararlo: MercadoPago entrega hoy las
-      # credenciales de PRUEBA con el prefijo "APP_USR-", el mismo que las de
-      # produccion, asi que el token ya no dice de que entorno es.
-      - key: MERCADOPAGO_ENTORNO
-        sync: false
-      # Clave del webhook: panel de MercadoPago -> Tus integraciones ->
-      # Webhooks. Mientras esté vacía, la firma de las notificaciones no se
-      # exige y el webhook acepta cualquier aviso.
-      - key: MERCADOPAGO_WEBHOOK_SECRET
-        sync: false
-      # Niubiz, la segunda pasarela. Con las tres puestas, el checkout ofrece
-      # las dos formas de pago; sin alguna, solo MercadoPago.
-      - key: NIUBIZ_USER
-        sync: false
-      - key: NIUBIZ_PASSWORD
-        sync: false
-      - key: NIUBIZ_MERCHANT_ID
-        sync: false
-      # "test" o "produccion". Hay que declararlo: las credenciales de Niubiz
-      # no llevan marca de entorno, y de esta variable dependen las tres
-      # direcciones que se usan.
-      #
-      # Se fija en el panel de Render y no aquí con un valor escrito. Con un
-      # valor escrito, cada despliegue lo devolvería a lo que ponga este
-      # archivo, y un servidor que cobra de verdad volvería a pruebas sin que
-      # nadie se enterase —o al revés—. Es el mismo trato que MERCADOPAGO_ENTORNO.
-      - key: NIUBIZ_ENTORNO
-        sync: false
       - key: SECRET_KEY
         sync: false
       # Donde se guardan las imagenes que sube el panel de administracion.

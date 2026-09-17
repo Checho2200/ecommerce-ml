@@ -43,65 +43,16 @@ class Settings(BaseSettings):
     CLOUDINARY_FOLDER: str = "sanchez-tech-store"
 
     # Pagos
-    # Token de MercadoPago. Sin token, el checkout responde 503 en vez de
-    # fingir que cobró.
-    MERCADOPAGO_ACCESS_TOKEN: str = ""
-
-    # En qué entorno de MercadoPago se está cobrando: "test" o "produccion".
     #
-    # Hasta hace poco no hacía falta declararlo, porque el prefijo del token lo
-    # decía: "TEST-" era pruebas y "APP_USR-" producción. **Ya no.** MercadoPago
-    # entrega hoy las credenciales de prueba con el prefijo "APP_USR-", el
-    # mismo que las de producción, así que adivinarlo por el prefijo da
-    # justamente el peor error posible con una pasarela: creer que se está
-    # cobrando de verdad cuando no, o al revés.
+    # La tienda cobra con una pasarela simulada y no hay nada que configurar:
+    # ninguna credencial, ningún entorno que declarar. Es deliberado. Estuvieron
+    # integradas MercadoPago y Niubiz, y las dos se retiraron —la primera
+    # rechazaba los cobros sin llegar a registrarlos, la segunda exige una
+    # afiliación comercial y una certificación—. Lo que este trabajo demuestra
+    # es la detección de fraude, no el cobro.
     #
-    # Vacío mantiene el comportamiento anterior —deducirlo del prefijo— para no
-    # romper una instalación que ya funcionaba con un token "TEST-".
-    MERCADOPAGO_ENTORNO: str = ""
-
-    # Cobro simulado.
-    #
-    # Con esto en verdadero la tienda no llama a ninguna pasarela: el comprador
-    # escribe una tarjeta en un formulario propio y el cobro se resuelve dentro
-    # del sistema. Existe porque lo que este trabajo demuestra es la detección
-    # de fraude, y las dos pasarelas reales que están integradas se quedaron sin
-    # camino —MercadoPago rechazaba los cobros sin registrar el pago, y Niubiz
-    # exige afiliación comercial y certificación—.
-    #
-    # La simulación nunca se esconde: la pantalla avisa, la orden guarda
-    # `payment_gateway = "simulado"` y /health lo informa. Falso por defecto,
-    # para que nadie acabe en modo simulado sin haberlo pedido.
-    PAGO_SIMULADO: bool = False
-
-    # ── Niubiz (Visa Perú) ───────────────────────────────────────────────
-    #
-    # La segunda pasarela. No sustituye a MercadoPago: convive con él, y el
-    # comprador elige en el checkout con cuál paga.
-    #
-    # Las credenciales las entrega Niubiz al afiliar el comercio. Son tres:
-    # usuario y contraseña de la API (se mandan como Basic auth para pedir el
-    # token de acceso) y el código de comercio. Sin las tres, la opción de
-    # pagar con Niubiz no se ofrece —el checkout enseña solo MercadoPago— en
-    # lugar de fingir que puede cobrar.
-    NIUBIZ_USER: str = ""
-    NIUBIZ_PASSWORD: str = ""
-    NIUBIZ_MERCHANT_ID: str = ""
-
-    # En qué entorno de Niubiz se cobra: "test" o "produccion".
-    #
-    # Aquí sí hay que declararlo siempre, porque las credenciales de Niubiz no
-    # llevan ninguna marca que distinga un entorno del otro: el mismo usuario y
-    # contraseña tienen la forma de siempre en los dos. De esta variable
-    # dependen las tres direcciones que se usan —la de la API, la del
-    # formulario y la del script del checkout—, así que equivocarla no da un
-    # cobro falso: da un error, que es el fallo preferible.
-    NIUBIZ_ENTORNO: str = "test"
-
-    # Clave secreta del webhook, que se genera en el panel de MercadoPago
-    # (Tus integraciones -> Webhooks). Sirve para comprobar la firma de cada
-    # notificación. Si se deja vacía, la firma no se exige.
-    MERCADOPAGO_WEBHOOK_SECRET: str = ""
+    # La simulación se declara siempre: en la pantalla, en cada orden
+    # (`payment_gateway`) y en /health.
 
     # Correo saliente (SMTP). Si SMTP_HOST queda vacío, la aplicación no envía
     # nada: escribe el mensaje en el log del servidor. Eso permite probar el

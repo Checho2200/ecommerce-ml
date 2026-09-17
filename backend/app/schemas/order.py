@@ -52,14 +52,12 @@ class OrderResponse(BaseModel):
     fraud_decision: Optional[str] = None
     fraud_explanation: Optional[str] = None
     fraud_log_id: Optional[str] = None
-    payment_url: Optional[str] = None
 
     # ── Quién compró y con qué pagó ───────────────────────────────────────
     #
     # El correo y el nombre salen de la cuenta; los datos de tarjeta, del
     # cobro, y solo cuando lo hubo. Son los cuatro últimos dígitos y el
-    # titular: el número completo y el código de seguridad nunca llegan a la
-    # tienda, los maneja MercadoPago.
+    # titular: del número completo y del código de seguridad no se guarda nada.
     user_email: Optional[str] = None
     user_name: Optional[str] = None
     payment_id: Optional[str] = None
@@ -73,13 +71,6 @@ class OrderResponse(BaseModel):
     # y cada una depende de sus propias credenciales, así que el checkout tiene
     # que saber cuáles hay antes de pintar los botones: ofrecer una que no está
     # configurada manda al comprador a un error con la tarjeta ya en la mano.
-    niubiz_disponible: bool = False
-
-    # Si este servidor está cobrando con la pasarela simulada. El checkout lo
-    # necesita para enseñar el formulario propio en lugar de mandar a nadie a
-    # una pasarela, y para avisar de que no se hará ningún cargo.
-    pago_simulado: bool = False
-
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -111,31 +102,12 @@ class PagoSimuladoResponse(BaseModel):
     estado_del_pedido: str
     # El motivo del rechazo, cuando lo hay. Una pasarela real tampoco dice más.
     motivo: Optional[str] = None
-
-
-class NiubizSessionResponse(BaseModel):
-    """
-    Lo que el navegador necesita para abrir el formulario de Niubiz.
-
-    Todo viene del backend, incluida la dirección del script y la del retorno.
-    Así el frontend no tiene que saber en qué entorno se está cobrando ni
-    guardar una copia de esas direcciones que se quede vieja: hay una sola
-    fuente de verdad, que es la configuración del servidor.
-
-    Aquí no viaja ningún secreto. La clave de sesión sirve para un solo cobro,
-    por un monto fijo, y el código de comercio es público por definición: va en
-    el formulario que ve cualquiera.
-    """
-
-    session_key: str
-    merchant_id: str
-    purchase_number: str
-    amount: str
-    checkout_js: str
-    action_url: str
-    # Para poder avisar en pantalla cuando se está cobrando contra el entorno
-    # de pruebas, y que nadie crea que pagó de verdad.
-    es_de_prueba: bool
+    # El código de respuesta, como el de una pasarela real: "00" aprobado, "51"
+    # fondos insuficientes, "43" tarjeta reportada… Se enseña en pantalla porque
+    # es el dato que un comercio apunta cuando un cliente llama a preguntar.
+    codigo: Optional[str] = None
+    # La referencia del cobro, para el comprobante. Solo cuando se aprueba.
+    referencia: Optional[str] = None
 
 
 class OrderListResponse(BaseModel):

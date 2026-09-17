@@ -11,11 +11,8 @@ export const system = {
       status: string;
       database: string;
       ml_model: string;
-      // Las dos pasarelas, por separado: cada una depende de sus propias
-      // credenciales y se puede estar cobrando de prueba por una y de verdad
-      // por la otra.
+      // Con qué cobra la tienda. Hoy siempre "simulado".
       payments?: string;
-      niubiz?: string;
     }>;
   }
 };

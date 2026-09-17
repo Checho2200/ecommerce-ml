@@ -16,7 +16,6 @@ import math
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse
 from sqlalchemy import func, inspect as sa_inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +25,6 @@ from app.models.order import Order, OrderItem
 from app.models.user import User
 from app.core.config import get_settings
 from app.schemas.order import (
-    NiubizSessionResponse,
     PagoSimuladoRequest,
     PagoSimuladoResponse,
     OrderCreate,
@@ -36,13 +34,7 @@ from app.schemas.order import (
     OrderStatusUpdate,
     OrderSummaryResponse,
 )
-from app.services import email_service, order_service, webhook_security
-from app.services.niubiz_service import ErrorDeNiubiz, leer_retorno, niubiz_service
-from app.services.payment_service import (
-    datos_del_pago,
-    leer_notificacion,
-    payment_service,
-)
+from app.services import email_service, order_service
 
 router = APIRouter(prefix="/orders", tags=["Órdenes"])
 
@@ -74,7 +66,6 @@ def _nombre_del_producto(item: OrderItem, nombres: Optional[dict] = None) -> Opt
 def _a_respuesta(
     orden: Order,
     nombres_de_productos: Optional[dict] = None,
-    url_de_pago: Optional[str] = None,
 ) -> OrderResponse:
     """Convierte una orden y su evaluación de fraude en la respuesta pública."""
     return OrderResponse(
@@ -98,7 +89,6 @@ def _a_respuesta(
         fraud_decision=orden.fraud_log.decision if orden.fraud_log else None,
         fraud_explanation=orden.fraud_log.explanation if orden.fraud_log else None,
         fraud_log_id=orden.fraud_log.id if orden.fraud_log else None,
-        payment_url=url_de_pago,
         # `orden.user` viene cargado con la orden (lazy="selectin"), así que
         # esto no dispara una consulta por fila del listado.
         user_email=orden.user.email if orden.user else None,
@@ -110,12 +100,6 @@ def _a_respuesta(
         # no de la orden, pero viaja aquí porque es justo donde el checkout lo
         # necesita: al recibir la orden recién creada tiene que decidir qué
         # botones de pago enseñar.
-        niubiz_disponible=niubiz_service.esta_configurado,
-        # Si la tienda está cobrando con la pasarela simulada. Va aquí
-        # porque es justo lo que el checkout necesita saber al recibir la
-        # orden recién creada: si enseña su propio formulario de pago o si
-        # manda al comprador a una pasarela.
-        pago_simulado=get_settings().PAGO_SIMULADO,
         card_last_four=orden.card_last_four,
         card_holder=orden.card_holder,
         paid_at=orden.paid_at,
@@ -156,7 +140,7 @@ async def create_order(
 ):
     """Crea una orden de compra: reserva inventario, la evalúa y genera el cobro."""
     creado = await order_service.crear_pedido(db, current_user, data)
-    return _a_respuesta(creado.orden, creado.nombres_de_productos, creado.url_de_pago)
+    return _a_respuesta(creado.orden, creado.nombres_de_productos)
 
 
 @router.get("", response_model=OrderListResponse)
@@ -242,77 +226,6 @@ async def get_order(
     return _a_respuesta(orden)
 
 
-@router.post("/webhook/mercadopago")
-async def mercadopago_webhook(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Recibe las notificaciones de pago de MercadoPago.
-
-    Siempre responde 200 salvo cuando la firma no cuadra: si devolviera error
-    ante cualquier problema propio, MercadoPago reintentaría la notificación
-    indefinidamente.
-    """
-    try:
-        cuerpo = await request.json()
-    except Exception:  # noqa: BLE001 - la notificación puede venir sin cuerpo
-        cuerpo = {}
-
-    payment_id, es_de_pago = leer_notificacion(dict(request.query_params), cuerpo)
-
-    if not payment_id or not es_de_pago:
-        return {"status": "ignored"}
-
-    # Este endpoint es público: su URL viaja en cada preferencia de pago. La
-    # firma es lo único que distingue un aviso de MercadoPago de uno inventado.
-    if not webhook_security.firma_valida(
-        request.headers.get("x-signature"),
-        request.headers.get("x-request-id"),
-        payment_id,
-    ):
-        print("Webhook rechazado: la firma no coincide.")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Firma invalida"
-        )
-
-    try:
-        pago = payment_service.verify_payment(payment_id)
-        referencia = pago.get("external_reference")
-
-        if not referencia:
-            return {"status": "no order reference"}
-
-        resultado = await order_service.registrar_resultado_del_pago(
-            db,
-            referencia,
-            pago.get("status"),
-            datos_del_pago(pago),
-        )
-
-        if resultado.estado == "orden no encontrada":
-            return {"status": "order not found"}
-
-        # El aviso al cliente va en segundo plano y sin poder fallar: el cobro
-        # ya está hecho y la orden guardada, así que un problema del servidor de
-        # correo no puede afectar a la respuesta que espera MercadoPago.
-        if resultado.estado == "completada" and resultado.orden.user is not None:
-            background_tasks.add_task(
-                email_service.enviar_confirmacion_de_pedido,
-                resultado.orden.user.email,
-                resultado.orden.user.full_name,
-                resultado.orden.id,
-                resultado.orden.total_amount,
-            )
-
-        return {"status": "success"}
-
-    except Exception as exc:  # noqa: BLE001 - ver la nota del docstring
-        print(f"Webhook error: {exc}")
-        return {"status": "error", "message": str(exc)}
-
-
 @router.post("/{order_id}/pago-simulado", response_model=PagoSimuladoResponse)
 async def pagar_simulado(
     order_id: str,
@@ -332,12 +245,6 @@ async def pagar_simulado(
     dígitos, que son los que se guardan. El resto se usa para validar y se
     descarta; no se escribe en la orden ni en ningún log.
     """
-    if not get_settings().PAGO_SIMULADO:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Esta tienda no está en modo de pago simulado.",
-        )
-
     orden = await order_service.obtener_pedido(db, order_id)
 
     if orden.user_id != current_user.id:
@@ -371,135 +278,11 @@ async def pagar_simulado(
         aprobado=cobro.aprobado,
         estado_del_pedido=aplicado.estado,
         motivo=cobro.motivo,
-    )
-
-
-def _ip_del_comprador(request: Request) -> str:
-    """
-    Desde qué dirección se está comprando.
-
-    Niubiz la pide para su propio motor antifraude. Detrás del proxy de Render
-    `request.client.host` es la dirección del proxy y no la del comprador, así
-    que se mira primero la cabecera que el proxy escribe; el primer valor de la
-    lista es el cliente original.
-    """
-    reenviada = request.headers.get("x-forwarded-for")
-    if reenviada:
-        return reenviada.split(",")[0].strip()
-    return request.client.host if request.client else "0.0.0.0"
-
-
-@router.post("/{order_id}/niubiz/sesion", response_model=NiubizSessionResponse)
-async def crear_sesion_de_niubiz(
-    order_id: str,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Abre una sesión de cobro con Niubiz para una orden propia.
-
-    Devuelve lo que el navegador necesita para levantar el formulario de la
-    pasarela. No es un cobro: todavía no se ha tocado ninguna tarjeta.
-    """
-    orden = await order_service.obtener_pedido(db, order_id)
-
-    if orden.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para pagar esta orden",
-        )
-
-    if not niubiz_service.esta_configurado:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Los pagos con Niubiz no están configurados en este servidor.",
-        )
-
-    backend = get_settings().BACKEND_URL
-    try:
-        sesion = await order_service.preparar_cobro_con_niubiz(
-            db,
-            orden,
-            current_user,
-            _ip_del_comprador(request),
-            f"{backend}/api/v1/orders/{orden.id}/niubiz/retorno",
-        )
-    except ErrorDeNiubiz as error:
-        # La pasarela no contestó o no aceptó las credenciales. Se dice tal
-        # cual en lugar de un 500 mudo: es exactamente el fallo que deja a
-        # alguien mirando una pantalla sin saber si le cobraron.
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=error.mensaje
-        ) from error
-
-    return NiubizSessionResponse(
-        session_key=sesion.session_key,
-        merchant_id=sesion.merchant_id,
-        purchase_number=sesion.purchase_number,
-        amount=sesion.amount,
-        checkout_js=sesion.checkout_js,
-        action_url=sesion.action_url,
-        es_de_prueba=sesion.es_de_prueba,
-    )
-
-
-@router.post("/{order_id}/niubiz/retorno", include_in_schema=False)
-async def retorno_de_niubiz(
-    order_id: str,
-    request: Request,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Recibe el formulario que envía el checkout de Niubiz y cierra la compra.
-
-    Esto no lo llama la tienda: lo envía el navegador del comprador cuando el
-    formulario de Niubiz termina. Por eso no lleva autenticación —el POST viene
-    de otro sitio y sin la cabecera del token— y por eso responde con una
-    redirección en vez de con JSON: lo que hay al otro lado es una persona
-    mirando, no código.
-
-    Que sea público no lo hace manipulable. El cobro no se da por bueno porque
-    alguien mande un `transactionToken`, sino porque Niubiz lo acepta cuando
-    este servidor se lo presenta; un token inventado hace que la pasarela diga
-    que no y el pedido se quede como estaba.
-    """
-    formulario = dict(await request.form())
-    token, motivo = leer_retorno(formulario)
-
-    frontend = get_settings().FRONTEND_URL
-
-    if not token:
-        # El comprador cerró el formulario, o la sesión caducó. No se cobró
-        # nada y el pedido sigue esperando pago.
-        print(f"Retorno de Niubiz sin token para {order_id}: {motivo or 'sin motivo'}")
-        return RedirectResponse(
-            f"{frontend}/checkout/failure?order_id={order_id}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-
-    resultado = await order_service.confirmar_pago_de_niubiz(db, order_id, token)
-
-    if resultado.estado in ("completada", "retenida"):
-        # Igual que en el webhook de MercadoPago: el correo va en segundo plano
-        # y sin poder fallar, porque el cobro ya está hecho.
-        if resultado.estado == "completada" and resultado.orden.user is not None:
-            background_tasks.add_task(
-                email_service.enviar_confirmacion_de_pedido,
-                resultado.orden.user.email,
-                resultado.orden.user.full_name,
-                resultado.orden.id,
-                resultado.orden.total_amount,
-            )
-        return RedirectResponse(
-            f"{frontend}/checkout/success?order_id={order_id}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-
-    return RedirectResponse(
-        f"{frontend}/checkout/failure?order_id={order_id}",
-        status_code=status.HTTP_303_SEE_OTHER,
+        codigo=cobro.codigo,
+        # La referencia sale de la orden y no de la respuesta del cobro: es la
+        # que quedó guardada, así que el comprobante enseña exactamente lo mismo
+        # que el panel de administración.
+        referencia=aplicado.orden.payment_id if aplicado.orden else None,
     )
 
 
@@ -512,13 +295,13 @@ async def release_order(
     """
     Deja seguir una orden retenida por el modelo (solo admin).
 
-    No es lo mismo que cambiarle el estado a mano: además de moverla a PENDING,
-    le genera el enlace de pago que nunca tuvo y reinicia el plazo de
-    caducidad. Sin eso el cliente se quedaba con un pedido aprobado que no
-    podía pagar por ningún sitio.
+    No es lo mismo que cambiarle el estado a mano: una orden en revisión que ya
+    estaba pagada se da por buena, y una que nunca llegó a pagarse vuelve a
+    PENDING con el plazo de caducidad reiniciado, para que el cliente pueda
+    pagarla desde sus compras.
     """
-    orden, url_de_pago = await order_service.liberar_de_revision(db, order_id)
-    return _a_respuesta(orden, url_de_pago=url_de_pago)
+    orden = await order_service.liberar_de_revision(db, order_id)
+    return _a_respuesta(orden)
 
 
 @router.patch("/{order_id}/status", response_model=OrderResponse)

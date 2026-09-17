@@ -44,7 +44,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
  * No toca el estado de React: devuelve el usuario, `null` si no hay sesion
  * valida, o `undefined` cuando no se pudo averiguar. Esa tercera respuesta
  * importa: el backend vive en el plan gratuito de Render y se suspende por
- * inactividad, asi que al volver de MercadoPago la primera peticion puede
+ * inactividad, asi que al volver de una pausa la primera peticion puede
  * tardar casi un minuto o fallar. Antes cualquier error cerraba la sesion y el
  * cliente regresaba del pago aparentemente deslogueado aunque su token
  * siguiera siendo valido. Solo un 401 significa credencial invalida; lo demas

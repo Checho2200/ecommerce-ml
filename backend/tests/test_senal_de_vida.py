@@ -29,16 +29,13 @@ async def test_la_raiz_sigue_respondiendo_a_get(cliente):
     assert respuesta.json()["status"] == "running"
 
 
-async def test_health_dice_de_que_entorno_es_cada_pasarela(cliente):
+async def test_health_declara_que_el_cobro_es_simulado(cliente):
     """
-    Las dos pasarelas se informan por separado y a propósito.
+    Se puede comprobar desde fuera, sin abrir la tienda.
 
-    Cada una depende de sus propias credenciales, así que se puede estar
-    cobrando de prueba por una y de verdad por la otra. Un solo renglón tendría
-    que mentir sobre alguna, y creer que se cobra de verdad cuando no —o al
-    revés— es el peor malentendido posible con una pasarela.
+    Es la tercera pata de la misma promesa: la pantalla avisa, la orden lo
+    guarda, y esto permite verificarlo sin ser el comprador ni el administrador.
     """
     datos = (await cliente.get("/health")).json()
 
-    assert datos["payments"] in ("not_configured", "test", "production")
-    assert datos["niubiz"] in ("not_configured", "test", "production")
+    assert datos["payments"] == "simulado"

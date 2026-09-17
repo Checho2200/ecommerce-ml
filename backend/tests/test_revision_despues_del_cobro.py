@@ -158,35 +158,30 @@ async def test_soltar_una_retenida_ya_pagada_la_da_por_buena(sesion):
     orden.status = OrderStatus.FRAUD_REVIEW
     await sesion.commit()
 
-    suelta, url = await order_service.liberar_de_revision(sesion, orden.id)
+    suelta = await order_service.liberar_de_revision(sesion, orden.id)
 
     assert suelta.status == OrderStatus.COMPLETED
-    assert url is None
+    # No vuelve a PENDING: ya estaba pagada, así que soltarla es darla por
+    # buena y dejar que se prepare, no pedirle al cliente que pague otra vez.
+    assert suelta.payable_since is None
 
 
 @pytest.mark.asyncio
-async def test_soltar_una_retenida_sin_pagar_le_da_su_enlace(sesion, monkeypatch):
+async def test_soltar_una_retenida_sin_pagar_la_deja_pagable(sesion):
     """
     El caso heredado: pedidos retenidos con las reglas anteriores, que nunca
-    llegaron a la pasarela. Sin enlace, el cliente se quedaría con un pedido
-    «pendiente» que no puede pagar por ningún sitio.
+    llegaron a pagarse. Soltarlos tiene que devolverlos a PENDING y reiniciar su
+    plazo, o el cliente se quedaría con un pedido «aprobado» que caduca solo.
     """
-    monkeypatch.setattr(
-        order_service.payment_service,
-        "create_preference",
-        lambda **_: "https://mercadopago.example/checkout",
-    )
-
     usuario = await crear_usuario(sesion)
     producto = await crear_producto(sesion)
     orden = await _orden_con_evaluacion(sesion, usuario, producto, "REVIEW")
     orden.status = OrderStatus.FRAUD_REVIEW
     await sesion.commit()
 
-    suelta, url = await order_service.liberar_de_revision(sesion, orden.id)
+    suelta = await order_service.liberar_de_revision(sesion, orden.id)
 
     assert suelta.status == OrderStatus.PENDING
-    assert url == "https://mercadopago.example/checkout"
     # Y el plazo de caducidad arranca ahora, no cuando se creó el pedido.
     # SQLite devuelve la fecha sin zona, así que se le pone la que tiene.
     assert suelta.payable_since is not None

@@ -12,10 +12,15 @@ import { useCartStore } from '@/lib/stores/cart'
 function SuccessContent() {
   const searchParams = useSearchParams()
   const orderId = searchParams.get('order_id') || 'desconocido'
+  // La referencia del cobro, que llega del formulario de pago. Es la misma que
+  // queda guardada en el pedido, asi que lo que ve el comprador y lo que ve el
+  // administrador en el panel coinciden: un comprobante que no cuadra con el
+  // sistema no sirve para reclamar nada.
+  const referencia = searchParams.get('ref')
   const clearCart = useCartStore((state) => state.clearCart)
 
   // Este es el unico punto donde se vacia el carrito de una compra pagada:
-  // MercadoPago solo redirige aqui cuando el cobro se aprueba.
+  // Solo se llega aqui cuando el cobro se aprueba.
   useEffect(() => {
     clearCart()
   }, [clearCart])
@@ -30,6 +35,17 @@ function SuccessContent() {
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           Tu pago ha sido procesado correctamente y tu orden está en preparación.
         </Typography>
+        {referencia && (
+          <Box sx={{ display: 'inline-block', bgcolor: 'action.hover', px: 3, py: 1, borderRadius: 2, mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Referencia del cobro
+            </Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700, fontFamily: 'monospace' }}>
+              {referencia}
+            </Typography>
+          </Box>
+        )}
+        <br />
         {orderId !== 'desconocido' && (
           <Box sx={{ display: 'inline-block', bgcolor: 'action.hover', px: 3, py: 1, borderRadius: 2, mb: 4 }}>
             <Typography variant="body2" sx={{ fontWeight: 700 }}>Orden ID: {orderId.split('-')[0]}...</Typography>

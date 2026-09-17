@@ -84,45 +84,18 @@ export default function AdminSettingsPage() {
       note: salud?.ml_model === 'loaded' ? 'Modelo LightGBM cargado' : 'Modelo no cargado',
       estado: consultando ? 'cargando' as const : salud?.ml_model === 'loaded' ? 'ok' as const : 'parcial' as const,
     },
-    // Una fila por pasarela, y no una sola que las resuma. La tienda cobra con
-    // dos que conviven, así que se puede estar cobrando de prueba por una y de
-    // verdad por la otra: un renglón único tendría que mentir sobre alguna.
-    //
-    // Y se distingue el entorno, no solo si hay credenciales: cobrar de verdad
-    // creyendo que se está en pruebas —o al revés— es el peor malentendido
-    // posible con una pasarela, y aquí se ve sin abrir nada.
     {
-      label: 'Pagos con Niubiz',
-      note:
-        salud?.niubiz === 'test'
-          ? 'Niubiz en modo pruebas'
-          : salud?.niubiz === 'production'
-            ? 'Niubiz en producción: los cobros son reales'
-            : 'Sin credenciales: el checkout no lo ofrece',
-      estado: consultando
-        ? ('cargando' as const)
-        : salud?.niubiz === 'test' || salud?.niubiz === 'production'
-          ? ('ok' as const)
-          : ('parcial' as const),
-    },
-    {
-      label: 'Pagos con MercadoPago',
+      label: 'Cobro',
+      // Se dice tal cual y sin eufemismos. El sistema declara la simulación en
+      // tres sitios —la pantalla del checkout, cada orden y /health— y este es
+      // el que mira quien administra la tienda.
       note:
         salud?.payments === 'simulado'
-          ? 'Cobro SIMULADO: ningún pedido se cobra de verdad'
-          : salud?.payments === 'test'
-          ? 'MercadoPago en modo pruebas'
-          : salud?.payments === 'production'
-            ? 'MercadoPago en producción: los cobros son reales'
-            : 'Sin credenciales: el checkout no lo ofrece',
-      // El modo simulado se marca como parcial y no como correcto, a
-      // propósito: funciona, pero nadie debería olvidarse de que la tienda no
-      // está cobrando. Un tilde verde invitaría justo a ese olvido.
-      estado: consultando
-        ? ('cargando' as const)
-        : salud?.payments === 'test' || salud?.payments === 'production'
-          ? ('ok' as const)
-          : ('parcial' as const),
+          ? 'SIMULADO: ningún pedido se cobra de verdad'
+          : 'Estado desconocido',
+      // Ámbar y no verde, a propósito: funciona, pero nadie debería olvidarse
+      // de que la tienda no está cobrando. Un tilde verde invitaría al olvido.
+      estado: consultando ? ('cargando' as const) : ('parcial' as const),
     },
   ]
 
