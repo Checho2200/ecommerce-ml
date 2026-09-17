@@ -27,6 +27,8 @@ from app.models.user import User
 from app.core.config import get_settings
 from app.schemas.order import (
     NiubizSessionResponse,
+    PagoSimuladoRequest,
+    PagoSimuladoResponse,
     OrderCreate,
     OrderItemResponse,
     OrderListResponse,
@@ -109,6 +111,11 @@ def _a_respuesta(
         # necesita: al recibir la orden recién creada tiene que decidir qué
         # botones de pago enseñar.
         niubiz_disponible=niubiz_service.esta_configurado,
+        # Si la tienda está cobrando con la pasarela simulada. Va aquí
+        # porque es justo lo que el checkout necesita saber al recibir la
+        # orden recién creada: si enseña su propio formulario de pago o si
+        # manda al comprador a una pasarela.
+        pago_simulado=get_settings().PAGO_SIMULADO,
         card_last_four=orden.card_last_four,
         card_holder=orden.card_holder,
         paid_at=orden.paid_at,
@@ -304,6 +311,67 @@ async def mercadopago_webhook(
     except Exception as exc:  # noqa: BLE001 - ver la nota del docstring
         print(f"Webhook error: {exc}")
         return {"status": "error", "message": str(exc)}
+
+
+@router.post("/{order_id}/pago-simulado", response_model=PagoSimuladoResponse)
+async def pagar_simulado(
+    order_id: str,
+    datos: PagoSimuladoRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Cobra un pedido con la pasarela simulada.
+
+    No se mueve dinero y el sistema no lo esconde: la orden queda marcada con
+    `payment_gateway = "simulado"` y `/health` informa de que la tienda está en
+    este modo.
+
+    Del número de tarjeta que llega aquí solo sobreviven los cuatro últimos
+    dígitos, que son los que se guardan. El resto se usa para validar y se
+    descarta; no se escribe en la orden ni en ningún log.
+    """
+    if not get_settings().PAGO_SIMULADO:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Esta tienda no está en modo de pago simulado.",
+        )
+
+    orden = await order_service.obtener_pedido(db, order_id)
+
+    if orden.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para pagar esta orden",
+        )
+
+    aplicado, cobro = await order_service.confirmar_pago_simulado(
+        db,
+        order_id,
+        numero=datos.numero,
+        mes=datos.mes,
+        anio=datos.anio,
+        cvv=datos.cvv,
+        titular=datos.titular,
+    )
+
+    # El aviso al cliente va en segundo plano y sin poder fallar, igual que con
+    # las pasarelas reales: el pedido ya está resuelto y guardado.
+    if aplicado.estado == "completada" and aplicado.orden is not None and aplicado.orden.user is not None:
+        background_tasks.add_task(
+            email_service.enviar_confirmacion_de_pedido,
+            aplicado.orden.user.email,
+            aplicado.orden.user.full_name,
+            aplicado.orden.id,
+            aplicado.orden.total_amount,
+        )
+
+    return PagoSimuladoResponse(
+        aprobado=cobro.aprobado,
+        estado_del_pedido=aplicado.estado,
+        motivo=cobro.motivo,
+    )
 
 
 def _ip_del_comprador(request: Request) -> str:

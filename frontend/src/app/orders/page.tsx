@@ -176,6 +176,18 @@ export default function MyOrdersPage() {
                         variant="outlined"
                         sx={{ fontWeight: 700 }}
                       />
+                      {order.status === 'PENDING' && order.pago_simulado && (
+                        <Button
+                          component={Link}
+                          href={`/checkout/pago?order_id=${order.id}`}
+                          size="small"
+                          variant="contained"
+                          startIcon={<CreditCardIcon />}
+                          sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
+                        >
+                          Pagar
+                        </Button>
+                      )}
                       {order.status === 'PENDING' && order.niubiz_disponible && (
                         <Button
                           size="small"

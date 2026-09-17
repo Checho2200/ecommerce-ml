@@ -73,6 +73,26 @@ export interface OrderResponse {
   // depende de sus credenciales, y el checkout lo necesita para saber qué
   // formas de pago ofrecer.
   niubiz_disponible: boolean;
+  // Si la tienda está cobrando con la pasarela simulada. El checkout lo
+  // necesita para enseñar su propio formulario en vez de mandar a nadie fuera,
+  // y para avisar de que no se hará ningún cargo.
+  pago_simulado: boolean;
+}
+
+/** La tarjeta que se escribe en el formulario de pago simulado. */
+export interface PagoSimuladoRequest {
+  numero: string;
+  mes: number;
+  anio: number;
+  cvv: string;
+  titular: string;
+}
+
+/** Cómo terminó el intento de cobro simulado. */
+export interface PagoSimuladoResponse {
+  aprobado: boolean;
+  estado_del_pedido: string;
+  motivo: string | null;
 }
 
 /**

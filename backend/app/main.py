@@ -194,8 +194,15 @@ async def health():
         # con una pasarela — creer que se está cobrando de verdad cuando no, o
         # al revés — y permite comprobar de un vistazo que un cambio de
         # credenciales llegó al servidor.
+        # El modo simulado manda sobre todo lo demás: si está encendido, da
+        # igual qué credenciales haya cargadas, porque no se llama a ninguna
+        # pasarela. Decirlo aquí es lo que permite comprobar desde fuera que una
+        # demostración no está cobrando de verdad —y, al revés, que una tienda
+        # que cobra no se quedó simulada por descuido.
         "payments": (
-            "not_configured"
+            "simulado"
+            if get_settings().PAGO_SIMULADO
+            else "not_configured"
             if not payment_service.is_configured
             else "test"
             if payment_service.es_de_prueba

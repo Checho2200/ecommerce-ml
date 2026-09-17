@@ -36,11 +36,17 @@ from app.models.user import User
 from app.schemas.order import OrderCreate
 from app.services.errors import OperacionNoPermitida, RecursoNoEncontrado
 from app.services.fraud_service import ANTIGUEDAD_POR_DEFECTO, fraud_service
+from app.core.config import get_settings
 from app.services.niubiz_service import (
     ErrorDeNiubiz,
     SesionDeCobro,
     datos_del_pago_de_niubiz,
     niubiz_service,
+)
+from app.services.pago_simulado import (
+    ResultadoSimulado,
+    cobrar as cobrar_simulado,
+    datos_del_pago_simulado,
 )
 from app.services.payment_service import payment_service
 
@@ -374,6 +380,13 @@ def _generar_cobro(orden: Order, reserva: ArticulosReservados, correo: str) -> O
     inventario reservado, y el cliente puede reintentar el pago. Tumbar la
     compra entera por una caída de la pasarela sería peor.
     """
+    if get_settings().PAGO_SIMULADO:
+        # En modo simulado no hay pasarela a la que pedirle un enlace: el
+        # comprador paga en un formulario de la propia tienda. Se devuelve None
+        # y el checkout, que sabe que está en modo simulado, enseña ese
+        # formulario en lugar de mandar a nadie fuera.
+        return None
+
     articulos = [
         {
             "title": reserva.nombres.get(linea.product_id, "Producto"),
@@ -733,3 +746,62 @@ async def confirmar_pago_de_niubiz(
     return await registrar_resultado_del_pago(
         db, orden.id, "approved", datos_del_pago_de_niubiz(respuesta)
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cobro simulado
+# ─────────────────────────────────────────────────────────────────────────────
+async def confirmar_pago_simulado(
+    db: AsyncSession,
+    orden_id: str,
+    *,
+    numero: str,
+    mes: int,
+    anio: int,
+    cvv: str,
+    titular: str,
+) -> tuple[ResultadoDelPago, ResultadoSimulado]:
+    """
+    Resuelve un cobro simulado y aplica al pedido lo que salga.
+
+    Esto es lo que sustituye a la pasarela, y a nada más: el resultado entra por
+    `registrar_resultado_del_pago`, igual que el webhook de MercadoPago y que la
+    autorización de Niubiz, así que la regla de qué le pasa a un pedido pagado
+    —completarse, o quedar retenido si el modelo lo marcó— es la misma y vive en
+    un solo sitio.
+
+    Los dos «no» que puede dar la simulación tienen consecuencias distintas, y
+    la distinción es la misma que con una pasarela de verdad:
+
+    - **El emisor rechaza la tarjeta.** Esa compra no va a completarse: el
+      pedido se cancela y el inventario vuelve a la tienda.
+    - **El formulario está mal.** Un número con una errata o una fecha vencida
+      es alguien que sigue intentándolo; el pedido no se toca y puede reintentar.
+    """
+    orden = (
+        await db.execute(select(Order).where(Order.id == orden_id))
+    ).scalar_one_or_none()
+
+    if not orden:
+        return ResultadoDelPago("orden no encontrada"), ResultadoSimulado(False)
+
+    if orden.status != OrderStatus.PENDING:
+        # Ya se pagó, se canceló o el modelo la bloqueó. Cobrar dos veces el
+        # mismo pedido no se arregla con una disculpa, ni aunque sea simulado.
+        return ResultadoDelPago("sin cambios", orden), ResultadoSimulado(False)
+
+    resultado = cobrar_simulado(
+        numero=numero, mes=mes, anio=anio, cvv=cvv, titular=titular
+    )
+
+    if resultado.aprobado:
+        aplicado = await registrar_resultado_del_pago(
+            db, orden.id, "approved", datos_del_pago_simulado(resultado)
+        )
+        return aplicado, resultado
+
+    if resultado.es_rechazo_del_emisor:
+        aplicado = await registrar_resultado_del_pago(db, orden.id, "rejected")
+        return aplicado, resultado
+
+    return ResultadoDelPago("sin cambios", orden), resultado

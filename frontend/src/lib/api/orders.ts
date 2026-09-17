@@ -3,6 +3,8 @@
 import { request } from "./cliente";
 import type {
   NiubizSessionResponse,
+  PagoSimuladoRequest,
+  PagoSimuladoResponse,
   OrderResponse,
   OrderSummaryResponse,
 } from "./tipos";
@@ -57,6 +59,15 @@ export const orders = {
   async niubizSession(id: string) {
     return request<NiubizSessionResponse>(`/orders/${id}/niubiz/sesion`, {
       method: "POST",
+    });
+  },
+
+  // Cobra un pedido con la pasarela simulada. No mueve dinero, y el pedido
+  // queda marcado como simulado para que nunca se confunda con un cobro real.
+  async pagarSimulado(id: string, datos: PagoSimuladoRequest) {
+    return request<PagoSimuladoResponse>(`/orders/${id}/pago-simulado`, {
+      method: "POST",
+      body: JSON.stringify(datos),
     });
   },
 

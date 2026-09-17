@@ -99,7 +99,12 @@ export default function CheckoutPage() {
       // El carrito NO se vacia aqui: si el pago falla o el cliente lo abandona,
       // volveria a la tienda sin sus productos y teniendo que buscarlos otra
       // vez. Se vacia en /checkout/success, cuando la pasarela confirma el cobro.
-      if (order.status === 'PENDING' && order.niubiz_disponible) {
+      if (order.status === 'PENDING' && order.pago_simulado) {
+        // La tienda cobra con la pasarela simulada: el pago se hace en un
+        // formulario propio, no fuera. El carrito se vacia en /checkout/success,
+        // cuando el cobro se confirma, igual que con una pasarela real.
+        router.push(`/checkout/pago?order_id=${order.id}`)
+      } else if (order.status === 'PENDING' && order.niubiz_disponible) {
         // Hay con que elegir, o solo esta Niubiz: en los dos casos se le
         // ensena el boton en vez de abrir nada solo, porque el formulario de
         // Niubiz necesita que alguien lo pida.

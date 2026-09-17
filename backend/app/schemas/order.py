@@ -75,9 +75,42 @@ class OrderResponse(BaseModel):
     # configurada manda al comprador a un error con la tarjeta ya en la mano.
     niubiz_disponible: bool = False
 
+    # Si este servidor está cobrando con la pasarela simulada. El checkout lo
+    # necesita para enseñar el formulario propio en lugar de mandar a nadie a
+    # una pasarela, y para avisar de que no se hará ningún cargo.
+    pago_simulado: bool = False
+
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PagoSimuladoRequest(BaseModel):
+    """
+    La tarjeta que alguien escribe en el formulario de pago simulado.
+
+    El número viaja para poder validarlo —con Luhn, como haría una pasarela— y
+    para sacar los cuatro últimos dígitos, pero **no se guarda**: de él solo
+    sobreviven esos cuatro. Aunque aquí no haya dinero de por medio, la
+    costumbre de no conservar el número completo es lo que evita el accidente el
+    día que lo haya.
+    """
+
+    numero: str = Field(..., min_length=13, max_length=25)
+    mes: int = Field(..., ge=1, le=12)
+    anio: int = Field(..., ge=2000, le=2100)
+    cvv: str = Field(..., min_length=3, max_length=4)
+    titular: str = Field(..., min_length=3, max_length=150)
+
+
+class PagoSimuladoResponse(BaseModel):
+    """Cómo terminó el intento de cobro simulado."""
+
+    aprobado: bool
+    # Qué le pasó al pedido: "completada", "retenida", "cancelada"…
+    estado_del_pedido: str
+    # El motivo del rechazo, cuando lo hay. Una pasarela real tampoco dice más.
+    motivo: Optional[str] = None
 
 
 class NiubizSessionResponse(BaseModel):

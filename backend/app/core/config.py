@@ -60,6 +60,20 @@ class Settings(BaseSettings):
     # romper una instalación que ya funcionaba con un token "TEST-".
     MERCADOPAGO_ENTORNO: str = ""
 
+    # Cobro simulado.
+    #
+    # Con esto en verdadero la tienda no llama a ninguna pasarela: el comprador
+    # escribe una tarjeta en un formulario propio y el cobro se resuelve dentro
+    # del sistema. Existe porque lo que este trabajo demuestra es la detección
+    # de fraude, y las dos pasarelas reales que están integradas se quedaron sin
+    # camino —MercadoPago rechazaba los cobros sin registrar el pago, y Niubiz
+    # exige afiliación comercial y certificación—.
+    #
+    # La simulación nunca se esconde: la pantalla avisa, la orden guarda
+    # `payment_gateway = "simulado"` y /health lo informa. Falso por defecto,
+    # para que nadie acabe en modo simulado sin haberlo pedido.
+    PAGO_SIMULADO: bool = False
+
     # ── Niubiz (Visa Perú) ───────────────────────────────────────────────
     #
     # La segunda pasarela. No sustituye a MercadoPago: convive con él, y el

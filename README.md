@@ -1,7 +1,7 @@
 # Sanchez Tech Store — e-commerce con detección de fraude
 
 Tienda en línea de componentes y periféricos de cómputo para **Grupo STS SAC**
-(Trujillo, La Libertad), con cobro real por Niubiz o MercadoPago y un modelo de
+(Trujillo, La Libertad), con cobro simulado y declarado como tal, y un modelo de
 aprendizaje automático que evalúa cada pedido antes de aceptarlo.
 
 El sistema está desplegado y funcionando:
@@ -25,12 +25,13 @@ El sistema está desplegado y funcionando:
 
 - **Catálogo y compra.** Productos por categorías, búsqueda, carrito, checkout
   y seguimiento de pedidos.
-- **Pago.** Dos pasarelas, solo con tarjeta, y el comprador elige. **Niubiz**
-  abre su formulario encima de la tienda y confirma el cobro en la misma
-  llamada. **MercadoPago** lleva a su Checkout Pro y confirma después por
-  webhook. `/health` dice cuál está activa y contra qué entorno cobra cada una.
-  En los dos casos el pedido se confirma cuando la pasarela lo dice, no cuando
-  el cliente vuelve a la tienda.
+- **Pago.** **Simulado, y declarado como simulado.** El comprador escribe una
+  tarjeta en un formulario de la propia tienda; se valida con el algoritmo de
+  Luhn y la vigencia, y hay tarjetas de prueba documentadas que se aprueban o se
+  rechazan. No se mueve dinero: la pantalla lo avisa, cada orden guarda
+  `payment_gateway = "simulado"` y `/health` responde `"payments":"simulado"`.
+  El repositorio conserva además las integraciones reales de **MercadoPago** y
+  **Niubiz**, apagadas.
 - **Detección de fraude.** Cada pedido pasa por un modelo LightGBM que devuelve
   una probabilidad de fraude; según esa probabilidad la orden se aprueba, se
   manda a revisión o se rechaza. Todas las evaluaciones quedan registradas.
@@ -85,6 +86,7 @@ negocio o una integración externa, y ninguno importa FastAPI:
 | `payment_service.py` | Preferencias de cobro y lectura de notificaciones de MercadoPago |
 | `webhook_security.py` | Verificar la firma de esas notificaciones |
 | `niubiz_service.py` | Los tres tokens de Niubiz: acceso, sesión de cobro y autorización |
+| `pago_simulado.py` | La pasarela simulada: Luhn, vigencia y tarjetas de prueba |
 | `email_service.py` | Correo saliente, con degradación a log si no hay SMTP |
 | `errors.py` | Los errores de dominio que los servicios lanzan |
 
@@ -227,6 +229,7 @@ Todas van en `backend/.env` (hay una plantilla en `backend/.env.example`).
 | `RESET_TOKEN_EXPIRE_MINUTES` | Duración del enlace de recuperación | 30 minutos |
 | `MERCADOPAGO_ACCESS_TOKEN` | Cobros | El checkout responde 503 |
 | `MERCADOPAGO_ENTORNO` | `test` o `produccion`. **Hay que declararlo**: MercadoPago entrega hoy las credenciales de prueba con el mismo prefijo `APP_USR-` que las de producción, así que el token ya no dice de qué entorno es | Se deduce del prefijo `TEST-`, que es el formato antiguo |
+| `PAGO_SIMULADO` | Cobra con la pasarela simulada en vez de llamar a ninguna real | `false`: se usa MercadoPago |
 | `NIUBIZ_USER`, `NIUBIZ_PASSWORD`, `NIUBIZ_MERCHANT_ID` | Cobros con Niubiz. Hacen falta las tres | El checkout no ofrece Niubiz, solo MercadoPago |
 | `NIUBIZ_ENTORNO` | `test` o `produccion`. **Hay que declararlo**: las credenciales de Niubiz no llevan ninguna marca de entorno | `test` |
 | `CLOUDINARY_URL` | Dónde se guardan las imágenes que sube el panel | Se guardan en la base de datos |
@@ -748,8 +751,44 @@ Dos límites que conviene declarar antes de que los pregunten:
 
 ## Cómo funciona el pago
 
-La tienda cobra con **dos pasarelas que conviven**, y el comprador elige cuál
-usar después de confirmar el pedido. Las dos empiezan igual:
+La tienda cobra con una **pasarela simulada**. Las dos integraciones reales
+—MercadoPago y Niubiz— están escritas, probadas y apagadas: MercadoPago
+rechazaba los cobros sin llegar a registrar el pago, y Niubiz exige una
+afiliación comercial y una sesión de certificación para entregar credenciales de
+producción. Como lo que este trabajo demuestra es la detección de fraude y no el
+cobro, el cobro se simula.
+
+**La simulación se declara, siempre.** La pantalla del checkout avisa de que no
+se hará ningún cargo, la orden guarda `payment_gateway = "simulado"` —así que el
+panel distingue para siempre un pedido simulado de uno cobrado de verdad— y
+`/health` responde `"payments":"simulado"`, que se puede comprobar desde fuera.
+
+**Lo que no se simula** es nada de lo que sustenta la tesis. El modelo evalúa el
+pedido igual, y el resultado del cobro entra por el mismo sitio que entraría el
+de una pasarela real, así que la máquina de estados es la misma: un pedido que
+el modelo marcó para revisar se retiene **después** de cobrarse, exactamente
+igual.
+
+Y la simulación no aprueba cualquier cosa: valida el número con el algoritmo de
+Luhn, comprueba la vigencia y reconoce tarjetas de prueba documentadas.
+
+| Tarjeta | Qué pasa |
+| --- | --- |
+| `4111 1111 1111 1111` | Se aprueba |
+| `4000 0000 0000 0002` | Rechazada: fondos insuficientes |
+| `5105 1051 0510 5100` | Rechazada: tarjeta reportada |
+| Cualquier otra válida | Se aprueba |
+
+Un rechazo del emisor cancela el pedido y devuelve su inventario. Un número mal
+escrito no: eso es alguien que sigue intentándolo, y el pedido queda intacto
+para reintentar.
+
+---
+
+### Las pasarelas reales, apagadas
+
+Se conservan enteras por si algún día vuelven a estar disponibles. Las dos
+empiezan igual:
 
 1. El cliente confirma el pedido. El backend descuenta stock, evalúa el fraude
    y crea la orden en `PENDING`. El carrito **no** se vacía todavía: si el pago

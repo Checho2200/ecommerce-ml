@@ -108,11 +108,16 @@ export default function AdminSettingsPage() {
     {
       label: 'Pagos con MercadoPago',
       note:
-        salud?.payments === 'test'
+        salud?.payments === 'simulado'
+          ? 'Cobro SIMULADO: ningún pedido se cobra de verdad'
+          : salud?.payments === 'test'
           ? 'MercadoPago en modo pruebas'
           : salud?.payments === 'production'
             ? 'MercadoPago en producción: los cobros son reales'
             : 'Sin credenciales: el checkout no lo ofrece',
+      // El modo simulado se marca como parcial y no como correcto, a
+      // propósito: funciona, pero nadie debería olvidarse de que la tienda no
+      // está cobrando. Un tilde verde invitaría justo a ese olvido.
       estado: consultando
         ? ('cargando' as const)
         : salud?.payments === 'test' || salud?.payments === 'production'
