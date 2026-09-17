@@ -33,6 +33,7 @@ No aprueba cualquier cosa que se le escriba.
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from secrets import token_hex
 from typing import Optional
 
 # Tarjetas con comportamiento fijo, para poder enseñar los dos desenlaces sin
@@ -239,7 +240,15 @@ def datos_del_pago_simulado(resultado: ResultadoSimulado) -> dict:
     return {
         # Un identificador con prefijo: si alguien lo busca en el panel de una
         # pasarela real no lo va a encontrar, y el prefijo le dice por qué.
-        "payment_id": f"SIM-{datetime.now(timezone.utc):%Y%m%d%H%M%S}",
+        #
+        # Lleva además cuatro caracteres al azar, y no por adorno: con solo la
+        # marca de tiempo al segundo, dos cobros seguidos —una demostración, dos
+        # personas comprando a la vez— salían con la misma referencia. Una
+        # referencia que se repite no sirve para localizar un pago, que es lo
+        # único para lo que existe.
+        "payment_id": (
+            f"SIM-{datetime.now(timezone.utc):%Y%m%d%H%M%S}-{token_hex(2).upper()}"
+        ),
         "payment_method": resultado.marca,
         "payment_gateway": "simulado",
         "card_last_four": resultado.ultimos_cuatro,
