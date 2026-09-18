@@ -93,8 +93,24 @@ async function request<T>(
   });
 
   if (response.status === 401) {
-    removeToken();
-    throw new ApiError("No autorizado", 401);
+    // Un 401 son dos cosas muy distintas y antes se contaban igual.
+    //
+    // Puede ser que la sesion caduco —hay que cerrar y volver a entrar— o que
+    // alguien acaba de escribir mal su contrasena en el formulario de acceso.
+    // Aplastar las dos en un "No autorizado" tiraba a la basura el mensaje que
+    // el backend si manda, "Email o contrasena incorrectos", y dejaba a la
+    // persona sin saber si el correo no existe, si la clave esta mal o si se le
+    // habia caducado la sesion.
+    //
+    // Ahora se repite lo que dijo el servidor, y el token solo se descarta si
+    // la peticion llevaba uno: en un intento de acceso fallido no hay ninguna
+    // sesion que cerrar, y cerrarla echaba de la tienda a quien ya estuviera
+    // dentro en esa misma pestana.
+    if (!skipAuth) {
+      removeToken();
+    }
+    const detalle = await response.json().catch(() => ({}));
+    throw new ApiError(mensajeDeError(detalle), 401, detalle);
   }
 
   if (response.status === 204) {
